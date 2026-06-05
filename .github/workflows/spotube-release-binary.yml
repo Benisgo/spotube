@@ -77,11 +77,28 @@ jobs:
           limit-access-to-actor: true
 
   build_android:
-    if: ${{ secrets.KEYSTORE != '' && secrets.KEY_PROPERTIES != '' }}
     runs-on: ubuntu-22.04
+    env:
+      KEYSTORE_SECRET: ${{ secrets.KEYSTORE }}
+      KEY_PROPERTIES_SECRET: ${{ secrets.KEY_PROPERTIES }}
     steps:
       - uses: actions/checkout@v4
+      - name: Check Android signing configuration
+        id: android_signing
+        shell: bash
+        run: |
+          if [[ -n "${KEYSTORE_SECRET}" && -n "${KEY_PROPERTIES_SECRET}" ]]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Skip Android build when signing secrets are missing
+        if: ${{ steps.android_signing.outputs.enabled != 'true' }}
+        run: echo "Android signing secrets are not configured; skipping Android build."
+
       - uses: subosito/flutter-action@v2.18.0
+        if: ${{ steps.android_signing.outputs.enabled == 'true' }}
         with:
           flutter-version: ${{ env.FLUTTER_VERSION  }}
           channel: ${{ env.FLUTTER_CHANNEL }}
@@ -89,6 +106,7 @@ jobs:
           git-source: https://github.com/flutter/flutter.git
 
       - name: Setup Java
+        if: ${{ steps.android_signing.outputs.enabled == 'true' }}
         uses: actions/setup-java@v4
         with:
           distribution: "zulu"
@@ -97,27 +115,32 @@ jobs:
           check-latest: true
 
       - name: Setup Rust toolchain
+        if: ${{ steps.android_signing.outputs.enabled == 'true' }}
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
 
       - name: Install android dependencies
+        if: ${{ steps.android_signing.outputs.enabled == 'true' }}
         run: |
           flutter pub get
           dart cli/cli.dart install-dependencies --platform=android --arch=all
 
       - name: Sign Android APK
+        if: ${{ steps.android_signing.outputs.enabled == 'true' }}
         run: |
           echo '${{ secrets.KEYSTORE }}' | base64 --decode > android/app/upload-keystore.jks
           echo '${{ secrets.KEY_PROPERTIES }}' > android/key.properties
 
       - name: Build android binaries
+        if: ${{ steps.android_signing.outputs.enabled == 'true' }}
         run: dart cli/cli.dart build --arch=all android
         env:
           CHANNEL: ${{inputs.channel}}
           DOTENV: ${{secrets.DOTENV_RELEASE}}
 
       - uses: actions/upload-artifact@v4
+        if: ${{ steps.android_signing.outputs.enabled == 'true' }}
         with:
           if-no-files-found: error
           name: android-all
@@ -125,7 +148,7 @@ jobs:
             build/Spotube-android-all-arch.apk
 
       - name: Open SSH Debug Session On Failure
-        if: ${{ failure() && inputs.debug && inputs.channel == 'nightly' }}
+        if: ${{ failure() && inputs.debug && inputs.channel == 'nightly' && steps.android_signing.outputs.enabled == 'true' }}
         uses: mxschmitt/action-tmate@v3
         with:
           limit-access-to-actor: true
@@ -135,7 +158,7 @@ jobs:
     needs:
       - build_windows
       - build_android
-    if: ${{ always() && needs.build_windows.result == 'success' && (needs.build_android.result == 'success' || needs.build_android.result == 'skipped') }}
+    if: ${{ always() && needs.build_windows.result == 'success' && needs.build_android.result == 'success' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4

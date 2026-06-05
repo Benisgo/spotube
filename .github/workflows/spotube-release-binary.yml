@@ -134,13 +134,12 @@ jobs:
           if [[ -n "${DOTENV_RELEASE_CONTENT}" ]]; then
             printf '%s\n' "${DOTENV_RELEASE_CONTENT}" > .env
           else
-            cat <<EOF > .env
-ENABLE_UPDATE_CHECK=1
-LASTFM_API_KEY=
-LASTFM_API_SECRET=
-RELEASE_CHANNEL=${{ inputs.channel }}
-HIDE_DONATIONS=0
-EOF
+            printf '%s\n' \
+              'ENABLE_UPDATE_CHECK=1' \
+              'LASTFM_API_KEY=' \
+              'LASTFM_API_SECRET=' \
+              'RELEASE_CHANNEL=${{ inputs.channel }}' \
+              'HIDE_DONATIONS=0' > .env
           fi
 
       - uses: subosito/flutter-action@v2.18.0

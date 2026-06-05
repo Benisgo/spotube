@@ -1,45 +1,14 @@
 part of 'audio_player.dart';
 
 mixin SpotubeAudioPlayersStreams on AudioPlayerInterface {
-  // stream getters
-  Stream<Duration> get durationStream {
-    // if (mkSupportedPlatform) {
-    return _mkPlayer.stream.duration;
-    // } else {
-    //   return _justAudio!.durationStream
-    //       .where((event) => event != null)
-    //       .map((event) => event!)
-    //       ;
-    // }
-  }
+  Stream<Duration> get durationStream => _durationStreamController.stream;
 
-  Stream<Duration> get positionStream {
-    // if (mkSupportedPlatform) {
-    return _mkPlayer.stream.position;
-    // } else {
-    //   return _justAudio!.positionStream;
-    // }
-  }
+  Stream<Duration> get positionStream => _positionStreamController.stream;
 
-  Stream<Duration> get bufferedPositionStream {
-    // if (mkSupportedPlatform) {
-    // audioplayers doesn't have the capability to get buffered position
-    return _mkPlayer.stream.buffer;
-    // } else {
-    //   return _justAudio!.bufferedPositionStream;
-    // }
-  }
+  Stream<Duration> get bufferedPositionStream =>
+      _bufferedPositionStreamController.stream;
 
-  Stream<void> get completedStream {
-    // if (mkSupportedPlatform) {
-    return _mkPlayer.stream.completed;
-    // } else {
-    //   return _justAudio!.playerStateStream
-    //       .where(
-    //           (event) => event.processingState == ja.ProcessingState.completed)
-    //       ;
-    // }
-  }
+  Stream<void> get completedStream => _completedStreamController.stream;
 
   /// Stream that emits when the player is almost (%) complete
   Stream<int> percentCompletedStream(double percent) {
@@ -52,99 +21,32 @@ mixin SpotubeAudioPlayersStreams on AudioPlayerInterface {
         .where((event) => event >= percent);
   }
 
-  Stream<bool> get playingStream {
-    // if (mkSupportedPlatform) {
-    return _mkPlayer.stream.playing;
-    // } else {
-    //   return _justAudio!.playingStream;
-    // }
-  }
+  Stream<bool> get playingStream => _playingStreamController.stream;
 
-  Stream<bool> get shuffledStream {
-    // if (mkSupportedPlatform) {
-    return _mkPlayer.shuffleStream;
-    // } else {
-    //   return _justAudio!.shuffleModeEnabledStream;
-    // }
-  }
+  Stream<bool> get shuffledStream => _shuffledStreamController.stream;
 
-  Stream<PlaylistMode> get loopModeStream {
-    // if (mkSupportedPlatform) {
-    return _mkPlayer.stream.playlistMode;
-    // } else {
-    //   return _justAudio!.loopModeStream
-    //       .map(PlaylistMode.fromLoopMode)
-    //       ;
-    // }
-  }
+  Stream<PlaylistMode> get loopModeStream => _loopModeStreamController.stream;
 
-  Stream<double> get volumeStream {
-    // if (mkSupportedPlatform) {
-    return _mkPlayer.stream.volume.map((event) => event / 100);
-    // } else {
-    //   return _justAudio!.volumeStream;
-    // }
-  }
+  Stream<double> get volumeStream => _volumeStreamController.stream;
 
-  Stream<bool> get bufferingStream {
-    // if (mkSupportedPlatform) {
-    return Stream.value(false);
-    // } else {
-    //   return _justAudio!.playerStateStream
-    //       .map(
-    //         (event) =>
-    //             event.processingState == ja.ProcessingState.buffering ||
-    //             event.processingState == ja.ProcessingState.loading,
-    //       )
-    //       ;
-    // }
-  }
+  Stream<bool> get bufferingStream => _bufferingStreamController.stream;
 
-  Stream<AudioPlaybackState> get playerStateStream {
-    // if (mkSupportedPlatform) {
-    return _mkPlayer.playerStateStream;
-    // } else {
-    //   return _justAudio!.playerStateStream
-    //       .map(AudioPlaybackState.fromJaPlayerState)
-    //       ;
-    // }
-  }
+  Stream<AudioPlaybackState> get playerStateStream =>
+      _playerStateStreamController.stream;
 
-  Stream<int> get currentIndexChangedStream {
-    // if (mkSupportedPlatform) {
-    return _mkPlayer.indexChangeStream;
-    // } else {
-    //   return _justAudio!.sequenceStateStream
-    //       .map((event) => event?.currentIndex ?? -1)
-    //       ;
-    // }
-  }
+  Stream<int> get currentIndexChangedStream =>
+      _currentIndexStreamController.stream;
 
-  Stream<String> get activeSourceChangedStream {
-    // if (mkSupportedPlatform) {
-    return _mkPlayer.indexChangeStream
-        .map((event) {
-          return _mkPlayer.state.playlist.medias.elementAtOrNull(event)?.uri;
-        })
-        .where((event) => event != null)
-        .cast<String>();
-    // } else {
-    //   return _justAudio!.sequenceStateStream
-    //       .map((event) {
-    //         return (event?.currentSource as ja.UriAudioSource?)?.uri.toString();
-    //       })
-    //       .where((event) => event != null)
-    //       .cast<String>();
-    // }
-  }
+  Stream<String> get activeSourceChangedStream =>
+      _activeSourceStreamController.stream;
 
   Stream<List<mk.AudioDevice>> get devicesStream =>
-      _mkPlayer.stream.audioDevices.asBroadcastStream();
+      _devicesStreamController.stream;
 
   Stream<mk.AudioDevice> get selectedDeviceStream =>
-      _mkPlayer.stream.audioDevice.asBroadcastStream();
+      _selectedDeviceStreamController.stream;
 
-  Stream<String> get errorStream => _mkPlayer.stream.error;
+  Stream<String> get errorStream => _errorStreamController.stream;
 
-  Stream<mk.Playlist> get playlistStream => _mkPlayer.stream.playlist;
+  Stream<mk.Playlist> get playlistStream => _playlistStreamController.stream;
 }

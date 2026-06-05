@@ -756,6 +756,24 @@ class $PreferencesTableTable extends PreferencesTable
           defaultConstraints: GeneratedColumn.constraintIsAlways(
               'CHECK ("resume_playback_on_launch" IN (0, 1))'),
           defaultValue: const Constant(false));
+  static const VerificationMeta _crossfadeTracksMeta =
+      const VerificationMeta('crossfadeTracks');
+  @override
+  late final GeneratedColumn<bool> crossfadeTracks = GeneratedColumn<bool>(
+      'crossfade_tracks', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("crossfade_tracks" IN (0, 1))'),
+      defaultValue: const Constant(false));
+  static const VerificationMeta _crossfadeDurationSecondsMeta =
+      const VerificationMeta('crossfadeDurationSeconds');
+  @override
+  late final GeneratedColumn<int> crossfadeDurationSeconds =
+      GeneratedColumn<int>('crossfade_duration_seconds', aliasedName, false,
+          type: DriftSqlType.int,
+          requiredDuringInsert: false,
+          defaultValue: const Constant(5));
   static const VerificationMeta _connectPortMeta =
       const VerificationMeta('connectPort');
   @override
@@ -824,6 +842,8 @@ class $PreferencesTableTable extends PreferencesTable
         endlessPlayback,
         enableConnect,
         resumePlaybackOnLaunch,
+        crossfadeTracks,
+        crossfadeDurationSeconds,
         connectPort,
         cacheMusic,
         miniPlayerTransparency,
@@ -922,6 +942,19 @@ class $PreferencesTableTable extends PreferencesTable
           resumePlaybackOnLaunch.isAcceptableOrUnknown(
               data['resume_playback_on_launch']!, _resumePlaybackOnLaunchMeta));
     }
+    if (data.containsKey('crossfade_tracks')) {
+      context.handle(
+          _crossfadeTracksMeta,
+          crossfadeTracks.isAcceptableOrUnknown(
+              data['crossfade_tracks']!, _crossfadeTracksMeta));
+    }
+    if (data.containsKey('crossfade_duration_seconds')) {
+      context.handle(
+          _crossfadeDurationSecondsMeta,
+          crossfadeDurationSeconds.isAcceptableOrUnknown(
+              data['crossfade_duration_seconds']!,
+              _crossfadeDurationSecondsMeta));
+    }
     if (data.containsKey('connect_port')) {
       context.handle(
           _connectPortMeta,
@@ -1012,6 +1045,11 @@ class $PreferencesTableTable extends PreferencesTable
       resumePlaybackOnLaunch: attachedDatabase.typeMapping.read(
           DriftSqlType.bool,
           data['${effectivePrefix}resume_playback_on_launch'])!,
+      crossfadeTracks: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}crossfade_tracks'])!,
+      crossfadeDurationSeconds: attachedDatabase.typeMapping.read(
+          DriftSqlType.int,
+          data['${effectivePrefix}crossfade_duration_seconds'])!,
       connectPort: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}connect_port'])!,
       cacheMusic: attachedDatabase.typeMapping
@@ -1083,6 +1121,8 @@ class PreferencesTableData extends DataClass
   final bool endlessPlayback;
   final bool enableConnect;
   final bool resumePlaybackOnLaunch;
+  final bool crossfadeTracks;
+  final int crossfadeDurationSeconds;
   final int connectPort;
   final bool cacheMusic;
   final double miniPlayerTransparency;
@@ -1112,6 +1152,8 @@ class PreferencesTableData extends DataClass
       required this.endlessPlayback,
       required this.enableConnect,
       required this.resumePlaybackOnLaunch,
+      required this.crossfadeTracks,
+      required this.crossfadeDurationSeconds,
       required this.connectPort,
       required this.cacheMusic,
       required this.miniPlayerTransparency,
@@ -1175,6 +1217,8 @@ class PreferencesTableData extends DataClass
     map['endless_playback'] = Variable<bool>(endlessPlayback);
     map['enable_connect'] = Variable<bool>(enableConnect);
     map['resume_playback_on_launch'] = Variable<bool>(resumePlaybackOnLaunch);
+    map['crossfade_tracks'] = Variable<bool>(crossfadeTracks);
+    map['crossfade_duration_seconds'] = Variable<int>(crossfadeDurationSeconds);
     map['connect_port'] = Variable<int>(connectPort);
     map['cache_music'] = Variable<bool>(cacheMusic);
     map['mini_player_transparency'] = Variable<double>(miniPlayerTransparency);
@@ -1214,6 +1258,8 @@ class PreferencesTableData extends DataClass
       endlessPlayback: Value(endlessPlayback),
       enableConnect: Value(enableConnect),
       resumePlaybackOnLaunch: Value(resumePlaybackOnLaunch),
+      crossfadeTracks: Value(crossfadeTracks),
+      crossfadeDurationSeconds: Value(crossfadeDurationSeconds),
       connectPort: Value(connectPort),
       cacheMusic: Value(cacheMusic),
       miniPlayerTransparency: Value(miniPlayerTransparency),
@@ -1258,6 +1304,9 @@ class PreferencesTableData extends DataClass
       enableConnect: serializer.fromJson<bool>(json['enableConnect']),
       resumePlaybackOnLaunch:
           serializer.fromJson<bool>(json['resumePlaybackOnLaunch']),
+      crossfadeTracks: serializer.fromJson<bool>(json['crossfadeTracks']),
+      crossfadeDurationSeconds:
+          serializer.fromJson<int>(json['crossfadeDurationSeconds']),
       connectPort: serializer.fromJson<int>(json['connectPort']),
       cacheMusic: serializer.fromJson<bool>(json['cacheMusic']),
       miniPlayerTransparency:
@@ -1303,6 +1352,9 @@ class PreferencesTableData extends DataClass
       'endlessPlayback': serializer.toJson<bool>(endlessPlayback),
       'enableConnect': serializer.toJson<bool>(enableConnect),
       'resumePlaybackOnLaunch': serializer.toJson<bool>(resumePlaybackOnLaunch),
+      'crossfadeTracks': serializer.toJson<bool>(crossfadeTracks),
+      'crossfadeDurationSeconds':
+          serializer.toJson<int>(crossfadeDurationSeconds),
       'connectPort': serializer.toJson<int>(connectPort),
       'cacheMusic': serializer.toJson<bool>(cacheMusic),
       'miniPlayerTransparency':
@@ -1338,6 +1390,8 @@ class PreferencesTableData extends DataClass
           bool? endlessPlayback,
           bool? enableConnect,
           bool? resumePlaybackOnLaunch,
+          bool? crossfadeTracks,
+          int? crossfadeDurationSeconds,
           int? connectPort,
           bool? cacheMusic,
           double? miniPlayerTransparency,
@@ -1369,6 +1423,9 @@ class PreferencesTableData extends DataClass
         enableConnect: enableConnect ?? this.enableConnect,
         resumePlaybackOnLaunch:
             resumePlaybackOnLaunch ?? this.resumePlaybackOnLaunch,
+        crossfadeTracks: crossfadeTracks ?? this.crossfadeTracks,
+        crossfadeDurationSeconds:
+            crossfadeDurationSeconds ?? this.crossfadeDurationSeconds,
         connectPort: connectPort ?? this.connectPort,
         cacheMusic: cacheMusic ?? this.cacheMusic,
         miniPlayerTransparency:
@@ -1436,6 +1493,12 @@ class PreferencesTableData extends DataClass
       resumePlaybackOnLaunch: data.resumePlaybackOnLaunch.present
           ? data.resumePlaybackOnLaunch.value
           : this.resumePlaybackOnLaunch,
+      crossfadeTracks: data.crossfadeTracks.present
+          ? data.crossfadeTracks.value
+          : this.crossfadeTracks,
+      crossfadeDurationSeconds: data.crossfadeDurationSeconds.present
+          ? data.crossfadeDurationSeconds.value
+          : this.crossfadeDurationSeconds,
       connectPort:
           data.connectPort.present ? data.connectPort.value : this.connectPort,
       cacheMusic:
@@ -1478,6 +1541,8 @@ class PreferencesTableData extends DataClass
           ..write('endlessPlayback: $endlessPlayback, ')
           ..write('enableConnect: $enableConnect, ')
           ..write('resumePlaybackOnLaunch: $resumePlaybackOnLaunch, ')
+          ..write('crossfadeTracks: $crossfadeTracks, ')
+          ..write('crossfadeDurationSeconds: $crossfadeDurationSeconds, ')
           ..write('connectPort: $connectPort, ')
           ..write('cacheMusic: $cacheMusic, ')
           ..write('miniPlayerTransparency: $miniPlayerTransparency, ')
@@ -1512,6 +1577,8 @@ class PreferencesTableData extends DataClass
         endlessPlayback,
         enableConnect,
         resumePlaybackOnLaunch,
+        crossfadeTracks,
+        crossfadeDurationSeconds,
         connectPort,
         cacheMusic,
         miniPlayerTransparency,
@@ -1545,6 +1612,8 @@ class PreferencesTableData extends DataClass
           other.endlessPlayback == this.endlessPlayback &&
           other.enableConnect == this.enableConnect &&
           other.resumePlaybackOnLaunch == this.resumePlaybackOnLaunch &&
+          other.crossfadeTracks == this.crossfadeTracks &&
+          other.crossfadeDurationSeconds == this.crossfadeDurationSeconds &&
           other.connectPort == this.connectPort &&
           other.cacheMusic == this.cacheMusic &&
           other.miniPlayerTransparency == this.miniPlayerTransparency &&
@@ -1576,6 +1645,8 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
   final Value<bool> endlessPlayback;
   final Value<bool> enableConnect;
   final Value<bool> resumePlaybackOnLaunch;
+  final Value<bool> crossfadeTracks;
+  final Value<int> crossfadeDurationSeconds;
   final Value<int> connectPort;
   final Value<bool> cacheMusic;
   final Value<double> miniPlayerTransparency;
@@ -1605,6 +1676,8 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
     this.endlessPlayback = const Value.absent(),
     this.enableConnect = const Value.absent(),
     this.resumePlaybackOnLaunch = const Value.absent(),
+    this.crossfadeTracks = const Value.absent(),
+    this.crossfadeDurationSeconds = const Value.absent(),
     this.connectPort = const Value.absent(),
     this.cacheMusic = const Value.absent(),
     this.miniPlayerTransparency = const Value.absent(),
@@ -1635,6 +1708,8 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
     this.endlessPlayback = const Value.absent(),
     this.enableConnect = const Value.absent(),
     this.resumePlaybackOnLaunch = const Value.absent(),
+    this.crossfadeTracks = const Value.absent(),
+    this.crossfadeDurationSeconds = const Value.absent(),
     this.connectPort = const Value.absent(),
     this.cacheMusic = const Value.absent(),
     this.miniPlayerTransparency = const Value.absent(),
@@ -1665,6 +1740,8 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
     Expression<bool>? endlessPlayback,
     Expression<bool>? enableConnect,
     Expression<bool>? resumePlaybackOnLaunch,
+    Expression<bool>? crossfadeTracks,
+    Expression<int>? crossfadeDurationSeconds,
     Expression<int>? connectPort,
     Expression<bool>? cacheMusic,
     Expression<double>? miniPlayerTransparency,
@@ -1699,6 +1776,9 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
       if (enableConnect != null) 'enable_connect': enableConnect,
       if (resumePlaybackOnLaunch != null)
         'resume_playback_on_launch': resumePlaybackOnLaunch,
+      if (crossfadeTracks != null) 'crossfade_tracks': crossfadeTracks,
+      if (crossfadeDurationSeconds != null)
+        'crossfade_duration_seconds': crossfadeDurationSeconds,
       if (connectPort != null) 'connect_port': connectPort,
       if (cacheMusic != null) 'cache_music': cacheMusic,
       if (miniPlayerTransparency != null)
@@ -1734,6 +1814,8 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
       Value<bool>? endlessPlayback,
       Value<bool>? enableConnect,
       Value<bool>? resumePlaybackOnLaunch,
+      Value<bool>? crossfadeTracks,
+      Value<int>? crossfadeDurationSeconds,
       Value<int>? connectPort,
       Value<bool>? cacheMusic,
       Value<double>? miniPlayerTransparency,
@@ -1764,6 +1846,9 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
       enableConnect: enableConnect ?? this.enableConnect,
       resumePlaybackOnLaunch:
           resumePlaybackOnLaunch ?? this.resumePlaybackOnLaunch,
+      crossfadeTracks: crossfadeTracks ?? this.crossfadeTracks,
+      crossfadeDurationSeconds:
+          crossfadeDurationSeconds ?? this.crossfadeDurationSeconds,
       connectPort: connectPort ?? this.connectPort,
       cacheMusic: cacheMusic ?? this.cacheMusic,
       miniPlayerTransparency:
@@ -1859,6 +1944,13 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
       map['resume_playback_on_launch'] =
           Variable<bool>(resumePlaybackOnLaunch.value);
     }
+    if (crossfadeTracks.present) {
+      map['crossfade_tracks'] = Variable<bool>(crossfadeTracks.value);
+    }
+    if (crossfadeDurationSeconds.present) {
+      map['crossfade_duration_seconds'] =
+          Variable<int>(crossfadeDurationSeconds.value);
+    }
     if (connectPort.present) {
       map['connect_port'] = Variable<int>(connectPort.value);
     }
@@ -1907,6 +1999,8 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
           ..write('endlessPlayback: $endlessPlayback, ')
           ..write('enableConnect: $enableConnect, ')
           ..write('resumePlaybackOnLaunch: $resumePlaybackOnLaunch, ')
+          ..write('crossfadeTracks: $crossfadeTracks, ')
+          ..write('crossfadeDurationSeconds: $crossfadeDurationSeconds, ')
           ..write('connectPort: $connectPort, ')
           ..write('cacheMusic: $cacheMusic, ')
           ..write('miniPlayerTransparency: $miniPlayerTransparency, ')
@@ -4748,6 +4842,8 @@ typedef $$PreferencesTableTableCreateCompanionBuilder
   Value<bool> endlessPlayback,
   Value<bool> enableConnect,
   Value<bool> resumePlaybackOnLaunch,
+  Value<bool> crossfadeTracks,
+  Value<int> crossfadeDurationSeconds,
   Value<int> connectPort,
   Value<bool> cacheMusic,
   Value<double> miniPlayerTransparency,
@@ -4779,6 +4875,8 @@ typedef $$PreferencesTableTableUpdateCompanionBuilder
   Value<bool> endlessPlayback,
   Value<bool> enableConnect,
   Value<bool> resumePlaybackOnLaunch,
+  Value<bool> crossfadeTracks,
+  Value<int> crossfadeDurationSeconds,
   Value<int> connectPort,
   Value<bool> cacheMusic,
   Value<double> miniPlayerTransparency,
@@ -4890,6 +4988,14 @@ class $$PreferencesTableTableFilterComposer
 
   ColumnFilters<bool> get resumePlaybackOnLaunch => $composableBuilder(
       column: $table.resumePlaybackOnLaunch,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get crossfadeTracks => $composableBuilder(
+      column: $table.crossfadeTracks,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get crossfadeDurationSeconds => $composableBuilder(
+      column: $table.crossfadeDurationSeconds,
       builder: (column) => ColumnFilters(column));
 
   ColumnFilters<int> get connectPort => $composableBuilder(
@@ -5007,6 +5113,14 @@ class $$PreferencesTableTableOrderingComposer
       column: $table.resumePlaybackOnLaunch,
       builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<bool> get crossfadeTracks => $composableBuilder(
+      column: $table.crossfadeTracks,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get crossfadeDurationSeconds => $composableBuilder(
+      column: $table.crossfadeDurationSeconds,
+      builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<int> get connectPort => $composableBuilder(
       column: $table.connectPort, builder: (column) => ColumnOrderings(column));
 
@@ -5110,6 +5224,12 @@ class $$PreferencesTableTableAnnotationComposer
   GeneratedColumn<bool> get resumePlaybackOnLaunch => $composableBuilder(
       column: $table.resumePlaybackOnLaunch, builder: (column) => column);
 
+  GeneratedColumn<bool> get crossfadeTracks => $composableBuilder(
+      column: $table.crossfadeTracks, builder: (column) => column);
+
+  GeneratedColumn<int> get crossfadeDurationSeconds => $composableBuilder(
+      column: $table.crossfadeDurationSeconds, builder: (column) => column);
+
   GeneratedColumn<int> get connectPort => $composableBuilder(
       column: $table.connectPort, builder: (column) => column);
 
@@ -5179,6 +5299,8 @@ class $$PreferencesTableTableTableManager extends RootTableManager<
             Value<bool> endlessPlayback = const Value.absent(),
             Value<bool> enableConnect = const Value.absent(),
             Value<bool> resumePlaybackOnLaunch = const Value.absent(),
+            Value<bool> crossfadeTracks = const Value.absent(),
+            Value<int> crossfadeDurationSeconds = const Value.absent(),
             Value<int> connectPort = const Value.absent(),
             Value<bool> cacheMusic = const Value.absent(),
             Value<double> miniPlayerTransparency = const Value.absent(),
@@ -5210,6 +5332,8 @@ class $$PreferencesTableTableTableManager extends RootTableManager<
             endlessPlayback: endlessPlayback,
             enableConnect: enableConnect,
             resumePlaybackOnLaunch: resumePlaybackOnLaunch,
+            crossfadeTracks: crossfadeTracks,
+            crossfadeDurationSeconds: crossfadeDurationSeconds,
             connectPort: connectPort,
             cacheMusic: cacheMusic,
             miniPlayerTransparency: miniPlayerTransparency,
@@ -5241,6 +5365,8 @@ class $$PreferencesTableTableTableManager extends RootTableManager<
             Value<bool> endlessPlayback = const Value.absent(),
             Value<bool> enableConnect = const Value.absent(),
             Value<bool> resumePlaybackOnLaunch = const Value.absent(),
+            Value<bool> crossfadeTracks = const Value.absent(),
+            Value<int> crossfadeDurationSeconds = const Value.absent(),
             Value<int> connectPort = const Value.absent(),
             Value<bool> cacheMusic = const Value.absent(),
             Value<double> miniPlayerTransparency = const Value.absent(),
@@ -5272,6 +5398,8 @@ class $$PreferencesTableTableTableManager extends RootTableManager<
             endlessPlayback: endlessPlayback,
             enableConnect: enableConnect,
             resumePlaybackOnLaunch: resumePlaybackOnLaunch,
+            crossfadeTracks: crossfadeTracks,
+            crossfadeDurationSeconds: crossfadeDurationSeconds,
             connectPort: connectPort,
             cacheMusic: cacheMusic,
             miniPlayerTransparency: miniPlayerTransparency,

@@ -223,6 +223,22 @@ class UserPreferencesNotifier extends Notifier<PreferencesTableData> {
     );
   }
 
+  void setCrossfadeTracks(bool enable) {
+    setData(
+      PreferencesTableCompanion(
+        crossfadeTracks: Value(enable),
+      ),
+    );
+  }
+
+  void setCrossfadeDurationSeconds(int seconds) {
+    setData(
+      PreferencesTableCompanion(
+        crossfadeDurationSeconds: Value(seconds.clamp(1, 15)),
+      ),
+    );
+  }
+
   void setConnectPort(int port) {
     assert(
       port >= -1 && port <= 65535,

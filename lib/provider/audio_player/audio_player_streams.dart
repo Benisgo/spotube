@@ -9,10 +9,12 @@ import 'package:spotube/provider/discord_provider.dart';
 import 'package:spotube/provider/history/history.dart';
 import 'package:spotube/provider/metadata_plugin/core/scrobble.dart';
 import 'package:spotube/provider/metadata_plugin/metadata_plugin_provider.dart';
+import 'package:spotube/provider/multi_session/multi_session.dart';
 import 'package:spotube/provider/server/sourced_track_provider.dart';
 import 'package:spotube/provider/skip_segments/skip_segments.dart';
 import 'package:spotube/provider/scrobbler/scrobbler.dart';
 import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
+import 'package:spotube/services/kv_store/kv_store.dart';
 import 'package:spotube/services/audio_player/audio_player.dart';
 import 'package:spotube/services/audio_services/audio_services.dart';
 import 'package:spotube/services/logger/logger.dart';
@@ -20,16 +22,26 @@ import 'package:spotube/services/logger/logger.dart';
 class AudioPlayerStreamListeners {
   final Ref ref;
   AudioServices? notificationService;
+  String? _fadeOutTrackId;
   AudioPlayerStreamListeners(this.ref) {
     AudioServices.create(ref, ref.read(audioPlayerProvider.notifier)).then(
       (value) => notificationService = value,
     );
+    ref.listen(multiSessionProvider.select((state) => state.connected), (
+      previous,
+      next,
+    ) {
+      if (next == true) {
+        unawaited(_stopCrossfadeAndRestoreVolume());
+      }
+    });
 
     final subscriptions = [
       subscribeToPlaylist(),
       subscribeToSkipSponsor(),
       subscribeToScrobbleChanged(),
       subscribeToPosition(),
+      subscribeToCrossfadeTransitions(),
       subscribeToPlayerError(),
     ];
 
@@ -47,6 +59,17 @@ class AudioPlayerStreamListeners {
   AudioPlayerState get audioPlayerState => ref.read(audioPlayerProvider);
   PlaybackHistoryActions get history =>
       ref.read(playbackHistoryActionsProvider);
+  double get targetVolume => KVStoreService.volume;
+  bool get isInListeningRoom => ref.read(multiSessionProvider).connected;
+
+  Future<void> _stopCrossfadeAndRestoreVolume() async {
+    _fadeOutTrackId = null;
+    await audioPlayer.stopCrossfadeAndRestore();
+
+    if ((audioPlayer.volume - targetVolume).abs() > 0.01) {
+      await audioPlayer.setVolume(targetVolume);
+    }
+  }
 
   StreamSubscription subscribeToPlaylist() {
     return audioPlayer.playlistStream.listen((mpvPlaylist) {
@@ -167,8 +190,110 @@ class AudioPlayerStreamListeners {
     });
   }
 
+  StreamSubscription subscribeToCrossfadeTransitions() {
+    final positionSubscription =
+        audioPlayer.positionStream.listen((position) async {
+      try {
+        final preferences = ref.read(userPreferencesProvider);
+        if (!preferences.crossfadeTracks ||
+            isInListeningRoom ||
+            !audioPlayer.isPlaying ||
+            audioPlayer.duration == Duration.zero ||
+            audioPlayerState.currentIndex < 0 ||
+            audioPlayerState.currentIndex >=
+                audioPlayerState.tracks.length - 1) {
+          await _stopCrossfadeAndRestoreVolume();
+          return;
+        }
+
+        final activeTrack = audioPlayerState.activeTrack;
+        if (activeTrack == null) return;
+
+        final fadeDuration = Duration(
+          seconds: preferences.crossfadeDurationSeconds,
+        );
+        final remaining = audioPlayer.duration - position;
+
+        if (remaining <= Duration.zero ||
+            remaining > fadeDuration ||
+            _fadeOutTrackId == activeTrack.id) {
+          return;
+        }
+
+        _fadeOutTrackId = activeTrack.id;
+        final crossfadeStarted = await audioPlayer.startCrossfadeToNext(
+          remaining,
+        );
+        if (!crossfadeStarted) {
+          _fadeOutTrackId = null;
+        }
+      } catch (e, stack) {
+        AppLogger.reportError(e, stack);
+      }
+    });
+
+    final indexSubscription = audioPlayer.currentIndexChangedStream.listen((
+      index,
+    ) async {
+      try {
+        _fadeOutTrackId = null;
+      } catch (e, stack) {
+        AppLogger.reportError(e, stack);
+      }
+    });
+
+    return _CompositeSubscription([positionSubscription, indexSubscription]);
+  }
+
   StreamSubscription subscribeToPlayerError() {
     return audioPlayer.errorStream.listen((event) {});
+  }
+}
+
+class _CompositeSubscription implements StreamSubscription<void> {
+  final List<StreamSubscription> _subscriptions;
+
+  const _CompositeSubscription(this._subscriptions);
+
+  @override
+  Future<void> cancel() async {
+    for (final subscription in _subscriptions) {
+      await subscription.cancel();
+    }
+  }
+
+  @override
+  void onData(void Function(void data)? handleData) {}
+
+  @override
+  void onDone(void Function()? handleDone) {}
+
+  @override
+  void onError(Function? handleError) {}
+
+  @override
+  void pause([Future<void>? resumeSignal]) {
+    for (final subscription in _subscriptions) {
+      subscription.pause(resumeSignal);
+    }
+  }
+
+  @override
+  void resume() {
+    for (final subscription in _subscriptions) {
+      subscription.resume();
+    }
+  }
+
+  @override
+  bool get isPaused =>
+      _subscriptions.every((subscription) => subscription.isPaused);
+
+  @override
+  Future<E> asFuture<E>([E? futureValue]) {
+    return Future.wait(
+      _subscriptions.map((subscription) => subscription.asFuture<void>()),
+    ).then((_) => futureValue as E);
   }
 }
 

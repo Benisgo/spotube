@@ -68,7 +68,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.withExecutor(super.e);
 
   @override
-  int get schemaVersion => 13;
+  int get schemaVersion => 14;
 
   @override
   MigrationStrategy get migration {
@@ -289,6 +289,24 @@ class AppDatabase extends _$AppDatabase {
           await customStatement(
             "ALTER TABLE audio_player_state_table "
             "ADD COLUMN position_ms INTEGER NOT NULL DEFAULT 0",
+          ).catchError((error, stackTrace) {
+            if (!error.toString().contains('duplicate column name')) {
+              throw error;
+            }
+          });
+        }
+        if (from < 14 && to >= 14) {
+          await customStatement(
+            "ALTER TABLE preferences_table "
+            "ADD COLUMN crossfade_tracks INTEGER NOT NULL DEFAULT 0",
+          ).catchError((error, stackTrace) {
+            if (!error.toString().contains('duplicate column name')) {
+              throw error;
+            }
+          });
+          await customStatement(
+            "ALTER TABLE preferences_table "
+            "ADD COLUMN crossfade_duration_seconds INTEGER NOT NULL DEFAULT 5",
           ).catchError((error, stackTrace) {
             if (!error.toString().contains('duplicate column name')) {
               throw error;

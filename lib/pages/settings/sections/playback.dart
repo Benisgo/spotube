@@ -201,6 +201,55 @@ class SettingsPlaybackSection extends HookConsumerWidget {
           ),
         ),
         ListTile(
+          leading: const Icon(SpotubeIcons.stream),
+          title: const Text("Crossfade tracks"),
+          subtitle: Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  "Fade out the current track and fade in the next one",
+                ),
+                const Gap(8),
+                Opacity(
+                  opacity: preferences.crossfadeTracks ? 1 : 0.5,
+                  child: IgnorePointer(
+                    ignoring: !preferences.crossfadeTracks,
+                    child: Row(
+                      spacing: 12,
+                      children: [
+                        Expanded(
+                          child: Slider(
+                            value: SliderValue.single(
+                              (preferences.crossfadeDurationSeconds - 1) / 14,
+                            ),
+                            onChanged: (value) {
+                              preferencesNotifier.setCrossfadeDurationSeconds(
+                                1 + (value.value * 14).round(),
+                              );
+                            },
+                          ),
+                        ),
+                        SizedBox(
+                          width: 36,
+                          child: Text(
+                            "${preferences.crossfadeDurationSeconds}s",
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          trailing: Switch(
+            value: preferences.crossfadeTracks,
+            onChanged: preferencesNotifier.setCrossfadeTracks,
+          ),
+        ),
+        ListTile(
           title: Text(context.l10n.enable_connect),
           subtitle: Text(context.l10n.enable_connect_description),
           leading: const Icon(SpotubeIcons.connect),

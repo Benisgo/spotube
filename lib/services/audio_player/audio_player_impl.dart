@@ -5,40 +5,85 @@ final audioPlayer = SpotubeAudioPlayer();
 class SpotubeAudioPlayer extends AudioPlayerInterface
     with SpotubeAudioPlayersStreams {
   Future<void> pause() async {
-    await _mkPlayer.pause();
+    if (isCrossfading) {
+      await _activePlayer.pause();
+      await _inactivePlayer.pause();
+      _isPlaying = false;
+      _playingStreamController.add(false);
+      return;
+    }
+
+    await _activePlayer.pause();
   }
 
   Future<void> resume() async {
-    await _mkPlayer.play();
+    if (isCrossfading) {
+      await _activePlayer.play();
+      await _inactivePlayer.play();
+      _isPlaying = true;
+      _playingStreamController.add(true);
+      return;
+    }
+
+    await _activePlayer.play();
   }
 
   Future<void> stop() async {
-    await _mkPlayer.stop();
+    await _stopCrossfade(restoreActiveVolume: false);
+    await _primaryPlayer.stop();
+    await _secondaryPlayer.stop();
+    _playlist = const mk.Playlist([]);
+    _currentIndex = -1;
+    _isPlaying = false;
+    _emitPlaybackSnapshot(includePlaylist: true);
   }
 
   Future<void> seek(Duration position) async {
-    await _mkPlayer.seek(position);
+    await _activePlayer.seek(position);
   }
 
   /// Volume is between 0 and 1
   Future<void> setVolume(double volume) async {
     assert(volume >= 0 && volume <= 1);
-    await _mkPlayer.setVolume(volume * 100);
+    final previousTargetVolume = _targetVolume <= 0 ? 1.0 : _targetVolume;
+    _targetVolume = volume;
+
+    if (isCrossfading) {
+      final activeRatio = (_activePlayer.state.volume / 100) / previousTargetVolume;
+      final inactiveRatio =
+          (_inactivePlayer.state.volume / 100) / previousTargetVolume;
+      await _activePlayer.setVolume(activeRatio.clamp(0.0, 1.0) * volume * 100);
+      await _inactivePlayer.setVolume(
+        inactiveRatio.clamp(0.0, 1.0) * volume * 100,
+      );
+      return;
+    }
+
+    await _activePlayer.setVolume(volume * 100);
+    if (!_inactivePlayer.state.playing) {
+      await _inactivePlayer.setVolume(0);
+    }
   }
 
   Future<void> setSpeed(double speed) async {
-    await _mkPlayer.setRate(speed);
+    await _activePlayer.setRate(speed);
+    await _inactivePlayer.setRate(speed);
   }
 
   Future<void> setAudioDevice(mk.AudioDevice device) async {
-    await _mkPlayer.setAudioDevice(device);
+    await _activePlayer.setAudioDevice(device);
+    await _inactivePlayer.setAudioDevice(device);
   }
 
   Future<void> dispose() async {
-    await _mkPlayer.dispose();
+    await _stopCrossfade(restoreActiveVolume: false);
+    for (final subscription in _playerSubscriptions) {
+      await subscription.cancel();
+    }
+    await disposeControllers();
+    await _primaryPlayer.dispose();
+    await _secondaryPlayer.dispose();
   }
-
-  // Playlist related
 
   Future<void> openPlaylist(
     List<mk.Media> tracks, {
@@ -47,92 +92,118 @@ class SpotubeAudioPlayer extends AudioPlayerInterface
   }) async {
     assert(tracks.isNotEmpty);
     assert(initialIndex <= tracks.length - 1);
-    await _mkPlayer.open(
-      mk.Playlist(tracks, index: initialIndex),
+
+    await _stopCrossfade(restoreActiveVolume: false);
+
+    final safeInitialIndex = initialIndex.clamp(0, tracks.length - 1).toInt();
+    _playlist = mk.Playlist(tracks, index: safeInitialIndex);
+    _currentIndex = safeInitialIndex;
+    _primaryPlayerActive = true;
+
+    await _primaryPlayer.setPlaylistMode(_loopMode);
+    await _secondaryPlayer.setPlaylistMode(_loopMode);
+    await _primaryPlayer.setShuffle(_isShuffled);
+    await _secondaryPlayer.setShuffle(_isShuffled);
+
+    await _openPlayerWithPlaylist(
+      _primaryPlayer,
+      safeInitialIndex,
       play: autoPlay,
     );
+    await _primaryPlayer.setVolume(_targetVolume * 100);
+    await _prepareInactivePlayer();
+    _isPlaying = autoPlay;
+    _emitPlaybackSnapshot(includePlaylist: true);
   }
 
   List<String> get sources {
-    return _mkPlayer.state.playlist.medias.map((e) => e.uri).toList();
+    return _playlist.medias.map((e) => e.uri).toList();
   }
-
-  String? get currentSource {
-    if (_mkPlayer.state.playlist.index == -1) return null;
-    return _mkPlayer.state.playlist.medias
-        .elementAtOrNull(_mkPlayer.state.playlist.index)
-        ?.uri;
-  }
-
-  String? get nextSource {
-    if (loopMode == PlaylistMode.loop &&
-        _mkPlayer.state.playlist.index ==
-            _mkPlayer.state.playlist.medias.length - 1) {
-      return sources.first;
-    }
-
-    return _mkPlayer.state.playlist.medias
-        .elementAtOrNull(_mkPlayer.state.playlist.index + 1)
-        ?.uri;
-  }
-
-  String? get previousSource {
-    if (loopMode == PlaylistMode.loop && _mkPlayer.state.playlist.index == 0) {
-      return sources.last;
-    }
-
-    return _mkPlayer.state.playlist.medias
-        .elementAtOrNull(_mkPlayer.state.playlist.index - 1)
-        ?.uri;
-  }
-
-  int get currentIndex => _mkPlayer.state.playlist.index;
 
   Future<void> skipToNext() async {
-    await _mkPlayer.next();
+    await _stopCrossfade();
+    await _activePlayer.next();
   }
 
   Future<void> skipToPrevious() async {
-    await _mkPlayer.previous();
+    await _stopCrossfade();
+    await _activePlayer.previous();
   }
 
   Future<void> jumpTo(int index) async {
-    await _mkPlayer.jump(index);
+    await _stopCrossfade();
+    await _activePlayer.jump(index);
   }
 
   Future<void> addTrack(mk.Media media) async {
-    await _mkPlayer.add(media);
+    await _primaryPlayer.add(media);
+    await _secondaryPlayer.add(media);
+    _syncPlaylistFromActive(_activePlayer.state.playlist);
+    await _prepareInactivePlayer();
   }
 
   Future<void> addTrackAt(mk.Media media, int index) async {
-    await _mkPlayer.insert(index, media);
+    await _primaryPlayer.insert(index, media);
+    await _secondaryPlayer.insert(index, media);
+    _syncPlaylistFromActive(_activePlayer.state.playlist);
+    await _prepareInactivePlayer();
   }
 
   Future<void> removeTrack(int index) async {
-    await _mkPlayer.remove(index);
+    await _stopCrossfade();
+    await _primaryPlayer.remove(index);
+    await _secondaryPlayer.remove(index);
+
+    if (_primaryPlayer.state.playlist.medias.isEmpty) {
+      _playlist = const mk.Playlist([]);
+      _currentIndex = -1;
+      _emitPlaybackSnapshot(includePlaylist: true);
+      return;
+    }
+
+    _currentIndex =
+        min(_currentIndex, _primaryPlayer.state.playlist.medias.length - 1);
+    _syncPlaylistFromActive(_activePlayer.state.playlist);
+    _emitIndexSnapshot();
+    await _prepareInactivePlayer();
   }
 
   Future<void> moveTrack(int from, int to) async {
-    await _mkPlayer.move(from, to);
+    await _primaryPlayer.move(from, to);
+    await _secondaryPlayer.move(from, to);
+    _syncPlaylistFromActive(_activePlayer.state.playlist);
+    _emitIndexSnapshot();
+    await _prepareInactivePlayer();
   }
 
   Future<void> clearPlaylist() async {
-    _mkPlayer.stop();
+    await stop();
   }
 
   Future<void> setShuffle(bool shuffle) async {
-    await _mkPlayer.setShuffle(shuffle);
+    _isShuffled = shuffle;
+    await _primaryPlayer.setShuffle(shuffle);
+    await _secondaryPlayer.setShuffle(shuffle);
+    _shuffledStreamController.add(shuffle);
+    _syncPlaylistFromActive(_activePlayer.state.playlist);
+    await _prepareInactivePlayer();
   }
 
   Future<void> setLoopMode(PlaylistMode loop) async {
-    await _mkPlayer.setPlaylistMode(loop);
+    _loopMode = loop;
+    await _primaryPlayer.setPlaylistMode(loop);
+    await _secondaryPlayer.setPlaylistMode(loop);
+    _loopModeStreamController.add(loop);
+    await _prepareInactivePlayer();
   }
 
   Future<void> setAudioNormalization(bool normalize) async {
-    await _mkPlayer.setAudioNormalization(normalize);
+    await _primaryPlayer.setAudioNormalization(normalize);
+    await _secondaryPlayer.setAudioNormalization(normalize);
   }
 
   Future<void> setDemuxerBufferSize(int sizeInBytes) async {
-    await _mkPlayer.setDemuxerBufferSize(sizeInBytes);
+    await _primaryPlayer.setDemuxerBufferSize(sizeInBytes);
+    await _secondaryPlayer.setDemuxerBufferSize(sizeInBytes);
   }
 }

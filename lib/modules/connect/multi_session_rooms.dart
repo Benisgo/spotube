@@ -17,6 +17,11 @@ class ConnectPageMultiSessionRooms extends HookConsumerWidget {
     final codeController = useTextEditingController();
     final session = ref.watch(multiSessionProvider);
     final sessionNotifier = ref.read(multiSessionProvider.notifier);
+    final roomCode = session.code;
+    final snapshot = session.snapshot;
+    final isConnectedRoom = session.connected && roomCode != null;
+    final isHost = session.isHost;
+    final members = snapshot?.members ?? const <MultiSessionMember>[];
 
     return SliverMainAxisGroup(
       slivers: [
@@ -34,13 +39,13 @@ class ConnectPageMultiSessionRooms extends HookConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               spacing: 12,
               children: [
-                if (session.connected && session.code != null) ...[
+                if (isConnectedRoom) ...[
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Expanded(
                         child: Text(
-                          "Room ${session.code}",
+                          "Room $roomCode",
                           style: theme.typography.large,
                         ),
                       ),
@@ -51,7 +56,7 @@ class ConnectPageMultiSessionRooms extends HookConsumerWidget {
                           return Button.ghost(
                             onPressed: () {
                               Clipboard.setData(
-                                ClipboardData(text: session.code!),
+                                ClipboardData(text: roomCode),
                               );
                               copied.value = true;
                             },
@@ -65,16 +70,16 @@ class ConnectPageMultiSessionRooms extends HookConsumerWidget {
                         },
                       ),
                       Button.outline(
-                        onPressed: session.isHost
+                        onPressed: isHost
                             ? sessionNotifier.endRoom
                             : sessionNotifier.leaveRoom,
                         leading: const Icon(SpotubeIcons.power),
-                        child: Text(session.isHost ? "End" : "Leave"),
+                        child: Text(isHost ? "End" : "Leave"),
                       ),
                     ],
                   ),
-                  if (session.snapshot != null)
-                    for (final member in session.snapshot!.members)
+                  if (members.isNotEmpty)
+                    for (final member in members)
                       _MemberTile(member: member),
                 ] else ...[
                   Row(

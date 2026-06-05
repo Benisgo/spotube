@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:spotube/models/metadata/metadata.dart';
@@ -22,8 +23,17 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
   Timer? _positionTimer;
   Timer? _reconnectTimer;
   bool _applyingRemote = false;
+  bool _closingRoom = false;
+  bool _intentionalDisconnect = false;
+  int _connectionGeneration = 0;
   int? _lastObservedPositionMs;
   DateTime? _lastObservedAt;
+
+  void _debugTrace(String message) {
+    if (!kDebugMode) return;
+    // ignore: avoid_print
+    print('[multi-session] $message');
+  }
 
   bool get _canControlPlayback =>
       state.connected &&
@@ -146,8 +156,10 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
   }
 
   Future<void> createRoom() async {
+    _debugTrace('createRoom:start');
     final relayConfigurationError = _relayConfigurationError();
     if (relayConfigurationError != null) {
+      _debugTrace('createRoom:config-error');
       state = state.copyWith(connecting: false, error: relayConfigurationError);
       return;
     }
@@ -168,10 +180,12 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
         memberId: json["memberId"] as String,
         connecting: false,
       );
+      _debugTrace('createRoom:created:${state.code}');
       await _connect();
       sendQueue();
       sendPlayback();
     } catch (e, stack) {
+      _debugTrace('createRoom:error:$e');
       AppLogger.reportError(e, stack);
       state = state.copyWith(
         connecting: false,
@@ -181,8 +195,10 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
   }
 
   Future<void> joinRoom(String code) async {
+    _debugTrace('joinRoom:start:${code.trim().toUpperCase()}');
     final relayConfigurationError = _relayConfigurationError();
     if (relayConfigurationError != null) {
+      _debugTrace('joinRoom:config-error');
       state = state.copyWith(connecting: false, error: relayConfigurationError);
       return;
     }
@@ -204,8 +220,10 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
         memberId: json["memberId"] as String,
         connecting: false,
       );
+      _debugTrace('joinRoom:joined:${state.code}');
       await _connect();
     } catch (e, stack) {
+      _debugTrace('joinRoom:error:$e');
       AppLogger.reportError(e, stack);
       state = state.copyWith(
         connecting: false,
@@ -215,13 +233,17 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
   }
 
   Future<void> _connect() async {
+    _debugTrace('connect:start code=${state.code} gen=${_connectionGeneration + 1}');
     final relayConfigurationError = _relayConfigurationError();
     if (relayConfigurationError != null) {
+      _debugTrace('connect:config-error');
       state = state.copyWith(connected: false, error: relayConfigurationError);
       return;
     }
 
     _reconnectTimer?.cancel();
+    _closingRoom = false;
+    _intentionalDisconnect = false;
     await _subscription?.cancel();
     await _channel?.sink.close(status.goingAway);
 
@@ -237,38 +259,60 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
       queryParameters: {"token": token},
     );
 
+    final generation = ++_connectionGeneration;
     _channel = WebSocketChannel.connect(uri);
     await _channel!.ready;
+    _debugTrace('connect:ready code=$roomCode gen=$generation');
     _subscription = _channel!.stream.listen(
-      _handleMessage,
+      (message) => _handleMessage(generation, message),
       onError: (error, stack) {
+        if (generation != _connectionGeneration) return;
+        _debugTrace('connect:onError gen=$generation error=$error');
         AppLogger.reportError(error, stack);
         state = state.copyWith(
           connected: false,
           error: _friendlyError(error),
         );
+        if (_intentionalDisconnect) return;
         _scheduleReconnect();
       },
       onDone: () {
+        if (generation != _connectionGeneration) return;
+        _debugTrace(
+          'connect:onDone gen=$generation closing=$_closingRoom intentional=$_intentionalDisconnect',
+        );
         state = state.copyWith(connected: false);
+        if (_intentionalDisconnect) return;
         _scheduleReconnect();
       },
     );
     state = state.copyWith(connected: true);
+    _debugTrace('connect:connected code=$roomCode gen=$generation');
   }
 
   void _scheduleReconnect() {
-    if (state.code == null || state.token == null) return;
+    if (_closingRoom ||
+        _intentionalDisconnect ||
+        state.code == null ||
+        state.token == null) {
+      return;
+    }
     _reconnectTimer?.cancel();
+    _debugTrace('reconnect:scheduled code=${state.code}');
     _reconnectTimer = Timer(const Duration(seconds: 2), () {
+      _debugTrace('reconnect:fire code=${state.code}');
       _connect();
     });
   }
 
-  Future<void> _handleMessage(dynamic message) async {
+  Future<void> _handleMessage(int generation, dynamic message) async {
+    if (generation != _connectionGeneration) return;
+    if (_closingRoom || _intentionalDisconnect) return;
+
     final event = jsonDecode(message as String) as Map<String, dynamic>;
+    _debugTrace('message:type=${event["type"]} gen=$generation code=${state.code}');
     if (event["type"] == "ended") {
-      await leaveRoom();
+      _beginRoomShutdown(notifyRelay: false, endedByHost: true);
       state = const MultiSessionState(error: "Room ended");
       return;
     }
@@ -285,6 +329,10 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
   }
 
   Future<void> _applySnapshot(MultiSessionRoomSnapshot snapshot) async {
+    if (_closingRoom || _intentionalDisconnect) return;
+    _debugTrace(
+      'snapshot:apply seq=${snapshot.sequence} queue=${snapshot.queue.length} code=${snapshot.code}',
+    );
     _applyingRemote = true;
     try {
       final tracks = snapshot.queue
@@ -325,8 +373,90 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
   }
 
   void _send(String type, Object? data) {
-    if (!state.connected) return;
+    if (_closingRoom || !state.connected) return;
     _channel?.sink.add(encodeRoomEvent(type, data));
+  }
+
+  void _disposeConnection() {
+    _debugTrace('dispose:start gen=$_connectionGeneration code=${state.code}');
+    _connectionGeneration++;
+    final subscription = _subscription;
+    final channel = _channel;
+
+    _subscription = null;
+    _channel = null;
+
+    if (subscription != null) {
+      unawaited(
+        subscription.cancel().catchError((error, stackTrace) {
+          return AppLogger.reportError(
+            error,
+            stackTrace,
+            "Failed to cancel multi-session subscription",
+          );
+        }),
+      );
+    }
+
+    if (channel != null && !kDebugMode) {
+      unawaited(
+        channel.sink.close(status.goingAway).catchError((error, stackTrace) {
+          return AppLogger.reportError(
+            error,
+            stackTrace,
+            "Failed to close multi-session connection",
+          );
+        }),
+      );
+    }
+    _debugTrace('dispose:queued gen=$_connectionGeneration');
+  }
+
+  void _beginRoomShutdown({
+    required bool notifyRelay,
+    required bool endedByHost,
+  }) {
+    if (_closingRoom) {
+      _debugTrace('shutdown:ignored already-closing');
+      return;
+    }
+
+    _debugTrace(
+      'shutdown:start notifyRelay=$notifyRelay endedByHost=$endedByHost code=${state.code}',
+    );
+    _reconnectTimer?.cancel();
+    _closingRoom = true;
+    _intentionalDisconnect = true;
+    final previousState = state;
+    state = endedByHost
+        ? const MultiSessionState(error: "Room ended")
+        : state.copyWith(clearRoom: true);
+
+    Timer.run(() {
+      unawaited(() async {
+        try {
+          if (notifyRelay && previousState.connected && !kDebugMode) {
+            final eventType = previousState.isHost ? "end" : "leave";
+            _debugTrace('shutdown:send:$eventType');
+            _channel?.sink.add(encodeRoomEvent(eventType, null));
+            if (previousState.isHost) {
+              await Future<void>.delayed(const Duration(milliseconds: 100));
+            }
+          }
+        } catch (error, stackTrace) {
+          await AppLogger.reportError(
+            error,
+            stackTrace,
+            previousState.isHost
+                ? "Failed to notify relay about ending a multi-session room"
+                : "Failed to notify relay about leaving a multi-session room",
+          );
+        } finally {
+          _disposeConnection();
+          _debugTrace('shutdown:end');
+        }
+      }());
+    });
   }
 
   void sendQueue() {
@@ -363,11 +493,7 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
   }
 
   Future<void> leaveRoom() async {
-    _reconnectTimer?.cancel();
-    _send("leave", null);
-    await _subscription?.cancel();
-    await _channel?.sink.close(status.goingAway);
-    state = state.copyWith(clearRoom: true);
+    _beginRoomShutdown(notifyRelay: true, endedByHost: false);
   }
 
   Future<void> endRoom() async {
@@ -375,10 +501,7 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
       await leaveRoom();
       return;
     }
-
-    _send("end", null);
-    await Future<void>.delayed(const Duration(milliseconds: 100));
-    await leaveRoom();
+    _beginRoomShutdown(notifyRelay: true, endedByHost: false);
   }
 }
 

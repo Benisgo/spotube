@@ -10,9 +10,20 @@ import 'package:spotube/services/logger/logger.dart';
 import 'package:spotube/utils/platform.dart';
 
 class DiscordNotifier extends AsyncNotifier<void> {
+  FlutterDiscordRPC? _rpcOrNull() {
+    try {
+      return FlutterDiscordRPC.instance;
+    } catch (_) {
+      return null;
+    }
+  }
+
   @override
   FutureOr<void> build() async {
     if (!kIsDesktop) return;
+
+    final rpc = _rpcOrNull();
+    if (rpc == null) return;
 
     final enabled = ref.watch(
         userPreferencesProvider.select((s) => s.discordPresence && kIsDesktop));
@@ -20,7 +31,7 @@ class DiscordNotifier extends AsyncNotifier<void> {
     var lastPosition = audioPlayer.position;
 
     final subscriptions = [
-      FlutterDiscordRPC.instance.isConnectedStream.listen((connected) async {
+      rpc.isConnectedStream.listen((connected) async {
         try {
           final playback = ref.read(audioPlayerProvider);
           if (connected && playback.activeTrack != null) {
@@ -62,25 +73,29 @@ class DiscordNotifier extends AsyncNotifier<void> {
       }
       await clear();
       await close();
-      await FlutterDiscordRPC.instance.dispose();
+      final rpc = _rpcOrNull();
+      if (rpc != null) {
+        await rpc.dispose();
+      }
     });
 
-    if (!enabled && FlutterDiscordRPC.instance.isConnected) {
+    if (!enabled && rpc.isConnected) {
       await clear();
       await close();
     } else if (enabled) {
-      await FlutterDiscordRPC.instance.connect(autoRetry: true);
+      await rpc.connect(autoRetry: true);
     }
   }
 
   Future<void> updatePresence(SpotubeTrackObject track) async {
     if (!kIsDesktop) return;
-    if (FlutterDiscordRPC.instance.isConnected == false) return;
+    final rpc = _rpcOrNull();
+    if (rpc == null || rpc.isConnected == false) return;
     final artistNames = track.artists.asString();
     final isPlaying = audioPlayer.isPlaying;
     final position = audioPlayer.position;
 
-    await FlutterDiscordRPC.instance.setActivity(
+    await rpc.setActivity(
       activity: RPCActivity(
         details: track.name,
         state: artistNames,
@@ -109,12 +124,16 @@ class DiscordNotifier extends AsyncNotifier<void> {
 
   Future<void> clear() async {
     if (!kIsDesktop) return;
-    await FlutterDiscordRPC.instance.clearActivity();
+    final rpc = _rpcOrNull();
+    if (rpc == null) return;
+    await rpc.clearActivity();
   }
 
   Future<void> close() async {
     if (!kIsDesktop) return;
-    await FlutterDiscordRPC.instance.disconnect();
+    final rpc = _rpcOrNull();
+    if (rpc == null) return;
+    await rpc.disconnect();
   }
 }
 

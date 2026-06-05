@@ -32,6 +32,19 @@ enum UserAgentDevice {
 }
 
 abstract class ServiceUtils {
+  static bool _shouldUseNightlyUpdateChannel(PackageInfo packageInfo) {
+    final version = packageInfo.version.toLowerCase();
+
+    if (version.contains("nightly") ||
+        version.contains("dev") ||
+        version.contains("pre")) {
+      return true;
+    }
+
+    return Env.releaseChannel == ReleaseChannel.nightly &&
+        packageInfo.version == "Unknown";
+  }
+
   static final _englishMatcherRegex = RegExp(
     "^[a-zA-Z0-9\\s!\"#\$%&\\'()*+,-.\\/:;<=>?@\\[\\]^_`{|}~]*\$",
   );
@@ -241,7 +254,7 @@ abstract class ServiceUtils {
     if (checkUpdate == false) return;
     final packageInfo = await PackageInfo.fromPlatform();
 
-    if (Env.releaseChannel == ReleaseChannel.nightly) {
+    if (_shouldUseNightlyUpdateChannel(packageInfo)) {
       final value = await globalDio.getUri(
         Uri.parse(
           "https://api.github.com/repos/${Env.updateRepository}/actions/workflows/spotube-release-binary.yml/runs?status=success&per_page=1",

@@ -1,4 +1,5 @@
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:dio/dio.dart';
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/provider/metadata_plugin/core/auth.dart';
 import 'package:spotube/provider/metadata_plugin/utils/common.dart';
@@ -8,14 +9,40 @@ class MetadataPluginSavedTracksNotifier
     extends AutoDisposePaginatedAsyncNotifier<SpotubeFullTrackObject> {
   MetadataPluginSavedTracksNotifier() : super();
 
+  bool _isRecoverableLibraryError(Object error) {
+    if (error is DioException) {
+      return error.response?.statusCode == 401 ||
+          error.response?.statusCode == 429;
+    }
+
+    final message = error.toString();
+    return message.contains("401") || message.contains("429");
+  }
+
   @override
   fetch(offset, limit) async {
-    final tracks = await (await metadataPlugin).user.savedTracks(
-          offset: offset,
-          limit: limit,
-        );
+    try {
+      final tracks = await (await metadataPlugin).user.savedTracks(
+            offset: offset,
+            limit: limit,
+          );
 
-    return tracks;
+      return tracks;
+    } catch (e) {
+      if (_isRecoverableLibraryError(e) && state.value != null) {
+        return state.value!;
+      }
+      if (_isRecoverableLibraryError(e)) {
+        return SpotubePaginationResponseObject(
+          limit: limit,
+          nextOffset: null,
+          total: 0,
+          hasMore: false,
+          items: [],
+        );
+      }
+      rethrow;
+    }
   }
 
   @override

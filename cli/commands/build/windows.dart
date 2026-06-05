@@ -59,8 +59,8 @@ class WindowsBuildCommand extends Command with BuildCommandCommonSteps {
       join(
         cwd.path,
         "dist",
-        pubspec.version.toString(),
-        "spotube-${pubspec.version}-windows-setup.exe",
+        versionWithoutBuildNumber,
+        "spotube-$versionWithoutBuildNumber-windows-setup.exe",
       ),
     );
 

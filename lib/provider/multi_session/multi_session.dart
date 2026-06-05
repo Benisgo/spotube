@@ -22,27 +22,74 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
   Timer? _positionTimer;
   Timer? _reconnectTimer;
   bool _applyingRemote = false;
+  int? _lastObservedPositionMs;
+  DateTime? _lastObservedAt;
+
+  bool get _canControlPlayback =>
+      state.connected &&
+      !_applyingRemote &&
+      state.can(MultiSessionPermission.controlPlayback);
+
+  bool get _canEditQueue =>
+      state.connected &&
+      !_applyingRemote &&
+      state.can(MultiSessionPermission.editQueue);
+
+  void _rememberObservedPosition(Duration position) {
+    _lastObservedPositionMs = position.inMilliseconds;
+    _lastObservedAt = DateTime.now();
+  }
 
   @override
   MultiSessionState build() {
     ref.listen(audioPlayerProvider, (previous, next) {
-      if (_applyingRemote || !state.connected) return;
-      if (!state.can(MultiSessionPermission.editQueue)) return;
+      if (!_canEditQueue) return;
 
       final previousIds = previous?.tracks.map((track) => track.id).join(",");
       final nextIds = next.tracks.map((track) => track.id).join(",");
-      if (previousIds != nextIds || previous?.currentIndex != next.currentIndex) {
+      if (previousIds != nextIds ||
+          previous?.currentIndex != next.currentIndex) {
         sendQueue();
       }
     });
 
-    _positionTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-      if (_applyingRemote || !state.connected) return;
-      if (!state.can(MultiSessionPermission.controlPlayback)) return;
+    final playingSubscription = audioPlayer.playingStream.listen((_) {
+      if (!_canControlPlayback) return;
+      _rememberObservedPosition(audioPlayer.position);
+      sendPlayback();
+    });
+
+    final positionSubscription = audioPlayer.positionStream.listen((position) {
+      final now = DateTime.now();
+      final previousPositionMs = _lastObservedPositionMs;
+      final previousObservedAt = _lastObservedAt;
+      _rememberObservedPosition(position);
+
+      if (!_canControlPlayback ||
+          previousPositionMs == null ||
+          previousObservedAt == null) {
+        return;
+      }
+
+      final elapsedMs = now.difference(previousObservedAt).inMilliseconds;
+      final expectedPositionMs =
+          previousPositionMs + (audioPlayer.isPlaying ? elapsedMs : 0);
+
+      // Detect explicit seeks or jumps without broadcasting every tick.
+      if ((position.inMilliseconds - expectedPositionMs).abs() > 1500) {
+        sendPlayback();
+      }
+    });
+
+    _positionTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!_canControlPlayback) return;
+      _rememberObservedPosition(audioPlayer.position);
       sendPlayback();
     });
 
     ref.onDispose(() {
+      playingSubscription.cancel();
+      positionSubscription.cancel();
       _positionTimer?.cancel();
       _reconnectTimer?.cancel();
       _subscription?.cancel();
@@ -64,7 +111,8 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
   }
 
   String? _relayConfigurationError() {
-    final relayUrl = ref.read(userPreferencesProvider).multiSessionRelayUrl.trim();
+    final relayUrl =
+        ref.read(userPreferencesProvider).multiSessionRelayUrl.trim();
     if (relayUrl.isEmpty || relayUrl == _legacyRelayUrl) {
       return "Multi-Session relay is not configured. Open Settings > Playback > Multi-Session relay and enter a live relay URL.";
     }
@@ -182,7 +230,8 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
     if (roomCode == null || token == null) return;
 
     final relayScheme =
-        Uri.parse(ref.read(userPreferencesProvider).multiSessionRelayUrl).scheme;
+        Uri.parse(ref.read(userPreferencesProvider).multiSessionRelayUrl)
+            .scheme;
     final uri = _relayUri("/rooms/$roomCode/ws").replace(
       scheme: relayScheme == "https" ? "wss" : "ws",
       queryParameters: {"token": token},
@@ -236,7 +285,6 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
   }
 
   Future<void> _applySnapshot(MultiSessionRoomSnapshot snapshot) async {
-    if (state.isHost) return;
     _applyingRemote = true;
     try {
       final tracks = snapshot.queue
@@ -263,6 +311,7 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
       }
 
       await audioPlayer.seek(Duration(milliseconds: snapshot.positionMs));
+      _rememberObservedPosition(Duration(milliseconds: snapshot.positionMs));
       if (snapshot.playing && !audioPlayer.isPlaying) {
         await audioPlayer.resume();
       } else if (!snapshot.playing && audioPlayer.isPlaying) {
@@ -307,7 +356,8 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
     _send("permissions", {
       "memberId": memberId,
       "permissions": {
-        for (final MapEntry(:key, :value) in permissions.entries) key.name: value,
+        for (final MapEntry(:key, :value) in permissions.entries)
+          key.name: value,
       },
     });
   }

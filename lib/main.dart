@@ -45,6 +45,7 @@ import 'package:spotube/services/kv_store/encrypted_kv_store.dart';
 import 'package:spotube/services/kv_store/kv_store.dart';
 import 'package:spotube/services/logger/logger.dart';
 import 'package:spotube/services/wm_tools/wm_tools.dart';
+import 'package:spotube/services/youtube_engine/yt_dlp_binary.dart';
 import 'package:spotube/utils/migrations/sandbox.dart';
 import 'package:spotube/utils/platform.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
@@ -52,8 +53,54 @@ import 'package:flutter_displaymode/flutter_displaymode.dart';
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:window_manager/window_manager.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
-import 'package:yt_dlp_dart/yt_dlp_dart.dart';
 import 'package:flutter_new_pipe_extractor/flutter_new_pipe_extractor.dart';
+
+Future<void> _runStartupStep(
+  String label,
+  FutureOr<void> Function() action,
+) async {
+  if (kDebugMode) {
+    // ignore: avoid_print
+    print('[startup] begin: $label');
+  }
+
+  try {
+    await Future.sync(action);
+  } catch (error, stackTrace) {
+    await AppLogger.reportError(
+        error, stackTrace, 'Startup step failed: $label');
+  } finally {
+    if (kDebugMode) {
+      // ignore: avoid_print
+      print('[startup] end: $label');
+    }
+  }
+}
+
+Future<void> _initializeBackgroundDesktopServices() async {
+  await _runStartupStep(
+    'yt-dlp configure',
+    () => YtDlpBinary.configureExistingBinary(),
+  );
+
+  if (kDebugMode) {
+    return;
+  }
+
+  await _runStartupStep(
+    'Discord RPC initialize',
+    () => FlutterDiscordRPC.initialize(Env.discordAppId),
+  );
+
+  if (kIsWindows) {
+    await _runStartupStep('SMTC initialize', () => SMTCWindows.initialize());
+  }
+
+  await _runStartupStep(
+    'local notifier setup',
+    () => localNotifier.setup(appName: 'Spotube'),
+  );
+}
 
 Future<void> main(List<String> rawArgs) async {
   if (rawArgs.contains("web_view_title_bar")) {
@@ -78,45 +125,48 @@ Future<void> main(List<String> rawArgs) async {
 
     MediaKit.ensureInitialized();
 
-    await migrateMacOsFromSandboxToNoSandbox();
+    await _runStartupStep(
+      'migrate macOS sandbox',
+      () => migrateMacOsFromSandboxToNoSandbox(),
+    );
 
     // force High Refresh Rate on some Android devices (like One Plus)
     if (kIsAndroid) {
-      await FlutterDisplayMode.setHighRefreshRate();
+      await _runStartupStep(
+        'set high refresh rate',
+        () => FlutterDisplayMode.setHighRefreshRate(),
+      );
     }
     if (kIsAndroid || kIsDesktop) {
-      await NewPipeExtractor.init();
+      await _runStartupStep(
+          'NewPipe extractor init', () => NewPipeExtractor.init());
     }
 
     if (!kIsWeb) {
-      MetadataGod.initialize();
+      await _runStartupStep(
+          'MetadataGod initialize', () => MetadataGod.initialize());
     }
 
-    await KVStoreService.initialize();
+    await _runStartupStep(
+        'KV store initialize', () => KVStoreService.initialize());
 
     if (kIsDesktop) {
-      await windowManager.setPreventClose(true);
-      await YtDlp.instance
-          .setBinaryLocation(
-            KVStoreService.getYoutubeEnginePath(YoutubeClientEngine.ytDlp) ??
-                "yt-dlp${kIsWindows ? '.exe' : ''}",
-          )
-          .catchError((e, stack) => null);
-      await FlutterDiscordRPC.initialize(Env.discordAppId);
+      await _runStartupStep(
+        'windowManager.setPreventClose',
+        () => windowManager.setPreventClose(true),
+      );
+      await _runStartupStep(
+        'WindowManagerTools.initialize',
+        () => WindowManagerTools.initialize(),
+      );
     }
 
-    if (kIsWindows) {
-      await SMTCWindows.initialize();
-    }
-
-    await EncryptedKvStoreService.initialize();
+    await _runStartupStep(
+      'encrypted KV store initialize',
+      () => EncryptedKvStoreService.initialize(),
+    );
 
     final database = AppDatabase();
-
-    if (kIsDesktop) {
-      await localNotifier.setup(appName: "Spotube");
-      await WindowManagerTools.initialize();
-    }
 
     if (kIsIOS) {
       HomeWidget.setAppGroupId("group.spotube_home_player_widget");
@@ -133,6 +183,10 @@ Future<void> main(List<String> rawArgs) async {
         child: const Spotube(),
       ),
     );
+
+    if (kIsDesktop) {
+      unawaited(_initializeBackgroundDesktopServices());
+    }
   });
 }
 
@@ -150,15 +204,18 @@ class Spotube extends HookConsumerWidget {
     final hasTouchSupport = useHasTouch();
 
     ref.listen(audioPlayerStreamListenersProvider, (_, __) {});
-    ref.listen(bonsoirProvider, (_, __) {});
-    ref.listen(connectClientsProvider, (_, __) {});
     ref.listen(serverProvider, (_, __) {});
     ref.listen(trayManagerProvider, (_, __) {});
-    ref.listen(metadataPluginsProvider, (_, __) {});
-    ref.listen(metadataPluginProvider, (_, __) {});
-    ref.listen(audioSourcePluginProvider, (_, __) {});
-    ref.listen(metadataPluginUpdateCheckerProvider, (_, __) {});
-    ref.listen(audioSourcePluginUpdateCheckerProvider, (_, __) {});
+
+    if (!kDebugMode) {
+      ref.listen(bonsoirProvider, (_, __) {});
+      ref.listen(connectClientsProvider, (_, __) {});
+      ref.listen(metadataPluginsProvider, (_, __) {});
+      ref.listen(metadataPluginProvider, (_, __) {});
+      ref.listen(audioSourcePluginProvider, (_, __) {});
+      ref.listen(metadataPluginUpdateCheckerProvider, (_, __) {});
+      ref.listen(audioSourcePluginUpdateCheckerProvider, (_, __) {});
+    }
 
     useFixWindowStretching();
     useDisableBatteryOptimizations();

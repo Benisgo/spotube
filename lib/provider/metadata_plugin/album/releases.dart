@@ -1,18 +1,45 @@
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:dio/dio.dart';
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/provider/metadata_plugin/core/auth.dart';
 import 'package:spotube/provider/metadata_plugin/utils/paginated.dart';
 
 class MetadataPluginAlbumReleasesNotifier
     extends PaginatedAsyncNotifier<SpotubeSimpleAlbumObject> {
+  bool _isRecoverableError(Object error) {
+    if (error is DioException) {
+      return error.response?.statusCode == 401 ||
+          error.response?.statusCode == 429;
+    }
+
+    final message = error.toString();
+    return message.contains("401") || message.contains("429");
+  }
+
   @override
   Future<SpotubePaginationResponseObject<SpotubeSimpleAlbumObject>> fetch(
     int offset,
     int limit,
   ) async {
-    return await (await metadataPlugin)
-        .album
-        .releases(limit: limit, offset: offset);
+    try {
+      return await (await metadataPlugin)
+          .album
+          .releases(limit: limit, offset: offset);
+    } catch (e) {
+      if (_isRecoverableError(e) && state.value != null) {
+        return state.value!;
+      }
+      if (_isRecoverableError(e)) {
+        return SpotubePaginationResponseObject(
+          limit: limit,
+          nextOffset: null,
+          total: 0,
+          hasMore: false,
+          items: [],
+        );
+      }
+      rethrow;
+    }
   }
 
   @override

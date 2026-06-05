@@ -1,4 +1,5 @@
 import 'package:audio_service/audio_service.dart';
+import 'package:flutter/foundation.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:spotube/collections/env.dart';
@@ -40,7 +41,8 @@ class AudioServices with WidgetsBindingObserver {
             ),
           )
         : null;
-    final smtc = kIsWindows ? WindowsAudioService(ref, playback) : null;
+    final smtc =
+        kIsWindows && !kDebugMode ? WindowsAudioService(ref, playback) : null;
 
     return AudioServices(mobile, smtc);
   }

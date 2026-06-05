@@ -44,57 +44,65 @@ class Sidebar extends HookConsumerWidget {
     final selectedIndex = tileList.indexWhere(
       (e) => router.currentPath.startsWith(e.pathPrefix),
     );
+    final selectedTile = selectedIndex >= 0 ? tileList[selectedIndex] : null;
 
     if (layoutMode == LayoutMode.compact ||
         (mediaQuery.smAndDown && layoutMode == LayoutMode.adaptive)) {
       return child;
     }
 
-    final navigationButtons = [
-      NavigationLabel(
-        child: mediaQuery.lgAndUp
-            ? DefaultTextStyle(
-                style: TextStyle(
-                  fontFamily: "Cookie",
-                  fontSize: 30,
-                  letterSpacing: 1.8,
-                  color: colorScheme.foreground,
-                ),
-                child: const Text("Spotube"),
-              )
-            : const Text(""),
-      ),
+    final primaryButtons = [
       for (final tile in sidebarTileList)
-        NavigationButton(
-          style: router.currentPath.startsWith(tile.pathPrefix)
-              ? const ButtonStyle.secondary()
-              : null,
+        NavigationItem(
+          key: ValueKey(tile.id),
           label: mediaQuery.lgAndUp ? Text(tile.title) : null,
           child: Tooltip(
             tooltip: TooltipContainer(child: Text(tile.title)).call,
             child: Icon(tile.icon),
           ),
-          onPressed: () {
-            context.navigateTo(tile.route);
-          },
         ),
-      const NavigationDivider(),
-      if (mediaQuery.lgAndUp)
-        NavigationLabel(child: Text(context.l10n.library)),
+    ];
+
+    final libraryButtons = [
       for (final tile in sidebarLibraryTileList)
-        NavigationButton(
-          style: router.currentPath.startsWith(tile.pathPrefix)
-              ? const ButtonStyle.secondary()
-              : null,
+        NavigationItem(
+          key: ValueKey(tile.id),
           label: mediaQuery.lgAndUp ? Text(tile.title) : null,
-          onPressed: () {
-            context.navigateTo(tile.route);
-          },
           child: Tooltip(
             tooltip: TooltipContainer(child: Text(tile.title)).call,
             child: Icon(tile.icon),
           ),
         ),
+    ];
+
+    final navigationButtons = [
+      ...primaryButtons,
+      const NavigationDivider(),
+      NavigationGroup(
+        label: Text(context.l10n.library),
+        children: libraryButtons,
+      ),
+    ];
+
+    final sidebarHeader = [
+      if (mediaQuery.lgAndUp)
+        SliverToBoxAdapter(
+          child: DefaultTextStyle(
+            style: TextStyle(
+              fontFamily: "Cookie",
+              fontSize: 30,
+              letterSpacing: 1.8,
+              color: colorScheme.foreground,
+            ),
+            child: const Text("Spotube"),
+          ),
+        ),
+    ];
+
+    const sidebarFooter = [
+      SliverToBoxAdapter(
+        child: SidebarFooter(),
+      ),
     ];
 
     return Row(
@@ -105,24 +113,36 @@ class Sidebar extends HookConsumerWidget {
             Expanded(
               child: mediaQuery.lgAndUp
                   ? NavigationSidebar(
-                      index: selectedIndex,
-                      onSelected: (index) {
-                        final tile = tileList[index];
-                        context.navigateTo(tile.route);
+                      selectedKey:
+                          selectedTile != null ? ValueKey(selectedTile.id) : null,
+                      header: sidebarHeader,
+                      footer: sidebarFooter,
+                      onSelected: (key) {
+                        if (key case final ValueKey<String> valueKey) {
+                          final tile = tileList.firstWhere(
+                            (tile) => tile.id == valueKey.value,
+                          );
+                          context.navigateTo(tile.route);
+                        }
                       },
                       children: navigationButtons,
                     )
                   : NavigationRail(
                       alignment: NavigationRailAlignment.start,
-                      index: selectedIndex,
-                      onSelected: (index) {
-                        final tile = tileList[index];
-                        context.navigateTo(tile.route);
+                      selectedKey:
+                          selectedTile != null ? ValueKey(selectedTile.id) : null,
+                      footer: const [SidebarFooter()],
+                      onSelected: (key) {
+                        if (key case final ValueKey<String> valueKey) {
+                          final tile = tileList.firstWhere(
+                            (tile) => tile.id == valueKey.value,
+                          );
+                          context.navigateTo(tile.route);
+                        }
                       },
                       children: navigationButtons,
                     ),
             ),
-            const SidebarFooter(),
             if (mediaQuery.lgAndUp) const Gap(130) else const Gap(65),
           ],
         ),

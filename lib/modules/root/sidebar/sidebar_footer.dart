@@ -14,7 +14,7 @@ import 'package:spotube/provider/download_manager_provider.dart';
 import 'package:spotube/provider/metadata_plugin/core/auth.dart';
 import 'package:spotube/provider/metadata_plugin/core/user.dart';
 
-class SidebarFooter extends HookConsumerWidget implements NavigationBarItem {
+class SidebarFooter extends HookConsumerWidget {
   const SidebarFooter({
     super.key,
   });
@@ -138,7 +138,4 @@ class SidebarFooter extends HookConsumerWidget implements NavigationBarItem {
       ),
     );
   }
-
-  @override
-  bool get selectable => false;
 }

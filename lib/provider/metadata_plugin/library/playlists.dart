@@ -1,4 +1,5 @@
 import 'package:collection/collection.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/provider/metadata_plugin/core/auth.dart';
@@ -11,13 +12,39 @@ class MetadataPluginSavedPlaylistsNotifier
     extends PaginatedAsyncNotifier<SpotubeSimplePlaylistObject> {
   MetadataPluginSavedPlaylistsNotifier() : super();
 
+  bool _isRecoverableLibraryError(Object error) {
+    if (error is DioException) {
+      return error.response?.statusCode == 401 ||
+          error.response?.statusCode == 429;
+    }
+
+    final message = error.toString();
+    return message.contains("401") || message.contains("429");
+  }
+
   @override
   fetch(int offset, int limit) async {
-    final playlists = await (await metadataPlugin)
-        .user
-        .savedPlaylists(limit: limit, offset: offset);
+    try {
+      final playlists = await (await metadataPlugin)
+          .user
+          .savedPlaylists(limit: limit, offset: offset);
 
-    return playlists;
+      return playlists;
+    } catch (e) {
+      if (_isRecoverableLibraryError(e) && state.value != null) {
+        return state.value!;
+      }
+      if (_isRecoverableLibraryError(e)) {
+        return SpotubePaginationResponseObject(
+          limit: limit,
+          nextOffset: null,
+          total: 0,
+          hasMore: false,
+          items: [],
+        );
+      }
+      rethrow;
+    }
   }
 
   @override

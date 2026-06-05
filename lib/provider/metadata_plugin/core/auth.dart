@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:riverpod/riverpod.dart';
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/provider/metadata_plugin/metadata_plugin_provider.dart';
+import 'package:spotube/services/logger/logger.dart';
 
 class MetadataPluginAuthenticatedNotifier extends AsyncNotifier<bool> {
   @override
@@ -14,7 +15,9 @@ class MetadataPluginAuthenticatedNotifier extends AsyncNotifier<bool> {
       return false;
     }
 
-    final defaultPlugin = await ref.watch(metadataPluginProvider.future);
+    final defaultPlugin = await ref
+        .watch(metadataPluginProvider.future)
+        .timeout(const Duration(seconds: 10), onTimeout: () => null);
     if (defaultPlugin == null) {
       return false;
     }
@@ -27,7 +30,12 @@ class MetadataPluginAuthenticatedNotifier extends AsyncNotifier<bool> {
       sub.cancel();
     });
 
-    return defaultPlugin.auth.isAuthenticated();
+    try {
+      return defaultPlugin.auth.isAuthenticated();
+    } catch (error, stackTrace) {
+      await AppLogger.reportError(error, stackTrace);
+      return false;
+    }
   }
 }
 
@@ -47,7 +55,9 @@ class AudioSourcePluginAuthenticatedNotifier extends AsyncNotifier<bool> {
       return false;
     }
 
-    final defaultPlugin = await ref.watch(audioSourcePluginProvider.future);
+    final defaultPlugin = await ref
+        .watch(audioSourcePluginProvider.future)
+        .timeout(const Duration(seconds: 10), onTimeout: () => null);
     if (defaultPlugin == null) {
       return false;
     }
@@ -60,7 +70,12 @@ class AudioSourcePluginAuthenticatedNotifier extends AsyncNotifier<bool> {
       sub.cancel();
     });
 
-    return defaultPlugin.auth.isAuthenticated();
+    try {
+      return defaultPlugin.auth.isAuthenticated();
+    } catch (error, stackTrace) {
+      await AppLogger.reportError(error, stackTrace);
+      return false;
+    }
   }
 }
 

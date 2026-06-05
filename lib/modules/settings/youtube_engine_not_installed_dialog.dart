@@ -11,6 +11,7 @@ import 'package:spotube/extensions/context.dart';
 import 'package:spotube/hooks/controllers/use_shadcn_text_editing_controller.dart';
 import 'package:spotube/models/database/database.dart';
 import 'package:spotube/services/kv_store/kv_store.dart';
+import 'package:spotube/services/youtube_engine/yt_dlp_binary.dart';
 import 'package:spotube/utils/platform.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:yt_dlp_dart/yt_dlp_dart.dart';
@@ -31,6 +32,9 @@ class YouTubeEngineNotInstalledDialog extends HookConsumerWidget {
   Widget build(BuildContext context, ref) {
     final controller = useShadcnTextEditingController();
     final formKey = useMemoized(() => GlobalKey<FormBuilderState>(), []);
+    final isDownloading = useState(false);
+    final downloadProgress = useState<double?>(null);
+    final downloadError = useState<String?>(null);
 
     return AlertDialog(
       title: Row(
@@ -54,6 +58,56 @@ class YouTubeEngineNotInstalledDialog extends HookConsumerWidget {
             Text(
               context.l10n.youtube_engine_not_installed_message(engine.label),
             ),
+            if (engine == YoutubeClientEngine.ytDlp && kIsDesktop)
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                spacing: 8,
+                children: [
+                  Button.primary(
+                    onPressed: isDownloading.value
+                        ? null
+                        : () async {
+                            isDownloading.value = true;
+                            downloadProgress.value = 0;
+                            downloadError.value = null;
+
+                            try {
+                              await YtDlpBinary.downloadManagedBinary(
+                                onReceiveProgress: (received, total) {
+                                  if (total <= 0) {
+                                    downloadProgress.value = null;
+                                    return;
+                                  }
+
+                                  downloadProgress.value = received / total;
+                                },
+                              );
+
+                              if (!context.mounted) return;
+                              Navigator.of(context).pop(true);
+                            } catch (error) {
+                              downloadError.value = error.toString();
+                            } finally {
+                              isDownloading.value = false;
+                            }
+                          },
+                    child: Text(
+                      isDownloading.value
+                          ? "Downloading yt-dlp..."
+                          : "Download automatically",
+                    ),
+                  ),
+                  if (isDownloading.value)
+                    LinearProgressIndicator(
+                      value: downloadProgress.value ?? 0,
+                    ),
+                  if (downloadError.value != null)
+                    Text(
+                      downloadError.value!,
+                      style: const TextStyle(color: Colors.red),
+                    ),
+                ],
+              ),
             if (engineDownloadUrls[engine] != null)
               Row(
                 mainAxisSize: MainAxisSize.min,
@@ -96,7 +150,9 @@ class YouTubeEngineNotInstalledDialog extends HookConsumerWidget {
           child: Text(context.l10n.cancel),
         ),
         Button.secondary(
-          onPressed: () async {
+          onPressed: isDownloading.value
+              ? null
+              : () async {
             if (controller.text.isNotEmpty) {
               if (!await File(controller.text).exists() && context.mounted) {
                 formKey.currentState?.fields["path"]

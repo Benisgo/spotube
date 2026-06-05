@@ -17,8 +17,8 @@ import 'package:spotube/modules/settings/youtube_engine_not_installed_dialog.dar
 import 'package:spotube/provider/metadata_plugin/audio_source/quality_presets.dart';
 import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
 import 'package:spotube/services/kv_store/kv_store.dart';
+import 'package:spotube/services/youtube_engine/yt_dlp_binary.dart';
 import 'package:spotube/services/youtube_engine/android_yt_dlp_engine.dart';
-import 'package:spotube/services/youtube_engine/yt_dlp_engine.dart';
 
 import 'package:spotube/utils/platform.dart';
 
@@ -60,7 +60,7 @@ class SettingsPlaybackSection extends HookConsumerWidget {
               final customPath = KVStoreService.getYoutubeEnginePath(value);
               final isInstalled = kIsAndroid
                   ? await AndroidYtDlpEngine.isInstalled()
-                  : await YtDlpEngine.isInstalled();
+                  : await YtDlpBinary.ensureAvailable(downloadIfMissing: true);
               if (!isInstalled &&
                   (customPath == null || !await File(customPath).exists()) &&
                   context.mounted) {

@@ -2,15 +2,30 @@
 cmake_minimum_required(VERSION 3.14)
 project(spotube LANGUAGES CXX)
 
-include(InstallRequiredSystemLibraries)
-
 # The name of the executable created for the application. Change this to change
 # the on-disk name of your application.
 set(BINARY_NAME "spotube")
 
+# Some Windows plugin builds shell out to `nuget.exe` during CMake configure.
+# On this machine the WinGet shim may exist but not be executable, so prefer a
+# known real installation when available.
+set(SPOTUBE_NUGET_CANDIDATES
+  "C:/Mono/lib/mono/nuget/nuget.exe"
+  "${CMAKE_SOURCE_DIR}/../build/windows/x64/_deps/nuget-src/nuget.exe"
+)
+foreach(SPOTUBE_NUGET_CANDIDATE IN LISTS SPOTUBE_NUGET_CANDIDATES)
+  if(EXISTS "${SPOTUBE_NUGET_CANDIDATE}")
+    set(NUGET "${SPOTUBE_NUGET_CANDIDATE}" CACHE FILEPATH "NuGet executable")
+    break()
+  endif()
+endforeach()
+
 # Explicitly opt in to modern CMake behaviors to avoid warnings with recent
 # versions of CMake.
 cmake_policy(VERSION 3.14...3.25)
+if(POLICY CMP0175)
+  cmake_policy(SET CMP0175 OLD)
+endif()
 
 # Define build configuration option.
 get_property(IS_MULTICONFIG GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
@@ -41,7 +56,7 @@ add_definitions(-DUNICODE -D_UNICODE)
 # of modifying this function.
 function(APPLY_STANDARD_SETTINGS TARGET)
   target_compile_features(${TARGET} PUBLIC cxx_std_17)
-  target_compile_options(${TARGET} PRIVATE /W4 /WX /wd"4100")
+  target_compile_options(${TARGET} PRIVATE /W4 /WX /wd"4100" /FS)
   target_compile_options(${TARGET} PRIVATE /EHsc)
   target_compile_definitions(${TARGET} PRIVATE "_HAS_EXCEPTIONS=0")
   target_compile_definitions(${TARGET} PRIVATE "$<$<CONFIG:Debug>:_DEBUG>")
@@ -70,7 +85,6 @@ set(CMAKE_VS_INCLUDE_INSTALL_TO_DEFAULT_BUILD 1)
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
   set(CMAKE_INSTALL_PREFIX "${BUILD_BUNDLE_DIR}" CACHE PATH "..." FORCE)
 endif()
-
 set(INSTALL_BUNDLE_DATA_DIR "${CMAKE_INSTALL_PREFIX}/data")
 set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}")
 
@@ -82,12 +96,6 @@ install(FILES "${FLUTTER_ICU_DATA_FILE}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}
 
 install(FILES "${FLUTTER_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
   COMPONENT Runtime)
-
-if(CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS)
-  install(PROGRAMS ${CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS}
-    DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
-    COMPONENT Runtime)
-endif()
 
 if(PLUGIN_BUNDLED_LIBRARIES)
   install(FILES "${PLUGIN_BUNDLED_LIBRARIES}"

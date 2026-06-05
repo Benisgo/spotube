@@ -48,6 +48,7 @@ class SpotubeNavigationBar extends HookConsumerWidget {
         (e) => router.currentPath.startsWith(e.pathPrefix),
       ),
     );
+    final selectedTile = navbarTileList[selectedIndex];
 
     if (layoutMode == LayoutMode.extended ||
         (mediaQuery.mdAndUp && layoutMode == LayoutMode.adaptive) ||
@@ -63,25 +64,31 @@ class SpotubeNavigationBar extends HookConsumerWidget {
           children: [
             const Divider(),
             NavigationBar(
-              index: selectedIndex,
+              selectedKey: ValueKey(selectedTile.id),
               surfaceBlur: context.theme.surfaceBlur,
               surfaceOpacity: context.theme.surfaceOpacity,
               children: [
                 for (final tile in navbarTileList)
-                  NavigationButton(
-                    style: navbarTileList[selectedIndex] == tile
-                        ? const ButtonStyle.fixed(density: ButtonDensity.icon)
-                        : const ButtonStyle.muted(density: ButtonDensity.icon),
+                  NavigationItem(
+                    key: ValueKey(tile.id),
+                    selectedStyle:
+                        const ButtonStyle.fixed(density: ButtonDensity.icon),
+                    style: const ButtonStyle.muted(density: ButtonDensity.icon),
                     child: Badge(
                       isLabelVisible: tile.id == "library" && downloadCount > 0,
                       label: Text(downloadCount.toString()),
                       child: Icon(tile.icon),
                     ),
-                    onPressed: () {
-                      context.navigateTo(tile.route);
-                    },
                   )
               ],
+              onSelected: (key) {
+                if (key case final ValueKey<String> valueKey) {
+                  final tile = navbarTileList.firstWhere(
+                    (tile) => tile.id == valueKey.value,
+                  );
+                  context.navigateTo(tile.route);
+                }
+              },
             ),
           ],
         ),

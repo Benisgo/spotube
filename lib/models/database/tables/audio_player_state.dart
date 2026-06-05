@@ -10,6 +10,7 @@ class AudioPlayerStateTable extends Table {
       .map(const SpotubeTrackObjectListConverter())
       .withDefault(const Constant("[]"))();
   IntColumn get currentIndex => integer().withDefault(const Constant(0))();
+  IntColumn get positionMs => integer().withDefault(const Constant(0))();
 }
 
 class SpotubeTrackObjectListConverter

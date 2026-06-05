@@ -100,6 +100,8 @@ class PreferencesTable extends Table {
       boolean().withDefault(const Constant(true))();
   BoolColumn get enableConnect =>
       boolean().withDefault(const Constant(false))();
+  BoolColumn get resumePlaybackOnLaunch =>
+      boolean().withDefault(const Constant(false))();
   IntColumn get connectPort => integer().withDefault(const Constant(-1))();
   BoolColumn get cacheMusic => boolean().withDefault(const Constant(true))();
   RealColumn get miniPlayerTransparency =>
@@ -136,6 +138,7 @@ class PreferencesTable extends Table {
       discordPresence: true,
       endlessPlayback: true,
       enableConnect: false,
+      resumePlaybackOnLaunch: false,
       cacheMusic: true,
       miniPlayerTransparency: 0.55,
       connectPort: -1,

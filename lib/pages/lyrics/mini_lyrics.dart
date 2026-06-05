@@ -166,12 +166,13 @@ class _MiniPlayerScaffold extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final albumArtOpacity =
-        lerpDouble(0.45, 0.92, miniPlayerTransparency) ?? 0.7;
-    final panelAlpha = lerpDouble(0.78, 0.12, miniPlayerTransparency) ?? 0.3;
-    final toolbarAlpha = lerpDouble(0.88, 0.22, miniPlayerTransparency) ?? 0.36;
-    final borderAlpha = lerpDouble(0.06, 0.16, miniPlayerTransparency) ?? 0.1;
-    final shadowAlpha = lerpDouble(0.12, 0.02, miniPlayerTransparency) ?? 0.08;
+    final transparency = miniPlayerTransparency.clamp(0.0, 1.0);
+    final albumArtOpacity = lerpDouble(0.9, 0.0, transparency) ?? 0.45;
+    final panelAlpha = lerpDouble(0.5, 0.01, transparency) ?? 0.12;
+    final panelSecondaryAlpha = lerpDouble(0.36, 0.0, transparency) ?? 0.1;
+    final toolbarAlpha = lerpDouble(0.56, 0.04, transparency) ?? 0.14;
+    final borderAlpha = lerpDouble(0.18, 0.03, transparency) ?? 0.07;
+    final shadowAlpha = lerpDouble(0.14, 0.0, transparency) ?? 0.03;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -179,15 +180,17 @@ class _MiniPlayerScaffold extends ConsumerWidget {
         children: [
           Positioned.fill(
             child: IgnorePointer(
-              child: Opacity(
-                opacity: albumArtOpacity,
-                child: UniversalImage(
-                  path: (activeTrack?.album.images)
-                      .asUrlString(placeholder: ImagePlaceholder.albumArt),
-                  placeholder: Assets.images.albumPlaceholder.path,
-                  fit: BoxFit.cover,
-                ),
-              ),
+              child: albumArtOpacity <= 0.01
+                  ? const SizedBox.shrink()
+                  : Opacity(
+                      opacity: albumArtOpacity,
+                      child: UniversalImage(
+                        path: (activeTrack?.album.images).asUrlString(
+                            placeholder: ImagePlaceholder.albumArt),
+                        placeholder: Assets.images.albumPlaceholder.path,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
             ),
           ),
           Padding(
@@ -204,7 +207,7 @@ class _MiniPlayerScaffold extends ConsumerWidget {
                       colors: [
                         Colors.black.withValues(alpha: panelAlpha),
                         theme.colorScheme.background.withValues(
-                          alpha: panelAlpha * 0.8,
+                          alpha: panelSecondaryAlpha,
                         ),
                       ],
                     ),

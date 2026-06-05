@@ -44,6 +44,10 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
     }
 
     final database = ref.read(databaseProvider);
+    final preferences = await (database.select(database.preferencesTable)
+          ..where((tbl) => tbl.id.equals(0)))
+        .getSingleOrNull();
+    final shouldResumeOnLaunch = preferences?.resumePlaybackOnLaunch ?? false;
 
     var playerState =
         await database.select(database.audioPlayerStateTable).getSingleOrNull();
@@ -57,6 +61,7 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
               collections: <String>[],
               tracks: const Value(<SpotubeTrackObject>[]),
               currentIndex: const Value(0),
+              positionMs: const Value(0),
               id: const Value(0),
             ),
           );
@@ -70,6 +75,7 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
 
     final tracks = playerState.tracks;
     final currentIndex = playerState.currentIndex;
+    final positionMs = max(playerState.positionMs, 0);
 
     if (tracks.isEmpty && state.tracks.isNotEmpty) {
       await _updatePlayerState(
@@ -78,16 +84,20 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
           currentIndex: Value(currentIndex),
         ),
       );
-    } else if (tracks.isNotEmpty) {
+    } else if (tracks.isNotEmpty && shouldResumeOnLaunch) {
+      final safeCurrentIndex = currentIndex.clamp(0, tracks.length - 1).toInt();
       state = state.copyWith(
         tracks: tracks,
-        currentIndex: currentIndex,
+        currentIndex: safeCurrentIndex,
       );
       await audioPlayer.openPlaylist(
         tracks.asMediaList(),
-        initialIndex: currentIndex,
+        initialIndex: safeCurrentIndex,
         autoPlay: false,
       );
+      if (positionMs > 0) {
+        await audioPlayer.seek(Duration(milliseconds: positionMs));
+      }
     }
 
     if (playerState.collections.isNotEmpty) {
@@ -109,6 +119,8 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
 
   @override
   build() {
+    var lastSavedPositionMs = -1;
+
     final subscriptions = [
       audioPlayer.playingStream.listen((playing) async {
         try {
@@ -163,6 +175,22 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
             AudioPlayerStateTableCompanion(
               currentIndex: Value(state.currentIndex),
               tracks: Value(state.tracks),
+            ),
+          );
+        } catch (e, stack) {
+          AppLogger.reportError(e, stack);
+        }
+      }),
+      audioPlayer.positionStream.listen((position) async {
+        try {
+          final positionMs = max(position.inMilliseconds, 0);
+          if ((positionMs - lastSavedPositionMs).abs() < 1000) return;
+
+          lastSavedPositionMs = positionMs;
+
+          await _updatePlayerState(
+            AudioPlayerStateTableCompanion(
+              positionMs: Value(positionMs),
             ),
           );
         } catch (e, stack) {
@@ -259,6 +287,7 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
       AudioPlayerStateTableCompanion(
         tracks: Value(state.tracks),
         currentIndex: Value(max(state.currentIndex, 0)),
+        positionMs: const Value(0),
       ),
     );
   }
@@ -279,6 +308,7 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
       AudioPlayerStateTableCompanion(
         tracks: Value(state.tracks),
         currentIndex: Value(max(state.currentIndex, 0)),
+        positionMs: const Value(0),
       ),
     );
   }
@@ -299,6 +329,7 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
       AudioPlayerStateTableCompanion(
         tracks: Value(state.tracks),
         currentIndex: Value(max(state.currentIndex, 0)),
+        positionMs: const Value(0),
       ),
     );
   }
@@ -318,6 +349,7 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
       AudioPlayerStateTableCompanion(
         tracks: Value(state.tracks),
         currentIndex: Value(max(state.currentIndex, 0)),
+        positionMs: const Value(0),
       ),
     );
   }
@@ -343,6 +375,7 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
       AudioPlayerStateTableCompanion(
         tracks: Value(state.tracks),
         currentIndex: Value(max(state.currentIndex, 0)),
+        positionMs: const Value(0),
       ),
     );
   }
@@ -404,6 +437,7 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
       AudioPlayerStateTableCompanion(
         tracks: Value(state.tracks),
         currentIndex: Value(max(state.currentIndex, 0)),
+        positionMs: const Value(0),
       ),
     );
   }
@@ -436,6 +470,7 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
         loopMode: Value(state.loopMode),
         playing: Value(state.playing),
         shuffled: Value(state.shuffled),
+        positionMs: Value(max(audioPlayer.position.inMilliseconds, 0)),
       ),
     );
   }
@@ -477,6 +512,7 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
         loopMode: const Value(PlaylistMode.none),
         playing: const Value(false),
         shuffled: const Value(false),
+        positionMs: const Value(0),
       ),
     );
     ref.read(discordProvider.notifier).clear();

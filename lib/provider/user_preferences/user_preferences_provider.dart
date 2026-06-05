@@ -215,6 +215,14 @@ class UserPreferencesNotifier extends Notifier<PreferencesTableData> {
     setData(PreferencesTableCompanion(enableConnect: Value(enable)));
   }
 
+  void setResumePlaybackOnLaunch(bool enable) {
+    setData(
+      PreferencesTableCompanion(
+        resumePlaybackOnLaunch: Value(enable),
+      ),
+    );
+  }
+
   void setConnectPort(int port) {
     assert(
       port >= -1 && port <= 65535,

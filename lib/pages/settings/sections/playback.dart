@@ -190,6 +190,17 @@ class SettingsPlaybackSection extends HookConsumerWidget {
               onChanged: preferencesNotifier.setEndlessPlayback,
             )),
         ListTile(
+          leading: const Icon(SpotubeIcons.history),
+          title: const Text("Resume last song on launch"),
+          subtitle: const Text(
+            "Restore the last track and playback position when the app opens",
+          ),
+          trailing: Switch(
+            value: preferences.resumePlaybackOnLaunch,
+            onChanged: preferencesNotifier.setResumePlaybackOnLaunch,
+          ),
+        ),
+        ListTile(
           title: Text(context.l10n.enable_connect),
           subtitle: Text(context.l10n.enable_connect_description),
           leading: const Icon(SpotubeIcons.connect),
@@ -227,7 +238,9 @@ class SettingsPlaybackSection extends HookConsumerWidget {
           subtitle: Text(relaySubtitle),
           onTap: () async {
             final controller = TextEditingController(
-              text: relayUrl == _legacyRelayUrl ? "" : preferences.multiSessionRelayUrl,
+              text: relayUrl == _legacyRelayUrl
+                  ? ""
+                  : preferences.multiSessionRelayUrl,
             );
             final value = await showDialog<String>(
               context: context,

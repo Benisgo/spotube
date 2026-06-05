@@ -746,6 +746,16 @@ class $PreferencesTableTable extends PreferencesTable
       defaultConstraints: GeneratedColumn.constraintIsAlways(
           'CHECK ("enable_connect" IN (0, 1))'),
       defaultValue: const Constant(false));
+  static const VerificationMeta _resumePlaybackOnLaunchMeta =
+      const VerificationMeta('resumePlaybackOnLaunch');
+  @override
+  late final GeneratedColumn<bool> resumePlaybackOnLaunch =
+      GeneratedColumn<bool>('resume_playback_on_launch', aliasedName, false,
+          type: DriftSqlType.bool,
+          requiredDuringInsert: false,
+          defaultConstraints: GeneratedColumn.constraintIsAlways(
+              'CHECK ("resume_playback_on_launch" IN (0, 1))'),
+          defaultValue: const Constant(false));
   static const VerificationMeta _connectPortMeta =
       const VerificationMeta('connectPort');
   @override
@@ -813,6 +823,7 @@ class $PreferencesTableTable extends PreferencesTable
         discordPresence,
         endlessPlayback,
         enableConnect,
+        resumePlaybackOnLaunch,
         connectPort,
         cacheMusic,
         miniPlayerTransparency,
@@ -905,6 +916,12 @@ class $PreferencesTableTable extends PreferencesTable
           enableConnect.isAcceptableOrUnknown(
               data['enable_connect']!, _enableConnectMeta));
     }
+    if (data.containsKey('resume_playback_on_launch')) {
+      context.handle(
+          _resumePlaybackOnLaunchMeta,
+          resumePlaybackOnLaunch.isAcceptableOrUnknown(
+              data['resume_playback_on_launch']!, _resumePlaybackOnLaunchMeta));
+    }
     if (data.containsKey('connect_port')) {
       context.handle(
           _connectPortMeta,
@@ -992,6 +1009,9 @@ class $PreferencesTableTable extends PreferencesTable
           .read(DriftSqlType.bool, data['${effectivePrefix}endless_playback'])!,
       enableConnect: attachedDatabase.typeMapping
           .read(DriftSqlType.bool, data['${effectivePrefix}enable_connect'])!,
+      resumePlaybackOnLaunch: attachedDatabase.typeMapping.read(
+          DriftSqlType.bool,
+          data['${effectivePrefix}resume_playback_on_launch'])!,
       connectPort: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}connect_port'])!,
       cacheMusic: attachedDatabase.typeMapping
@@ -1062,6 +1082,7 @@ class PreferencesTableData extends DataClass
   final bool discordPresence;
   final bool endlessPlayback;
   final bool enableConnect;
+  final bool resumePlaybackOnLaunch;
   final int connectPort;
   final bool cacheMusic;
   final double miniPlayerTransparency;
@@ -1090,6 +1111,7 @@ class PreferencesTableData extends DataClass
       required this.discordPresence,
       required this.endlessPlayback,
       required this.enableConnect,
+      required this.resumePlaybackOnLaunch,
       required this.connectPort,
       required this.cacheMusic,
       required this.miniPlayerTransparency,
@@ -1152,6 +1174,7 @@ class PreferencesTableData extends DataClass
     map['discord_presence'] = Variable<bool>(discordPresence);
     map['endless_playback'] = Variable<bool>(endlessPlayback);
     map['enable_connect'] = Variable<bool>(enableConnect);
+    map['resume_playback_on_launch'] = Variable<bool>(resumePlaybackOnLaunch);
     map['connect_port'] = Variable<int>(connectPort);
     map['cache_music'] = Variable<bool>(cacheMusic);
     map['mini_player_transparency'] = Variable<double>(miniPlayerTransparency);
@@ -1190,6 +1213,7 @@ class PreferencesTableData extends DataClass
       discordPresence: Value(discordPresence),
       endlessPlayback: Value(endlessPlayback),
       enableConnect: Value(enableConnect),
+      resumePlaybackOnLaunch: Value(resumePlaybackOnLaunch),
       connectPort: Value(connectPort),
       cacheMusic: Value(cacheMusic),
       miniPlayerTransparency: Value(miniPlayerTransparency),
@@ -1232,6 +1256,8 @@ class PreferencesTableData extends DataClass
       discordPresence: serializer.fromJson<bool>(json['discordPresence']),
       endlessPlayback: serializer.fromJson<bool>(json['endlessPlayback']),
       enableConnect: serializer.fromJson<bool>(json['enableConnect']),
+      resumePlaybackOnLaunch:
+          serializer.fromJson<bool>(json['resumePlaybackOnLaunch']),
       connectPort: serializer.fromJson<int>(json['connectPort']),
       cacheMusic: serializer.fromJson<bool>(json['cacheMusic']),
       miniPlayerTransparency:
@@ -1276,6 +1302,7 @@ class PreferencesTableData extends DataClass
       'discordPresence': serializer.toJson<bool>(discordPresence),
       'endlessPlayback': serializer.toJson<bool>(endlessPlayback),
       'enableConnect': serializer.toJson<bool>(enableConnect),
+      'resumePlaybackOnLaunch': serializer.toJson<bool>(resumePlaybackOnLaunch),
       'connectPort': serializer.toJson<int>(connectPort),
       'cacheMusic': serializer.toJson<bool>(cacheMusic),
       'miniPlayerTransparency':
@@ -1310,6 +1337,7 @@ class PreferencesTableData extends DataClass
           bool? discordPresence,
           bool? endlessPlayback,
           bool? enableConnect,
+          bool? resumePlaybackOnLaunch,
           int? connectPort,
           bool? cacheMusic,
           double? miniPlayerTransparency,
@@ -1339,6 +1367,8 @@ class PreferencesTableData extends DataClass
         discordPresence: discordPresence ?? this.discordPresence,
         endlessPlayback: endlessPlayback ?? this.endlessPlayback,
         enableConnect: enableConnect ?? this.enableConnect,
+        resumePlaybackOnLaunch:
+            resumePlaybackOnLaunch ?? this.resumePlaybackOnLaunch,
         connectPort: connectPort ?? this.connectPort,
         cacheMusic: cacheMusic ?? this.cacheMusic,
         miniPlayerTransparency:
@@ -1403,6 +1433,9 @@ class PreferencesTableData extends DataClass
       enableConnect: data.enableConnect.present
           ? data.enableConnect.value
           : this.enableConnect,
+      resumePlaybackOnLaunch: data.resumePlaybackOnLaunch.present
+          ? data.resumePlaybackOnLaunch.value
+          : this.resumePlaybackOnLaunch,
       connectPort:
           data.connectPort.present ? data.connectPort.value : this.connectPort,
       cacheMusic:
@@ -1444,6 +1477,7 @@ class PreferencesTableData extends DataClass
           ..write('discordPresence: $discordPresence, ')
           ..write('endlessPlayback: $endlessPlayback, ')
           ..write('enableConnect: $enableConnect, ')
+          ..write('resumePlaybackOnLaunch: $resumePlaybackOnLaunch, ')
           ..write('connectPort: $connectPort, ')
           ..write('cacheMusic: $cacheMusic, ')
           ..write('miniPlayerTransparency: $miniPlayerTransparency, ')
@@ -1477,6 +1511,7 @@ class PreferencesTableData extends DataClass
         discordPresence,
         endlessPlayback,
         enableConnect,
+        resumePlaybackOnLaunch,
         connectPort,
         cacheMusic,
         miniPlayerTransparency,
@@ -1509,6 +1544,7 @@ class PreferencesTableData extends DataClass
           other.discordPresence == this.discordPresence &&
           other.endlessPlayback == this.endlessPlayback &&
           other.enableConnect == this.enableConnect &&
+          other.resumePlaybackOnLaunch == this.resumePlaybackOnLaunch &&
           other.connectPort == this.connectPort &&
           other.cacheMusic == this.cacheMusic &&
           other.miniPlayerTransparency == this.miniPlayerTransparency &&
@@ -1539,6 +1575,7 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
   final Value<bool> discordPresence;
   final Value<bool> endlessPlayback;
   final Value<bool> enableConnect;
+  final Value<bool> resumePlaybackOnLaunch;
   final Value<int> connectPort;
   final Value<bool> cacheMusic;
   final Value<double> miniPlayerTransparency;
@@ -1567,6 +1604,7 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
     this.discordPresence = const Value.absent(),
     this.endlessPlayback = const Value.absent(),
     this.enableConnect = const Value.absent(),
+    this.resumePlaybackOnLaunch = const Value.absent(),
     this.connectPort = const Value.absent(),
     this.cacheMusic = const Value.absent(),
     this.miniPlayerTransparency = const Value.absent(),
@@ -1596,6 +1634,7 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
     this.discordPresence = const Value.absent(),
     this.endlessPlayback = const Value.absent(),
     this.enableConnect = const Value.absent(),
+    this.resumePlaybackOnLaunch = const Value.absent(),
     this.connectPort = const Value.absent(),
     this.cacheMusic = const Value.absent(),
     this.miniPlayerTransparency = const Value.absent(),
@@ -1625,6 +1664,7 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
     Expression<bool>? discordPresence,
     Expression<bool>? endlessPlayback,
     Expression<bool>? enableConnect,
+    Expression<bool>? resumePlaybackOnLaunch,
     Expression<int>? connectPort,
     Expression<bool>? cacheMusic,
     Expression<double>? miniPlayerTransparency,
@@ -1657,6 +1697,8 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
       if (discordPresence != null) 'discord_presence': discordPresence,
       if (endlessPlayback != null) 'endless_playback': endlessPlayback,
       if (enableConnect != null) 'enable_connect': enableConnect,
+      if (resumePlaybackOnLaunch != null)
+        'resume_playback_on_launch': resumePlaybackOnLaunch,
       if (connectPort != null) 'connect_port': connectPort,
       if (cacheMusic != null) 'cache_music': cacheMusic,
       if (miniPlayerTransparency != null)
@@ -1691,6 +1733,7 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
       Value<bool>? discordPresence,
       Value<bool>? endlessPlayback,
       Value<bool>? enableConnect,
+      Value<bool>? resumePlaybackOnLaunch,
       Value<int>? connectPort,
       Value<bool>? cacheMusic,
       Value<double>? miniPlayerTransparency,
@@ -1719,6 +1762,8 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
       discordPresence: discordPresence ?? this.discordPresence,
       endlessPlayback: endlessPlayback ?? this.endlessPlayback,
       enableConnect: enableConnect ?? this.enableConnect,
+      resumePlaybackOnLaunch:
+          resumePlaybackOnLaunch ?? this.resumePlaybackOnLaunch,
       connectPort: connectPort ?? this.connectPort,
       cacheMusic: cacheMusic ?? this.cacheMusic,
       miniPlayerTransparency:
@@ -1810,6 +1855,10 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
     if (enableConnect.present) {
       map['enable_connect'] = Variable<bool>(enableConnect.value);
     }
+    if (resumePlaybackOnLaunch.present) {
+      map['resume_playback_on_launch'] =
+          Variable<bool>(resumePlaybackOnLaunch.value);
+    }
     if (connectPort.present) {
       map['connect_port'] = Variable<int>(connectPort.value);
     }
@@ -1857,6 +1906,7 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
           ..write('discordPresence: $discordPresence, ')
           ..write('endlessPlayback: $endlessPlayback, ')
           ..write('enableConnect: $enableConnect, ')
+          ..write('resumePlaybackOnLaunch: $resumePlaybackOnLaunch, ')
           ..write('connectPort: $connectPort, ')
           ..write('cacheMusic: $cacheMusic, ')
           ..write('miniPlayerTransparency: $miniPlayerTransparency, ')
@@ -2798,9 +2848,25 @@ class $AudioPlayerStateTableTable extends AudioPlayerStateTable
       type: DriftSqlType.int,
       requiredDuringInsert: false,
       defaultValue: const Constant(0));
+  static const VerificationMeta _positionMsMeta =
+      const VerificationMeta('positionMs');
   @override
-  List<GeneratedColumn> get $columns =>
-      [id, playing, loopMode, shuffled, collections, tracks, currentIndex];
+  late final GeneratedColumn<int> positionMs = GeneratedColumn<int>(
+      'position_ms', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0));
+  @override
+  List<GeneratedColumn> get $columns => [
+        id,
+        playing,
+        loopMode,
+        shuffled,
+        collections,
+        tracks,
+        currentIndex,
+        positionMs
+      ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -2833,6 +2899,12 @@ class $AudioPlayerStateTableTable extends AudioPlayerStateTable
           currentIndex.isAcceptableOrUnknown(
               data['current_index']!, _currentIndexMeta));
     }
+    if (data.containsKey('position_ms')) {
+      context.handle(
+          _positionMsMeta,
+          positionMs.isAcceptableOrUnknown(
+              data['position_ms']!, _positionMsMeta));
+    }
     return context;
   }
 
@@ -2860,6 +2932,8 @@ class $AudioPlayerStateTableTable extends AudioPlayerStateTable
               .read(DriftSqlType.string, data['${effectivePrefix}tracks'])!),
       currentIndex: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}current_index'])!,
+      positionMs: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}position_ms'])!,
     );
   }
 
@@ -2885,6 +2959,7 @@ class AudioPlayerStateTableData extends DataClass
   final List<String> collections;
   final List<SpotubeTrackObject> tracks;
   final int currentIndex;
+  final int positionMs;
   const AudioPlayerStateTableData(
       {required this.id,
       required this.playing,
@@ -2892,7 +2967,8 @@ class AudioPlayerStateTableData extends DataClass
       required this.shuffled,
       required this.collections,
       required this.tracks,
-      required this.currentIndex});
+      required this.currentIndex,
+      required this.positionMs});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -2912,6 +2988,7 @@ class AudioPlayerStateTableData extends DataClass
           $AudioPlayerStateTableTable.$convertertracks.toSql(tracks));
     }
     map['current_index'] = Variable<int>(currentIndex);
+    map['position_ms'] = Variable<int>(positionMs);
     return map;
   }
 
@@ -2924,6 +3001,7 @@ class AudioPlayerStateTableData extends DataClass
       collections: Value(collections),
       tracks: Value(tracks),
       currentIndex: Value(currentIndex),
+      positionMs: Value(positionMs),
     );
   }
 
@@ -2939,6 +3017,7 @@ class AudioPlayerStateTableData extends DataClass
       collections: serializer.fromJson<List<String>>(json['collections']),
       tracks: serializer.fromJson<List<SpotubeTrackObject>>(json['tracks']),
       currentIndex: serializer.fromJson<int>(json['currentIndex']),
+      positionMs: serializer.fromJson<int>(json['positionMs']),
     );
   }
   @override
@@ -2953,6 +3032,7 @@ class AudioPlayerStateTableData extends DataClass
       'collections': serializer.toJson<List<String>>(collections),
       'tracks': serializer.toJson<List<SpotubeTrackObject>>(tracks),
       'currentIndex': serializer.toJson<int>(currentIndex),
+      'positionMs': serializer.toJson<int>(positionMs),
     };
   }
 
@@ -2963,7 +3043,8 @@ class AudioPlayerStateTableData extends DataClass
           bool? shuffled,
           List<String>? collections,
           List<SpotubeTrackObject>? tracks,
-          int? currentIndex}) =>
+          int? currentIndex,
+          int? positionMs}) =>
       AudioPlayerStateTableData(
         id: id ?? this.id,
         playing: playing ?? this.playing,
@@ -2972,6 +3053,7 @@ class AudioPlayerStateTableData extends DataClass
         collections: collections ?? this.collections,
         tracks: tracks ?? this.tracks,
         currentIndex: currentIndex ?? this.currentIndex,
+        positionMs: positionMs ?? this.positionMs,
       );
   AudioPlayerStateTableData copyWithCompanion(
       AudioPlayerStateTableCompanion data) {
@@ -2986,6 +3068,8 @@ class AudioPlayerStateTableData extends DataClass
       currentIndex: data.currentIndex.present
           ? data.currentIndex.value
           : this.currentIndex,
+      positionMs:
+          data.positionMs.present ? data.positionMs.value : this.positionMs,
     );
   }
 
@@ -2998,14 +3082,15 @@ class AudioPlayerStateTableData extends DataClass
           ..write('shuffled: $shuffled, ')
           ..write('collections: $collections, ')
           ..write('tracks: $tracks, ')
-          ..write('currentIndex: $currentIndex')
+          ..write('currentIndex: $currentIndex, ')
+          ..write('positionMs: $positionMs')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(
-      id, playing, loopMode, shuffled, collections, tracks, currentIndex);
+  int get hashCode => Object.hash(id, playing, loopMode, shuffled, collections,
+      tracks, currentIndex, positionMs);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -3016,7 +3101,8 @@ class AudioPlayerStateTableData extends DataClass
           other.shuffled == this.shuffled &&
           other.collections == this.collections &&
           other.tracks == this.tracks &&
-          other.currentIndex == this.currentIndex);
+          other.currentIndex == this.currentIndex &&
+          other.positionMs == this.positionMs);
 }
 
 class AudioPlayerStateTableCompanion
@@ -3028,6 +3114,7 @@ class AudioPlayerStateTableCompanion
   final Value<List<String>> collections;
   final Value<List<SpotubeTrackObject>> tracks;
   final Value<int> currentIndex;
+  final Value<int> positionMs;
   const AudioPlayerStateTableCompanion({
     this.id = const Value.absent(),
     this.playing = const Value.absent(),
@@ -3036,6 +3123,7 @@ class AudioPlayerStateTableCompanion
     this.collections = const Value.absent(),
     this.tracks = const Value.absent(),
     this.currentIndex = const Value.absent(),
+    this.positionMs = const Value.absent(),
   });
   AudioPlayerStateTableCompanion.insert({
     this.id = const Value.absent(),
@@ -3045,6 +3133,7 @@ class AudioPlayerStateTableCompanion
     required List<String> collections,
     this.tracks = const Value.absent(),
     this.currentIndex = const Value.absent(),
+    this.positionMs = const Value.absent(),
   })  : playing = Value(playing),
         loopMode = Value(loopMode),
         shuffled = Value(shuffled),
@@ -3057,6 +3146,7 @@ class AudioPlayerStateTableCompanion
     Expression<String>? collections,
     Expression<String>? tracks,
     Expression<int>? currentIndex,
+    Expression<int>? positionMs,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -3066,6 +3156,7 @@ class AudioPlayerStateTableCompanion
       if (collections != null) 'collections': collections,
       if (tracks != null) 'tracks': tracks,
       if (currentIndex != null) 'current_index': currentIndex,
+      if (positionMs != null) 'position_ms': positionMs,
     });
   }
 
@@ -3076,7 +3167,8 @@ class AudioPlayerStateTableCompanion
       Value<bool>? shuffled,
       Value<List<String>>? collections,
       Value<List<SpotubeTrackObject>>? tracks,
-      Value<int>? currentIndex}) {
+      Value<int>? currentIndex,
+      Value<int>? positionMs}) {
     return AudioPlayerStateTableCompanion(
       id: id ?? this.id,
       playing: playing ?? this.playing,
@@ -3085,6 +3177,7 @@ class AudioPlayerStateTableCompanion
       collections: collections ?? this.collections,
       tracks: tracks ?? this.tracks,
       currentIndex: currentIndex ?? this.currentIndex,
+      positionMs: positionMs ?? this.positionMs,
     );
   }
 
@@ -3116,6 +3209,9 @@ class AudioPlayerStateTableCompanion
     if (currentIndex.present) {
       map['current_index'] = Variable<int>(currentIndex.value);
     }
+    if (positionMs.present) {
+      map['position_ms'] = Variable<int>(positionMs.value);
+    }
     return map;
   }
 
@@ -3128,7 +3224,8 @@ class AudioPlayerStateTableCompanion
           ..write('shuffled: $shuffled, ')
           ..write('collections: $collections, ')
           ..write('tracks: $tracks, ')
-          ..write('currentIndex: $currentIndex')
+          ..write('currentIndex: $currentIndex, ')
+          ..write('positionMs: $positionMs')
           ..write(')'))
         .toString();
   }
@@ -4650,6 +4747,7 @@ typedef $$PreferencesTableTableCreateCompanionBuilder
   Value<bool> discordPresence,
   Value<bool> endlessPlayback,
   Value<bool> enableConnect,
+  Value<bool> resumePlaybackOnLaunch,
   Value<int> connectPort,
   Value<bool> cacheMusic,
   Value<double> miniPlayerTransparency,
@@ -4680,6 +4778,7 @@ typedef $$PreferencesTableTableUpdateCompanionBuilder
   Value<bool> discordPresence,
   Value<bool> endlessPlayback,
   Value<bool> enableConnect,
+  Value<bool> resumePlaybackOnLaunch,
   Value<int> connectPort,
   Value<bool> cacheMusic,
   Value<double> miniPlayerTransparency,
@@ -4788,6 +4887,10 @@ class $$PreferencesTableTableFilterComposer
 
   ColumnFilters<bool> get enableConnect => $composableBuilder(
       column: $table.enableConnect, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get resumePlaybackOnLaunch => $composableBuilder(
+      column: $table.resumePlaybackOnLaunch,
+      builder: (column) => ColumnFilters(column));
 
   ColumnFilters<int> get connectPort => $composableBuilder(
       column: $table.connectPort, builder: (column) => ColumnFilters(column));
@@ -4900,6 +5003,10 @@ class $$PreferencesTableTableOrderingComposer
       column: $table.enableConnect,
       builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<bool> get resumePlaybackOnLaunch => $composableBuilder(
+      column: $table.resumePlaybackOnLaunch,
+      builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<int> get connectPort => $composableBuilder(
       column: $table.connectPort, builder: (column) => ColumnOrderings(column));
 
@@ -5000,6 +5107,9 @@ class $$PreferencesTableTableAnnotationComposer
   GeneratedColumn<bool> get enableConnect => $composableBuilder(
       column: $table.enableConnect, builder: (column) => column);
 
+  GeneratedColumn<bool> get resumePlaybackOnLaunch => $composableBuilder(
+      column: $table.resumePlaybackOnLaunch, builder: (column) => column);
+
   GeneratedColumn<int> get connectPort => $composableBuilder(
       column: $table.connectPort, builder: (column) => column);
 
@@ -5068,6 +5178,7 @@ class $$PreferencesTableTableTableManager extends RootTableManager<
             Value<bool> discordPresence = const Value.absent(),
             Value<bool> endlessPlayback = const Value.absent(),
             Value<bool> enableConnect = const Value.absent(),
+            Value<bool> resumePlaybackOnLaunch = const Value.absent(),
             Value<int> connectPort = const Value.absent(),
             Value<bool> cacheMusic = const Value.absent(),
             Value<double> miniPlayerTransparency = const Value.absent(),
@@ -5098,6 +5209,7 @@ class $$PreferencesTableTableTableManager extends RootTableManager<
             discordPresence: discordPresence,
             endlessPlayback: endlessPlayback,
             enableConnect: enableConnect,
+            resumePlaybackOnLaunch: resumePlaybackOnLaunch,
             connectPort: connectPort,
             cacheMusic: cacheMusic,
             miniPlayerTransparency: miniPlayerTransparency,
@@ -5128,6 +5240,7 @@ class $$PreferencesTableTableTableManager extends RootTableManager<
             Value<bool> discordPresence = const Value.absent(),
             Value<bool> endlessPlayback = const Value.absent(),
             Value<bool> enableConnect = const Value.absent(),
+            Value<bool> resumePlaybackOnLaunch = const Value.absent(),
             Value<int> connectPort = const Value.absent(),
             Value<bool> cacheMusic = const Value.absent(),
             Value<double> miniPlayerTransparency = const Value.absent(),
@@ -5158,6 +5271,7 @@ class $$PreferencesTableTableTableManager extends RootTableManager<
             discordPresence: discordPresence,
             endlessPlayback: endlessPlayback,
             enableConnect: enableConnect,
+            resumePlaybackOnLaunch: resumePlaybackOnLaunch,
             connectPort: connectPort,
             cacheMusic: cacheMusic,
             miniPlayerTransparency: miniPlayerTransparency,
@@ -5693,6 +5807,7 @@ typedef $$AudioPlayerStateTableTableCreateCompanionBuilder
   required List<String> collections,
   Value<List<SpotubeTrackObject>> tracks,
   Value<int> currentIndex,
+  Value<int> positionMs,
 });
 typedef $$AudioPlayerStateTableTableUpdateCompanionBuilder
     = AudioPlayerStateTableCompanion Function({
@@ -5703,6 +5818,7 @@ typedef $$AudioPlayerStateTableTableUpdateCompanionBuilder
   Value<List<String>> collections,
   Value<List<SpotubeTrackObject>> tracks,
   Value<int> currentIndex,
+  Value<int> positionMs,
 });
 
 class $$AudioPlayerStateTableTableFilterComposer
@@ -5741,6 +5857,9 @@ class $$AudioPlayerStateTableTableFilterComposer
 
   ColumnFilters<int> get currentIndex => $composableBuilder(
       column: $table.currentIndex, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get positionMs => $composableBuilder(
+      column: $table.positionMs, builder: (column) => ColumnFilters(column));
 }
 
 class $$AudioPlayerStateTableTableOrderingComposer
@@ -5773,6 +5892,9 @@ class $$AudioPlayerStateTableTableOrderingComposer
   ColumnOrderings<int> get currentIndex => $composableBuilder(
       column: $table.currentIndex,
       builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get positionMs => $composableBuilder(
+      column: $table.positionMs, builder: (column) => ColumnOrderings(column));
 }
 
 class $$AudioPlayerStateTableTableAnnotationComposer
@@ -5806,6 +5928,9 @@ class $$AudioPlayerStateTableTableAnnotationComposer
 
   GeneratedColumn<int> get currentIndex => $composableBuilder(
       column: $table.currentIndex, builder: (column) => column);
+
+  GeneratedColumn<int> get positionMs => $composableBuilder(
+      column: $table.positionMs, builder: (column) => column);
 }
 
 class $$AudioPlayerStateTableTableTableManager extends RootTableManager<
@@ -5846,6 +5971,7 @@ class $$AudioPlayerStateTableTableTableManager extends RootTableManager<
             Value<List<String>> collections = const Value.absent(),
             Value<List<SpotubeTrackObject>> tracks = const Value.absent(),
             Value<int> currentIndex = const Value.absent(),
+            Value<int> positionMs = const Value.absent(),
           }) =>
               AudioPlayerStateTableCompanion(
             id: id,
@@ -5855,6 +5981,7 @@ class $$AudioPlayerStateTableTableTableManager extends RootTableManager<
             collections: collections,
             tracks: tracks,
             currentIndex: currentIndex,
+            positionMs: positionMs,
           ),
           createCompanionCallback: ({
             Value<int> id = const Value.absent(),
@@ -5864,6 +5991,7 @@ class $$AudioPlayerStateTableTableTableManager extends RootTableManager<
             required List<String> collections,
             Value<List<SpotubeTrackObject>> tracks = const Value.absent(),
             Value<int> currentIndex = const Value.absent(),
+            Value<int> positionMs = const Value.absent(),
           }) =>
               AudioPlayerStateTableCompanion.insert(
             id: id,
@@ -5873,6 +6001,7 @@ class $$AudioPlayerStateTableTableTableManager extends RootTableManager<
             collections: collections,
             tracks: tracks,
             currentIndex: currentIndex,
+            positionMs: positionMs,
           ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))

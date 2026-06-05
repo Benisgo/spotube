@@ -36,8 +36,17 @@ mixin BuildCommandCommonSteps on Command {
   Future<void> bootstrap() async {
     await dotEnvFile.create(recursive: true);
 
+    final dotenvPayload = CliEnv.dotenv.trim().isEmpty
+        ? [
+            "ENABLE_UPDATE_CHECK=1",
+            "LASTFM_API_KEY=",
+            "LASTFM_API_SECRET=",
+            "HIDE_DONATIONS=0",
+          ].join("\n")
+        : CliEnv.dotenv.trim();
+
     await dotEnvFile.writeAsString(
-      "${CliEnv.dotenv}\n"
+      "$dotenvPayload\n"
       "RELEASE_CHANNEL=${CliEnv.channel.name}\n",
     );
 

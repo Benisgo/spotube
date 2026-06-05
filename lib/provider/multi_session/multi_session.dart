@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/models/multi_session/multi_session.dart';
 import 'package:spotube/provider/audio_player/audio_player.dart';
+import 'package:spotube/provider/metadata_plugin/core/user.dart';
 import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
 import 'package:spotube/services/audio_player/audio_player.dart';
 import 'package:spotube/services/device_info/device_info.dart';
@@ -86,7 +87,13 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
     return message;
   }
 
-  Future<String> _deviceName() async {
+  Future<String> _participantName() async {
+    final user = await ref.read(metadataPluginUserProvider.future);
+    final userName = user?.name.trim();
+    if (userName != null && userName.isNotEmpty) {
+      return userName;
+    }
+
     return DeviceInfoService.instance.computerName();
   }
 
@@ -102,7 +109,7 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
       final res = await http.post(
         _relayUri("/rooms"),
         headers: {"content-type": "application/json"},
-        body: jsonEncode({"name": await _deviceName()}),
+        body: jsonEncode({"name": await _participantName()}),
       );
       if (res.statusCode >= 400) throw Exception(res.body);
       final json = jsonDecode(res.body) as Map<String, dynamic>;
@@ -138,7 +145,7 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
       final res = await http.post(
         _relayUri("/rooms/$normalizedCode/join"),
         headers: {"content-type": "application/json"},
-        body: jsonEncode({"name": await _deviceName()}),
+        body: jsonEncode({"name": await _participantName()}),
       );
       if (res.statusCode >= 400) throw Exception(res.body);
       final json = jsonDecode(res.body) as Map<String, dynamic>;

@@ -18,7 +18,6 @@ import 'package:spotube/components/ui/button_tile.dart';
 import 'package:spotube/extensions/constrains.dart';
 import 'package:spotube/extensions/duration.dart';
 import 'package:spotube/models/metadata/metadata.dart';
-import 'package:spotube/provider/audio_player/querying_track_info.dart';
 import 'package:spotube/provider/audio_player/state.dart';
 import 'package:spotube/provider/blacklist_provider.dart';
 import 'package:spotube/utils/platform.dart';
@@ -46,6 +45,8 @@ class TrackTile extends HookConsumerWidget {
   final bool userPlaylist;
   final String? playlistId;
   final AudioPlayerState playlist;
+  final bool compact;
+  final bool isFetchingActiveTrack;
 
   final List<Widget>? leadingActions;
 
@@ -61,6 +62,8 @@ class TrackTile extends HookConsumerWidget {
     this.onChanged,
     this.userPlaylist = false,
     this.playlistId,
+    this.compact = false,
+    this.isFetchingActiveTrack = false,
     this.leadingActions,
   });
 
@@ -178,37 +181,30 @@ class TrackTile extends HookConsumerWidget {
                     Positioned.fill(
                       child: Center(
                         child: Skeleton.ignore(
-                          child: Consumer(
-                            builder: (context, ref, _) {
-                              final isFetchingActiveTrack =
-                                  ref.watch(queryingTrackInfoProvider);
-                              return AnimatedSwitcher(
-                                duration: const Duration(milliseconds: 300),
-                                child: switch ((
-                                  isPlaying,
-                                  isFetchingActiveTrack,
-                                  isPlaying,
-                                  isHovering,
-                                  isLoading.value
-                                )) {
-                                  (true, true, _, _, _) ||
-                                  (_, _, _, _, true) =>
-                                    const SizedBox(
-                                      width: 26,
-                                      height: 26,
-                                      child: CircularProgressIndicator(),
-                                    ),
-                                  (_, _, true, _, _) => Icon(
-                                      SpotubeIcons.pause,
-                                      color: theme.colorScheme.primary,
-                                    ),
-                                  (_, _, _, true, _) => const Icon(
-                                      SpotubeIcons.play,
-                                      color: Colors.white,
-                                    ),
-                                  _ => const SizedBox.shrink(),
-                                },
-                              );
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 300),
+                            child: switch ((
+                              isPlaying,
+                              isFetchingActiveTrack,
+                              isPlaying,
+                              isHovering,
+                              isLoading.value
+                            )) {
+                              (true, true, _, _, _) || (_, _, _, _, true) =>
+                                const SizedBox(
+                                  width: 26,
+                                  height: 26,
+                                  child: CircularProgressIndicator(),
+                                ),
+                              (_, _, true, _, _) => Icon(
+                                  SpotubeIcons.pause,
+                                  color: theme.colorScheme.primary,
+                                ),
+                              (_, _, _, true, _) => const Icon(
+                                  SpotubeIcons.play,
+                                  color: Colors.white,
+                                ),
+                              _ => const SizedBox.shrink(),
                             },
                           ),
                         ),
@@ -261,39 +257,47 @@ class TrackTile extends HookConsumerWidget {
                   const SizedBox(width: 8),
                   Expanded(
                     flex: 4,
-                    child: switch (track) {
-                      SpotubeLocalTrackObject() => Text(
-                          track.album.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      _ => Align(
-                          alignment: Alignment.centerLeft,
-                          child: LinkText(
+                    child: compact
+                        ? Text(
                             track.album.name,
-                            AlbumRoute(
-                              album: track.album,
-                              id: track.album.id,
-                            ),
-                            push: true,
+                            maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                          ),
-                        )
-                    },
+                          )
+                        : switch (track) {
+                            SpotubeLocalTrackObject() => Text(
+                                track.album.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            _ => Align(
+                                alignment: Alignment.centerLeft,
+                                child: LinkText(
+                                  track.album.name,
+                                  AlbumRoute(
+                                    album: track.album,
+                                    id: track.album.id,
+                                  ),
+                                  push: true,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              )
+                          },
                   ),
                 ],
               ],
             ),
             subtitle: Align(
               alignment: Alignment.centerLeft,
-                    child: track is SpotubeLocalTrackObject
+              child: compact || track is SpotubeLocalTrackObject
                   ? Text(
                       track.artists.asString(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     )
                   : ClipRect(
                       child: ConstrainedBox(
                         constraints: const BoxConstraints(maxHeight: 40),
-                          child: AbsorbPointer(
+                        child: AbsorbPointer(
                           absorbing: effectiveSelection,
                           child: ArtistLink(
                             artists: track.artists,

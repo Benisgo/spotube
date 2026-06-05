@@ -20,6 +20,7 @@ import 'package:spotube/hooks/controllers/use_auto_scroll_controller.dart';
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/modules/player/player_queue_actions.dart';
 import 'package:spotube/provider/audio_player/audio_player.dart';
+import 'package:spotube/provider/audio_player/querying_track_info.dart';
 import 'package:spotube/provider/audio_player/state.dart';
 
 class PlayerQueue extends HookConsumerWidget {
@@ -64,6 +65,7 @@ class PlayerQueue extends HookConsumerWidget {
     final isSearching = useState(false);
 
     final tracks = playlist.tracks;
+    final isFetchingActiveTrack = ref.watch(queryingTrackInfoProvider);
 
     final filteredTracks = useMemoized(
       () {
@@ -273,11 +275,18 @@ class PlayerQueue extends HookConsumerWidget {
                       controller: controller,
                       child: CustomScrollView(
                         controller: controller,
+                        cacheExtent: 320,
                         slivers: [
                           const SliverGap(10),
                           SliverReorderableList(
                             onReorder: onReorder,
                             itemCount: filteredTracks.length,
+                            prototypeItem: TrackTile(
+                              playlist: playlist,
+                              track: tracks.first,
+                              compact: true,
+                              isFetchingActiveTrack: isFetchingActiveTrack,
+                            ),
                             onReorderStart: (index) {
                               HapticFeedback.selectionClick();
                             },
@@ -308,6 +317,8 @@ class PlayerQueue extends HookConsumerWidget {
                                   playlist: playlist,
                                   index: i,
                                   track: track,
+                                  compact: true,
+                                  isFetchingActiveTrack: isFetchingActiveTrack,
                                   selectionMode: selectionMode.value,
                                   selected:
                                       selectedTrackIds.value.contains(track.id),

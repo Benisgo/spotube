@@ -27,23 +27,8 @@ permissions:
   contents: write
 
 jobs:
-  build_platform:
-    if: ${{ matrix.platform != 'android' || (secrets.KEYSTORE != '' && secrets.KEY_PROPERTIES != '') }}
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-22.04
-            platform: android
-            arch: all
-            files: |
-              build/Spotube-android-all-arch.apk
-          - os: windows-latest
-            platform: windows
-            arch: x86
-            files: |
-              dist/Spotube-windows-x86_64.nupkg
-              dist/Spotube-windows-x86_64-setup.exe
-    runs-on: ${{matrix.os}}
+  build_windows:
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2.18.0
@@ -61,8 +46,49 @@ jobs:
       #     sudo apt clean
       #     docker rmi $(docker image ls -aq)
       #     df -h
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Install windows dependencies
+        run: |
+          flutter pub get
+          dart cli/cli.dart install-dependencies --platform=windows --arch=x86
+
+      - name: Build windows binaries
+        run: dart cli/cli.dart build --arch=x86 windows
+        env:
+          CHANNEL: ${{inputs.channel}}
+          DOTENV: ${{secrets.DOTENV_RELEASE}}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          if-no-files-found: error
+          name: windows-x86
+          path: |
+            dist/Spotube-windows-x86_64.nupkg
+            dist/Spotube-windows-x86_64-setup.exe
+
+      - name: Open SSH Debug Session On Failure
+        if: ${{ failure() && inputs.debug && inputs.channel == 'nightly' }}
+        uses: mxschmitt/action-tmate@v3
+        with:
+          limit-access-to-actor: true
+
+  build_android:
+    if: ${{ secrets.KEYSTORE != '' && secrets.KEY_PROPERTIES != '' }}
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2.18.0
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION  }}
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          cache: true
+          git-source: https://github.com/flutter/flutter.git
+
       - name: Setup Java
-        if: ${{matrix.platform == 'android'}}
         uses: actions/setup-java@v4
         with:
           distribution: "zulu"
@@ -75,25 +101,18 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Install Xcode
-        if: ${{matrix.platform == 'ios'}}
-        uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: "16.2"
-
-      - name: Install ${{matrix.platform}} dependencies
+      - name: Install android dependencies
         run: |
           flutter pub get
-          dart cli/cli.dart install-dependencies --platform=${{matrix.platform}} --arch=${{matrix.arch}}
+          dart cli/cli.dart install-dependencies --platform=android --arch=all
 
       - name: Sign Android APK
-        if: ${{matrix.platform == 'android'}}
         run: |
           echo '${{ secrets.KEYSTORE }}' | base64 --decode > android/app/upload-keystore.jks
           echo '${{ secrets.KEY_PROPERTIES }}' > android/key.properties
 
-      - name: Build ${{matrix.platform}} binaries
-        run: dart cli/cli.dart build --arch=${{matrix.arch}} ${{matrix.platform}}
+      - name: Build android binaries
+        run: dart cli/cli.dart build --arch=all android
         env:
           CHANNEL: ${{inputs.channel}}
           DOTENV: ${{secrets.DOTENV_RELEASE}}
@@ -101,8 +120,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           if-no-files-found: error
-          name: ${{matrix.platform}}-${{matrix.arch}}
-          path: ${{matrix.files}}
+          name: android-all
+          path: |
+            build/Spotube-android-all-arch.apk
 
       - name: Open SSH Debug Session On Failure
         if: ${{ failure() && inputs.debug && inputs.channel == 'nightly' }}
@@ -113,7 +133,9 @@ jobs:
   upload:
     runs-on: ubuntu-22.04
     needs:
-      - build_platform
+      - build_windows
+      - build_android
+    if: ${{ always() && needs.build_windows.result == 'success' && (needs.build_android.result == 'success' || needs.build_android.result == 'skipped') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4

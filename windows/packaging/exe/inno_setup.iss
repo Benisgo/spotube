@@ -1,9 +1,3 @@
-; https://github.com/DomGries/InnoDependencyInstaller
-; requires netcorecheck.exe and netcorecheck_x64.exe (see CodeDependencies.iss)
-; path is relative to dist\{VERSION} directory
-#define public Dependency_Path_NetCoreCheck "..\..\build\inno-depend\dependencies\"
-#include "..\..\build\inno-depend\CodeDependencies.iss"
-
 [Setup]
 AppId={{APP_ID}}
 AppVersion={{APP_VERSION}}
@@ -69,10 +63,3 @@ Name: "{userstartup}\\{{DISPLAY_NAME}}"; Filename: "{app}\\{{EXECUTABLE_NAME}}";
 
 [Run]
 Filename: "{app}\\{{EXECUTABLE_NAME}}"; Description: "{cm:LaunchProgram,{{DISPLAY_NAME}}}"; Flags: {% if PRIVILEGES_REQUIRED == 'admin' %}runascurrentuser{% endif %} nowait postinstall skipifsilent
-
-[Code]
-function InitializeSetup: Boolean;
-begin
-  Dependency_AddVC2015To2022;
-  Result := True;
-end;

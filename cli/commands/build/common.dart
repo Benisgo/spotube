@@ -36,12 +36,20 @@ mixin BuildCommandCommonSteps on Command {
   Future<void> bootstrap() async {
     await dotEnvFile.create(recursive: true);
 
+    final repository = CliEnv.githubRepository ?? "KRTirtho/spotube";
+    final serverUrl = CliEnv.githubServerUrl ?? "https://github.com";
+    final releasesUrl = "$serverUrl/$repository/releases/latest";
+    final nightlyUrl = "$serverUrl/$repository/releases/tag/nightly";
+
     final dotenvPayload = CliEnv.dotenv.trim().isEmpty
         ? [
             "ENABLE_UPDATE_CHECK=1",
             "LASTFM_API_KEY=",
             "LASTFM_API_SECRET=",
             "HIDE_DONATIONS=0",
+            "APP_UPDATE_REPOSITORY=$repository",
+            "APP_DOWNLOAD_URL=$releasesUrl",
+            "APP_NIGHTLY_DOWNLOAD_URL=$nightlyUrl",
           ].join("\n")
         : CliEnv.dotenv.trim();
 

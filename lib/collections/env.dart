@@ -24,12 +24,31 @@ abstract class Env {
   @EnviedField(varName: 'ENABLE_UPDATE_CHECK', defaultValue: "1")
   static final String _enableUpdateChecker = _Env._enableUpdateChecker;
 
-  @EnviedField(varName: "RELEASE_CHANNEL", defaultValue: "nightly")
+  @EnviedField(varName: "RELEASE_CHANNEL", defaultValue: "stable")
   static final String _releaseChannel = _Env._releaseChannel;
 
-  static ReleaseChannel get releaseChannel => _releaseChannel == "stable"
-      ? ReleaseChannel.stable
-      : ReleaseChannel.nightly;
+  @EnviedField(
+    varName: "APP_UPDATE_REPOSITORY",
+    defaultValue: "KRTirtho/spotube",
+  )
+  static final String updateRepository = _Env.updateRepository;
+
+  @EnviedField(
+    varName: "APP_DOWNLOAD_URL",
+    defaultValue: "https://spotube.krtirtho.dev/downloads",
+  )
+  static final String downloadUrl = _Env.downloadUrl;
+
+  @EnviedField(
+    varName: "APP_NIGHTLY_DOWNLOAD_URL",
+    defaultValue: "https://spotube.krtirtho.dev/downloads/nightly",
+  )
+  static final String nightlyDownloadUrl = _Env.nightlyDownloadUrl;
+
+  static ReleaseChannel get releaseChannel =>
+      _releaseChannel.toLowerCase() == "nightly"
+          ? ReleaseChannel.nightly
+          : ReleaseChannel.stable;
 
   static bool get enableUpdateChecker =>
       kIsFlatpak || _enableUpdateChecker == "1";

@@ -12,14 +12,6 @@ class WindowsBuildCommand extends Command with BuildCommandCommonSteps {
   @override
   String get name => "windows";
 
-  Future<void> innoDependInstall() async {
-    final innoDependencyPath = join(cwd.path, "build", "inno-depend");
-
-    await shell.run(
-      "git clone https://github.com/DomGries/InnoDependencyInstaller.git $innoDependencyPath",
-    );
-  }
-
   @override
   void run() async {
     stdout.writeln("Replace versions");
@@ -39,7 +31,6 @@ class WindowsBuildCommand extends Command with BuildCommandCommonSteps {
     }
 
     await bootstrap();
-    await innoDependInstall();
 
     final runnerRCFile = File(
       join(cwd.path, "windows", "runner", "Runner.rc"),

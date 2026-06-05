@@ -1,4 +1,5 @@
-import 'package:flutter/services.dart';
+import 'dart:async';
+
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,6 +12,24 @@ final _paletteColorState = StateProvider<PaletteColor>(
   },
 );
 
+Future<PaletteGenerator?> _loadPalette(String imageUrl) async {
+  if (imageUrl.isEmpty) return null;
+
+  try {
+    return await PaletteGenerator.fromImageProvider(
+      UniversalImage.imageProvider(
+        imageUrl,
+        height: 50,
+        width: 50,
+      ),
+    ).timeout(const Duration(seconds: 5));
+  } on TimeoutException {
+    return null;
+  } catch (_) {
+    return null;
+  }
+}
+
 PaletteColor usePaletteColor(String imageUrl, WidgetRef ref) {
   final context = useContext();
   final theme = Theme.of(context);
@@ -18,13 +37,8 @@ PaletteColor usePaletteColor(String imageUrl, WidgetRef ref) {
 
   useEffect(() {
     WidgetsBinding.instance.addPostFrameCallback((timeStamp) async {
-      final palette = await PaletteGenerator.fromImageProvider(
-        UniversalImage.imageProvider(
-          imageUrl,
-          height: 50,
-          width: 50,
-        ),
-      );
+      final palette = await _loadPalette(imageUrl);
+      if (palette == null) return;
       if (!context.mounted) return;
       final color = theme.brightness == Brightness.light
           ? palette.lightMutedColor ?? palette.lightVibrantColor
@@ -45,13 +59,8 @@ PaletteGenerator usePaletteGenerator(String imageUrl) {
 
   useEffect(() {
     WidgetsBinding.instance.addPostFrameCallback((timeStamp) async {
-      final newPalette = await PaletteGenerator.fromImageProvider(
-        UniversalImage.imageProvider(
-          imageUrl,
-          height: 50,
-          width: 50,
-        ),
-      );
+      final newPalette = await _loadPalette(imageUrl);
+      if (newPalette == null) return;
       if (!context.mounted) return;
 
       palette.value = newPalette;

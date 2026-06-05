@@ -19,7 +19,7 @@ class SpotubeMedia extends mk.Media {
   static int serverPort = 0;
 
   static String get _host =>
-      kIsWindows ? "localhost" : InternetAddress.anyIPv4.address;
+      kIsWindows ? "localhost" : InternetAddress.loopbackIPv4.address;
 
   final SpotubeTrackObject track;
   SpotubeMedia(this.track)

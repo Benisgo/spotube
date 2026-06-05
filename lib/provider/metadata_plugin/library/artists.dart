@@ -1,21 +1,48 @@
 import 'package:riverpod/riverpod.dart';
+import 'package:dio/dio.dart';
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/provider/metadata_plugin/core/auth.dart';
 import 'package:spotube/provider/metadata_plugin/utils/paginated.dart';
 
 class MetadataPluginSavedArtistNotifier
     extends PaginatedAsyncNotifier<SpotubeFullArtistObject> {
+  bool _isRecoverableLibraryError(Object error) {
+    if (error is DioException) {
+      return error.response?.statusCode == 401 ||
+          error.response?.statusCode == 429;
+    }
+
+    final message = error.toString();
+    return message.contains("401") || message.contains("429");
+  }
+
   @override
   Future<SpotubePaginationResponseObject<SpotubeFullArtistObject>> fetch(
     int offset,
     int limit,
   ) async {
-    final artists = await (await metadataPlugin).user.savedArtists(
-          limit: limit,
-          offset: offset,
-        );
+    try {
+      final artists = await (await metadataPlugin).user.savedArtists(
+            limit: limit,
+            offset: offset,
+          );
 
-    return artists;
+      return artists;
+    } catch (e) {
+      if (_isRecoverableLibraryError(e) && state.value != null) {
+        return state.value!;
+      }
+      if (_isRecoverableLibraryError(e)) {
+        return SpotubePaginationResponseObject(
+          limit: limit,
+          nextOffset: null,
+          total: 0,
+          hasMore: false,
+          items: [],
+        );
+      }
+      rethrow;
+    }
   }
 
   @override

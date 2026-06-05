@@ -226,6 +226,14 @@ class UserPreferencesNotifier extends Notifier<PreferencesTableData> {
   void setCacheMusic(bool cache) {
     setData(PreferencesTableCompanion(cacheMusic: Value(cache)));
   }
+
+  void setLyricsCharacterEdge(LyricsCharacterEdge edge) {
+    setData(PreferencesTableCompanion(lyricsCharacterEdge: Value(edge)));
+  }
+
+  void setMultiSessionRelayUrl(String url) {
+    setData(PreferencesTableCompanion(multiSessionRelayUrl: Value(url)));
+  }
 }
 
 final userPreferencesProvider =

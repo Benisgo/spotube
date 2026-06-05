@@ -66,9 +66,11 @@ class UniversalImage extends HookWidget {
             height: height,
             cacheHeight: height?.toInt(),
             cacheWidth: width?.toInt(),
+            filterQuality: FilterQuality.low,
             scale: scale,
           );
         },
+        filterQuality: FilterQuality.low,
         fit: fit,
       );
     } else if (Uri.tryParse(path) != null && !path.startsWith("assets")) {
@@ -78,6 +80,7 @@ class UniversalImage extends HookWidget {
         height: height,
         cacheHeight: height?.toInt(),
         cacheWidth: width?.toInt(),
+        filterQuality: FilterQuality.low,
         scale: scale,
         fit: fit,
         errorBuilder: (context, error, stackTrace) {
@@ -87,6 +90,7 @@ class UniversalImage extends HookWidget {
             height: height,
             cacheHeight: height?.toInt(),
             cacheWidth: width?.toInt(),
+            filterQuality: FilterQuality.low,
             scale: scale,
           );
         },
@@ -98,6 +102,7 @@ class UniversalImage extends HookWidget {
         height: height,
         cacheHeight: height?.toInt(),
         cacheWidth: width?.toInt(),
+        filterQuality: FilterQuality.low,
         scale: scale,
         fit: fit,
         errorBuilder: (context, error, stackTrace) {
@@ -107,6 +112,7 @@ class UniversalImage extends HookWidget {
             height: height,
             cacheHeight: height?.toInt(),
             cacheWidth: width?.toInt(),
+            filterQuality: FilterQuality.low,
             scale: scale,
           );
         },
@@ -119,6 +125,7 @@ class UniversalImage extends HookWidget {
       height: height,
       cacheHeight: height?.toInt(),
       cacheWidth: width?.toInt(),
+      filterQuality: FilterQuality.low,
       scale: scale,
       fit: fit,
       errorBuilder: (context, error, stackTrace) {
@@ -128,6 +135,7 @@ class UniversalImage extends HookWidget {
           height: height,
           cacheHeight: height?.toInt(),
           cacheWidth: width?.toInt(),
+          filterQuality: FilterQuality.low,
           scale: scale,
         );
       },

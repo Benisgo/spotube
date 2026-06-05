@@ -79,6 +79,23 @@ class SettingsAppearanceSection extends HookConsumerWidget {
           }
         },
       ),
+      AdaptiveSelectTile<LyricsCharacterEdge>(
+        secondary: const Icon(SpotubeIcons.lyrics),
+        title: const Text("Lyrics character edge"),
+        value: preferences.lyricsCharacterEdge,
+        options: [
+          for (final edge in LyricsCharacterEdge.values)
+            SelectItemButton(
+              value: edge,
+              child: Text(edge.label),
+            ),
+        ],
+        onChanged: (value) {
+          if (value != null) {
+            preferencesNotifier.setLyricsCharacterEdge(value);
+          }
+        },
+      ),
       // ListTile(
       //     leading: const Icon(SpotubeIcons.amoled),
       //     title: Text(context.l10n.use_amoled_mode),

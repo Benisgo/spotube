@@ -11,6 +11,7 @@ import 'package:spotube/provider/audio_player/state.dart';
 import 'package:spotube/provider/blacklist_provider.dart';
 import 'package:spotube/provider/database/database.dart';
 import 'package:spotube/provider/discord_provider.dart';
+import 'package:spotube/provider/server/server.dart';
 import 'package:spotube/provider/server/sourced_track_provider.dart';
 import 'package:spotube/services/audio_player/audio_player.dart';
 import 'package:spotube/services/logger/logger.dart';
@@ -357,15 +358,21 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
   }) async {
     _assertAllowedTracks(tracks);
 
+    await ref.read(serverProvider.future);
+
     final medias = _blacklist
         .filter(tracks)
         .toList()
         .asMediaList()
         .unique((a, b) => a.uri == b.uri);
 
+    if (medias.isEmpty) return;
+
+    final safeInitialIndex = initialIndex.clamp(0, medias.length - 1).toInt();
+
     // Giving the initial track a boost so MediaKit won't skip
     // because of timeout
-    final intendedActiveTrack = medias.elementAt(initialIndex);
+    final intendedActiveTrack = medias.elementAt(safeInitialIndex);
     if (intendedActiveTrack.track is! SpotubeLocalTrackObject) {
       ref.read(
         sourcedTrackProvider(
@@ -374,18 +381,16 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
       );
     }
 
-    if (medias.isEmpty) return;
-
     state = state.copyWith(
       // These are filtered tracks as well
       tracks: medias.map((media) => media.track).toList(),
-      currentIndex: initialIndex,
+      currentIndex: safeInitialIndex,
       collections: [],
     );
 
     await audioPlayer.openPlaylist(
       medias,
-      initialIndex: initialIndex,
+      initialIndex: safeInitialIndex,
       autoPlay: autoPlay,
     );
 

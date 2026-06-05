@@ -1,14 +1,15 @@
 // ignore_for_file: unused_local_variable, unused_import
 import 'package:drift/drift.dart';
 import 'package:drift_dev/api/migrations.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:spotube/models/database/database.dart';
-import 'package:test/test.dart';
 import 'generated/schema.dart';
 
 import 'generated/schema_v1.dart' as v1;
 import 'generated/schema_v2.dart' as v2;
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
   late SchemaVerifier verifier;
 
@@ -26,7 +27,7 @@ void main() {
         for (final toVersion in versions.skip(i + 1)) {
           test('to $toVersion', () async {
             final schema = await verifier.schemaAt(fromVersion);
-            final db = Database(schema.newConnection());
+            final db = AppDatabase.withExecutor(schema.newConnection());
             await verifier.migrateAndValidate(db, toVersion);
             await db.close();
           });
@@ -84,7 +85,7 @@ void main() {
       newVersion: 2,
       createOld: v1.DatabaseAtV1.new,
       createNew: v2.DatabaseAtV2.new,
-      openTestedDatabase: (x) => AppDatabase(),
+      openTestedDatabase: (executor) => AppDatabase.withExecutor(executor),
       createItems: (batch, oldDb) {
         batch.insertAll(oldDb.authenticationTable, oldAuthenticationTableData);
         batch.insertAll(oldDb.blacklistTable, oldBlacklistTableData);

@@ -33,7 +33,11 @@ extension SpotubeImageExtensions on List<SpotubeImageObject>? {
     int index = 1,
     required ImagePlaceholder placeholder,
   }) {
-    final sortedImage = this?.sorted((a, b) => a.width!.compareTo(b.width!));
+    final sortedImage = this?.sorted((a, b) {
+      final widthComparison = (a.width ?? 0).compareTo(b.width ?? 0);
+      if (widthComparison != 0) return widthComparison;
+      return (a.height ?? 0).compareTo(b.height ?? 0);
+    });
 
     return sortedImage != null && sortedImage.isNotEmpty
         ? sortedImage[

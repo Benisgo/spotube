@@ -6,6 +6,7 @@ import 'package:palette_generator/palette_generator.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 import 'package:spotube/collections/spotube_icons.dart';
 import 'package:spotube/models/metadata/metadata.dart';
+import 'package:spotube/modules/lyrics/lyrics_character_edge.dart';
 import 'package:spotube/modules/lyrics/zoom_controls.dart';
 import 'package:spotube/components/shimmers/shimmer_lyrics.dart';
 import 'package:spotube/extensions/constrains.dart';
@@ -15,6 +16,7 @@ import 'package:spotube/modules/lyrics/use_synced_lyrics.dart';
 import 'package:scroll_to_index/scroll_to_index.dart';
 import 'package:spotube/provider/audio_player/audio_player.dart';
 import 'package:spotube/provider/lyrics/synced.dart';
+import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
 import 'package:spotube/services/audio_player/audio_player.dart';
 import 'package:spotube/services/logger/logger.dart';
 
@@ -36,6 +38,9 @@ class SyncedLyrics extends HookConsumerWidget {
     final theme = Theme.of(context);
 
     final playlist = ref.watch(audioPlayerProvider);
+    final lyricsCharacterEdge = ref.watch(
+      userPreferencesProvider.select((value) => value.lyricsCharacterEdge),
+    );
 
     final controller = useAutoScrollController();
 
@@ -166,7 +171,7 @@ class SyncedLyrics extends HookConsumerWidget {
                                       : FontWeight.normal,
                                   fontSize: (isActive ? 28 : 26) *
                                       (textZoomLevel.value / 100),
-                                ),
+                                ).withLyricsCharacterEdge(lyricsCharacterEdge),
                                 textAlign: TextAlign.center,
                                 child: MouseRegion(
                                   cursor: SystemMouseCursors.click,

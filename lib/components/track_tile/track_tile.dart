@@ -76,13 +76,6 @@ class TrackTile extends HookConsumerWidget {
 
     final isSelected = isPlaying || isLoading.value;
 
-    final imageProvider = useMemoized(
-      () => UniversalImage.imageProvider(
-        (track.album.images).smallest(ImagePlaceholder.albumArt),
-      ),
-      [track.album.images],
-    );
-
     // Treat either explicit selectionMode or presence of onChanged as selection
     // context. Some lists enable selection by providing `onChanged` without
     // toggling a dedicated `selectionMode` flag (e.g. playlists), so we must
@@ -161,15 +154,14 @@ class TrackTile extends HookConsumerWidget {
                 ),
                 Stack(
                   children: [
-                    Container(
-                      height: 40,
-                      width: 40,
-                      decoration: BoxDecoration(
-                        borderRadius: theme.borderRadiusMd,
-                        image: DecorationImage(
-                          fit: BoxFit.cover,
-                          image: imageProvider,
-                        ),
+                    ClipRRect(
+                      borderRadius: theme.borderRadiusMd,
+                      child: UniversalImage(
+                        path: (track.album.images)
+                            .smallest(ImagePlaceholder.albumArt),
+                        height: 40,
+                        width: 40,
+                        fit: BoxFit.cover,
                       ),
                     ),
                     Positioned.fill(

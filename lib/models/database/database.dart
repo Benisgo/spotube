@@ -21,6 +21,7 @@ import 'package:spotube/modules/settings/color_scheme_picker_dialog.dart';
 import 'package:drift/native.dart';
 import 'package:spotube/services/logger/logger.dart';
 import 'package:spotube/services/youtube_engine/newpipe_engine.dart';
+import 'package:spotube/services/youtube_engine/android_yt_dlp_engine.dart';
 import 'package:spotube/services/youtube_engine/youtube_explode_engine.dart';
 import 'package:spotube/services/youtube_engine/yt_dlp_engine.dart';
 import 'package:spotube/utils/platform.dart';
@@ -64,180 +65,209 @@ part 'typeconverters/subtitle.dart';
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
+  AppDatabase.withExecutor(super.e);
 
   @override
-  int get schemaVersion => 10;
+  int get schemaVersion => 11;
 
   @override
   MigrationStrategy get migration {
-    return MigrationStrategy(
-      onUpgrade: stepByStep(
-        from1To2: (m, schema) async {
-          // Add invidiousInstance column to preferences table
+    final migrateToV10 = stepByStep(
+      from1To2: (m, schema) async {
+        // Add invidiousInstance column to preferences table
+        await m.addColumn(
+          schema.preferencesTable,
+          schema.preferencesTable.invidiousInstance,
+        );
+      },
+      from2To3: (m, schema) async {
+        await m.addColumn(
+          schema.preferencesTable,
+          schema.preferencesTable.cacheMusic,
+        );
+      },
+      from3To4: (m, schema) async {
+        await m.addColumn(
+          schema.preferencesTable,
+          schema.preferencesTable.youtubeClientEngine,
+        );
+      },
+      from4To5: (m, schema) async {
+        final columnName =
+            schema.preferencesTable.accentColorScheme.escapedNameFor(
+          SqlDialect.sqlite,
+        );
+        final columnNameOld =
+            '"${schema.preferencesTable.accentColorScheme.name}_old"';
+        final tableName = schema.preferencesTable.actualTableName;
+        await customStatement(
+          "ALTER TABLE $tableName "
+          "RENAME COLUMN $columnName to $columnNameOld",
+        );
+        await customStatement(
+          "ALTER TABLE $tableName "
+          "ADD COLUMN $columnName TEXT NOT NULL DEFAULT 'Slate:0xff64748b'",
+        );
+        await customStatement(
+          "UPDATE $tableName "
+          "SET $columnName = $columnNameOld",
+        );
+        await customStatement(
+          "ALTER TABLE $tableName "
+          "DROP COLUMN $columnNameOld",
+        );
+        await customStatement(
+          "UPDATE $tableName "
+          "SET $columnName = 'Slate:0xff64748b' WHERE $columnName = 'Blue:0xFF2196F3'",
+        );
+      },
+      from5To6: (m, schema) async {
+        try {
           await m.addColumn(
             schema.preferencesTable,
-            schema.preferencesTable.invidiousInstance,
+            schema.preferencesTable.connectPort,
           );
-        },
-        from2To3: (m, schema) async {
-          await m.addColumn(
-            schema.preferencesTable,
-            schema.preferencesTable.cacheMusic,
-          );
-        },
-        from3To4: (m, schema) async {
-          await m.addColumn(
-            schema.preferencesTable,
-            schema.preferencesTable.youtubeClientEngine,
-          );
-        },
-        from4To5: (m, schema) async {
-          final columnName = schema.preferencesTable.accentColorScheme
-              .escapedNameFor(SqlDialect.sqlite);
-          final columnNameOld =
-              '"${schema.preferencesTable.accentColorScheme.name}_old"';
-          final tableName = schema.preferencesTable.actualTableName;
-          await customStatement(
-            "ALTER TABLE $tableName "
-            "RENAME COLUMN $columnName to $columnNameOld",
-          );
-          await customStatement(
-            "ALTER TABLE $tableName "
-            "ADD COLUMN $columnName TEXT NOT NULL DEFAULT 'Slate:0xff64748b'",
-          );
-          await customStatement(
-            "UPDATE $tableName "
-            "SET $columnName = $columnNameOld",
-          );
-          await customStatement(
-            "ALTER TABLE $tableName "
-            "DROP COLUMN $columnNameOld",
-          );
-          await customStatement(
-            "UPDATE $tableName "
-            "SET $columnName = 'Slate:0xff64748b' WHERE $columnName = 'Blue:0xFF2196F3'",
-          );
-        },
-        from5To6: (m, schema) async {
-          try {
-            await m.addColumn(
-              schema.preferencesTable,
-              schema.preferencesTable.connectPort,
-            );
-          } on DriftRemoteException catch (e) {
-            // If the column already exists, ignore the error
-            if (e.remoteCause !=
-                'duplicate column name: ${schema.preferencesTable.connectPort.name}') {
-              rethrow;
-            }
+        } on DriftRemoteException catch (e) {
+          // If the column already exists, ignore the error
+          if (e.remoteCause !=
+              'duplicate column name: ${schema.preferencesTable.connectPort.name}') {
+            rethrow;
           }
-        },
-        from6To7: (m, schema) async {
-          await m.createTable(schema.metadataPluginsTable);
-          await m.addColumn(
-            schema.audioPlayerStateTable,
-            schema.audioPlayerStateTable.currentIndex,
-          );
-          await m.addColumn(
-            schema.audioPlayerStateTable,
-            schema.audioPlayerStateTable.tracks,
-          );
-        },
-        from7To8: (m, schema) async {
-          await m
-              .addColumn(
-            schema.metadataPluginsTable,
-            schema.metadataPluginsTable.entryPoint,
-          )
-              .catchError((error, stackTrace) {
-            // If the column already exists, ignore the error
+        }
+      },
+      from6To7: (m, schema) async {
+        await m.createTable(schema.metadataPluginsTable);
+        await m.addColumn(
+          schema.audioPlayerStateTable,
+          schema.audioPlayerStateTable.currentIndex,
+        );
+        await m.addColumn(
+          schema.audioPlayerStateTable,
+          schema.audioPlayerStateTable.tracks,
+        );
+      },
+      from7To8: (m, schema) async {
+        await m
+            .addColumn(
+          schema.metadataPluginsTable,
+          schema.metadataPluginsTable.entryPoint,
+        )
+            .catchError((error, stackTrace) {
+          // If the column already exists, ignore the error
+          if (!error.toString().contains('duplicate column name')) {
+            throw error;
+          }
+        });
+        await m
+            .addColumn(
+          schema.metadataPluginsTable,
+          schema.metadataPluginsTable.apis,
+        )
+            .catchError((error, stackTrace) {
+          // If the column already exists, ignore the error
+          if (!error.toString().contains('duplicate column name')) {
+            throw error;
+          }
+        });
+        await m
+            .addColumn(
+          schema.metadataPluginsTable,
+          schema.metadataPluginsTable.abilities,
+        )
+            .catchError((error, stackTrace) {
+          // If the column already exists, ignore the error
+          if (!error.toString().contains('duplicate column name')) {
+            throw error;
+          }
+        });
+        await m
+            .addColumn(
+          schema.metadataPluginsTable,
+          schema.metadataPluginsTable.repository,
+        )
+            .catchError((error, stackTrace) {
+          // If the column already exists, ignore the error
+          if (!error.toString().contains('duplicate column name')) {
+            throw error;
+          }
+        });
+        await m
+            .addColumn(
+          schema.metadataPluginsTable,
+          schema.metadataPluginsTable.pluginApiVersion,
+        )
+            .catchError((error, stackTrace) {
+          // If the column already exists, ignore the error
+          if (!error.toString().contains('duplicate column name')) {
+            throw error;
+          }
+        });
+      },
+      from8To9: (m, schema) async {
+        await m
+            .renameTable(schema.pluginsTable, "metadata_plugins_table")
+            .catchError((e, stack) => AppLogger.reportError(e, stack));
+        await m
+            .renameColumn(
+              schema.pluginsTable,
+              "selected",
+              pluginsTable.selectedForMetadata,
+            )
+            .catchError((e, stack) => AppLogger.reportError(e, stack));
+        await m
+            .addColumn(
+              schema.pluginsTable,
+              pluginsTable.selectedForAudioSource,
+            )
+            .catchError((e, stack) => AppLogger.reportError(e, stack));
+      },
+      from9To10: (m, schema) async {
+        await m
+            .dropColumn(schema.preferencesTable, "piped_instance")
+            .catchError((e, stack) => AppLogger.reportError(e, stack));
+        await m
+            .dropColumn(schema.preferencesTable, "invidious_instance")
+            .catchError((e, stack) => AppLogger.reportError(e, stack));
+        await m
+            .addColumn(
+              schema.sourceMatchTable,
+              sourceMatchTable.sourceInfo,
+            )
+            .catchError((e, stack) => AppLogger.reportError(e, stack));
+        await customStatement("DROP INDEX IF EXISTS uniq_track_match;")
+            .catchError((e, stack) => AppLogger.reportError(e, stack));
+        await m
+            .dropColumn(schema.sourceMatchTable, "source_id")
+            .catchError((e, stack) => AppLogger.reportError(e, stack));
+      },
+    );
+
+    return MigrationStrategy(
+      onUpgrade: (m, from, to) async {
+        final targetV10 = to > 10 ? 10 : to;
+
+        if (from < targetV10) {
+          await migrateToV10(m, from, targetV10);
+        }
+        if (from < 11 && to >= 11) {
+          await customStatement(
+            "ALTER TABLE preferences_table "
+            "ADD COLUMN lyrics_character_edge TEXT NOT NULL DEFAULT '${LyricsCharacterEdge.none.name}'",
+          ).catchError((error, stackTrace) {
             if (!error.toString().contains('duplicate column name')) {
               throw error;
             }
           });
-          await m
-              .addColumn(
-            schema.metadataPluginsTable,
-            schema.metadataPluginsTable.apis,
-          )
-              .catchError((error, stackTrace) {
-            // If the column already exists, ignore the error
+          await customStatement(
+            "ALTER TABLE preferences_table "
+            "ADD COLUMN multi_session_relay_url TEXT NOT NULL DEFAULT ''",
+          ).catchError((error, stackTrace) {
             if (!error.toString().contains('duplicate column name')) {
               throw error;
             }
           });
-          await m
-              .addColumn(
-            schema.metadataPluginsTable,
-            schema.metadataPluginsTable.abilities,
-          )
-              .catchError((error, stackTrace) {
-            // If the column already exists, ignore the error
-            if (!error.toString().contains('duplicate column name')) {
-              throw error;
-            }
-          });
-          await m
-              .addColumn(
-            schema.metadataPluginsTable,
-            schema.metadataPluginsTable.repository,
-          )
-              .catchError((error, stackTrace) {
-            // If the column already exists, ignore the error
-            if (!error.toString().contains('duplicate column name')) {
-              throw error;
-            }
-          });
-          await m
-              .addColumn(
-            schema.metadataPluginsTable,
-            schema.metadataPluginsTable.pluginApiVersion,
-          )
-              .catchError((error, stackTrace) {
-            // If the column already exists, ignore the error
-            if (!error.toString().contains('duplicate column name')) {
-              throw error;
-            }
-          });
-        },
-        from8To9: (m, schema) async {
-          await m
-              .renameTable(schema.pluginsTable, "metadata_plugins_table")
-              .catchError((e, stack) => AppLogger.reportError(e, stack));
-          await m
-              .renameColumn(
-                schema.pluginsTable,
-                "selected",
-                pluginsTable.selectedForMetadata,
-              )
-              .catchError((e, stack) => AppLogger.reportError(e, stack));
-          await m
-              .addColumn(
-                schema.pluginsTable,
-                pluginsTable.selectedForAudioSource,
-              )
-              .catchError((e, stack) => AppLogger.reportError(e, stack));
-        },
-        from9To10: (m, schema) async {
-          await m
-              .dropColumn(schema.preferencesTable, "piped_instance")
-              .catchError((e, stack) => AppLogger.reportError(e, stack));
-          await m
-              .dropColumn(schema.preferencesTable, "invidious_instance")
-              .catchError((e, stack) => AppLogger.reportError(e, stack));
-          await m
-              .addColumn(
-                schema.sourceMatchTable,
-                sourceMatchTable.sourceInfo,
-              )
-              .catchError((e, stack) => AppLogger.reportError(e, stack));
-          await customStatement("DROP INDEX IF EXISTS uniq_track_match;")
-              .catchError((e, stack) => AppLogger.reportError(e, stack));
-          await m
-              .dropColumn(schema.sourceMatchTable, "source_id")
-              .catchError((e, stack) => AppLogger.reportError(e, stack));
-        },
-      ),
+        }
+      },
     );
   }
 }

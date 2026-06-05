@@ -2,6 +2,7 @@
 // GENERATED CODE, DO NOT EDIT BY HAND.
 // ignore_for_file: type=lint
 import 'package:drift/drift.dart';
+import 'legacy_types.dart';
 
 class AuthenticationTable extends Table
     with TableInfo<AuthenticationTable, AuthenticationTableData> {

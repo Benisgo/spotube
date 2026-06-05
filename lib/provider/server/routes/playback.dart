@@ -156,43 +156,57 @@ class ServerPlaybackRoutes {
       );
     }
 
-    String url = track.url ??
+    var activeTrack = track;
+    String url = activeTrack.url ??
         await ref
-            .read(sourcedTrackProvider(track.query).notifier)
+            .read(sourcedTrackProvider(activeTrack.query).notifier)
             .swapWithNextSibling()
             .then((track) => track.url!);
 
-    final options = Options(
-      headers: {
-        ...headers,
-        "user-agent": _randomUserAgent,
-        "Cache-Control": "max-age=3600",
-        "Connection": "keep-alive",
-        "host": Uri.parse(url).host,
-      },
-      responseType: ResponseType.stream,
-      validateStatus: (status) => status! < 400,
-    );
+    Options optionsFor(String sourceUrl) => Options(
+          headers: {
+            ...headers,
+            "user-agent": _randomUserAgent,
+            "Cache-Control": "max-age=3600",
+            "Connection": "keep-alive",
+            "host": Uri.parse(sourceUrl).host,
+          },
+          responseType: ResponseType.stream,
+          validateStatus: (status) => status! < 400,
+        );
 
-    final contentLengthRes = await Future<dio_lib.Response?>.value(
-      dio.head(
+    var options = optionsFor(url);
+
+    dio_lib.Response? contentLengthRes;
+    try {
+      contentLengthRes = await dio.head(
         url,
         options: options.copyWith(responseType: ResponseType.bytes),
-      ),
-    ).catchError((e, stack) async {
+      );
+    } catch (e, stack) {
       AppLogger.reportError(e, stack);
 
-      final sourcedTrack = await ref
-          .read(sourcedTrackProvider(track.query).notifier)
-          .refreshStreamingUrl();
+      final notifier =
+          ref.read(sourcedTrackProvider(activeTrack.query).notifier);
+      activeTrack = await notifier.refreshStreamingUrl();
+      url = activeTrack.url!;
+      options = optionsFor(url);
 
-      url = sourcedTrack.url!;
+      try {
+        contentLengthRes = await dio.head(url, options: options);
+      } catch (refreshError, refreshStack) {
+        AppLogger.reportError(refreshError, refreshStack);
+        if (activeTrack.siblings.isEmpty) rethrow;
 
-      return dio.head(url, options: options);
-    });
+        activeTrack = await notifier.swapWithNextSibling();
+        url = activeTrack.url!;
+        options = optionsFor(url);
+        contentLengthRes = await dio.head(url, options: options);
+      }
+    }
 
     // Redirect to m3u8 link directly as it handles range requests internally
-    if (contentLengthRes?.headers.value("content-type") ==
+    if (contentLengthRes.headers.value("content-type") ==
         "application/vnd.apple.mpegurl") {
       return dio_lib.Response<Uint8List>(
         statusCode: 301,

@@ -1,0 +1,11 @@
+name = "spotube-multi-session"
+main = "src/index.ts"
+compatibility_date = "2026-06-01"
+
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "SpotubeRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["SpotubeRoom"]

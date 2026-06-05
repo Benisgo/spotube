@@ -24,10 +24,24 @@ enum YoutubeClientEngine {
     return switch (this) {
       YoutubeClientEngine.youtubeExplode =>
         YouTubeExplodeEngine.isAvailableForPlatform,
-      YoutubeClientEngine.ytDlp => YtDlpEngine.isAvailableForPlatform,
+      YoutubeClientEngine.ytDlp =>
+        YtDlpEngine.isAvailableForPlatform ||
+            AndroidYtDlpEngine.isAvailableForPlatform,
       YoutubeClientEngine.newPipe => NewPipeEngine.isAvailableForPlatform,
     };
   }
+}
+
+enum LyricsCharacterEdge {
+  none("None"),
+  raised("Raised"),
+  depressed("Depressed"),
+  outline("Outline"),
+  dropShadow("Drop shadow");
+
+  final String label;
+
+  const LyricsCharacterEdge(this.label);
 }
 
 enum SearchMode {
@@ -89,6 +103,10 @@ class PreferencesTable extends Table {
       boolean().withDefault(const Constant(false))();
   IntColumn get connectPort => integer().withDefault(const Constant(-1))();
   BoolColumn get cacheMusic => boolean().withDefault(const Constant(true))();
+  TextColumn get lyricsCharacterEdge => textEnum<LyricsCharacterEdge>()
+      .withDefault(Constant(LyricsCharacterEdge.none.name))();
+  TextColumn get multiSessionRelayUrl =>
+      text().withDefault(const Constant(""))();
 
   // Default values as PreferencesTableData
   static PreferencesTableData defaults() {
@@ -119,6 +137,8 @@ class PreferencesTable extends Table {
       enableConnect: false,
       cacheMusic: true,
       connectPort: -1,
+      lyricsCharacterEdge: LyricsCharacterEdge.none,
+      multiSessionRelayUrl: "",
     );
   }
 }

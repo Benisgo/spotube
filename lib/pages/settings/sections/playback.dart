@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/gestures.dart';
-import 'package:flutter/material.dart' show ListTile;
+import 'package:flutter/material.dart' show ListTile, TextEditingController;
 
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
@@ -17,11 +17,14 @@ import 'package:spotube/modules/settings/youtube_engine_not_installed_dialog.dar
 import 'package:spotube/provider/metadata_plugin/audio_source/quality_presets.dart';
 import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
 import 'package:spotube/services/kv_store/kv_store.dart';
+import 'package:spotube/services/youtube_engine/android_yt_dlp_engine.dart';
 import 'package:spotube/services/youtube_engine/yt_dlp_engine.dart';
 
 import 'package:spotube/utils/platform.dart';
 
 class SettingsPlaybackSection extends HookConsumerWidget {
+  static const _legacyRelayUrl = "https://spotube-multi-session.workers.dev";
+
   const SettingsPlaybackSection({super.key});
 
   @override
@@ -32,6 +35,10 @@ class SettingsPlaybackSection extends HookConsumerWidget {
     final sourcePresetsNotifier =
         ref.watch(audioSourcePresetsProvider.notifier);
     final theme = Theme.of(context);
+    final relayUrl = preferences.multiSessionRelayUrl.trim();
+    final relaySubtitle = relayUrl.isEmpty || relayUrl == _legacyRelayUrl
+        ? "Not configured"
+        : relayUrl;
 
     return SectionCardWithHeading(
       heading: context.l10n.playback,
@@ -51,7 +58,10 @@ class SettingsPlaybackSection extends HookConsumerWidget {
             if (value == null) return;
             if (value == YoutubeClientEngine.ytDlp) {
               final customPath = KVStoreService.getYoutubeEnginePath(value);
-              if (!await YtDlpEngine.isInstalled() &&
+              final isInstalled = kIsAndroid
+                  ? await AndroidYtDlpEngine.isInstalled()
+                  : await YtDlpEngine.isInstalled();
+              if (!isInstalled &&
                   (customPath == null || !await File(customPath).exists()) &&
                   context.mounted) {
                 final hasInstalled = await showDialog<bool>(
@@ -210,6 +220,36 @@ class SettingsPlaybackSection extends HookConsumerWidget {
               ),
             ],
           ),
+        ),
+        ListTile(
+          leading: const Icon(SpotubeIcons.web),
+          title: const Text("Multi-Session relay"),
+          subtitle: Text(relaySubtitle),
+          onTap: () async {
+            final controller = TextEditingController(
+              text: relayUrl == _legacyRelayUrl ? "" : preferences.multiSessionRelayUrl,
+            );
+            final value = await showDialog<String>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text("Multi-Session relay"),
+                content: TextField(controller: controller),
+                actions: [
+                  Button.secondary(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: Text(context.l10n.cancel),
+                  ),
+                  Button.primary(
+                    onPressed: () =>
+                        Navigator.of(context).pop(controller.text.trim()),
+                    child: Text(context.l10n.save),
+                  ),
+                ],
+              ),
+            );
+            if (value == null || value.isEmpty) return;
+            preferencesNotifier.setMultiSessionRelayUrl(value);
+          },
         ),
       ],
     );

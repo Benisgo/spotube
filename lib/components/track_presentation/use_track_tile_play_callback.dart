@@ -71,9 +71,11 @@ Future<void> Function(SpotubeTrackObject track, int index)
       if (isActive || playlist.tracks.containsBy(track, (a) => a.id)) {
         await playlistNotifier.jumpToTrack(track);
       } else {
-        final tracks = await options.pagination.onFetchAll();
+        final initialTracks = options.tracks;
+        if (initialTracks.isEmpty) return;
+
         await playlistNotifier.load(
-          tracks,
+          initialTracks,
           initialIndex: index,
           autoPlay: true,
         );
@@ -84,6 +86,12 @@ Future<void> Function(SpotubeTrackObject track, int index)
         } else {
           historyNotifier.addPlaylists(
               [options.collection as SpotubeSimplePlaylistObject]);
+        }
+
+        final allTracks = await options.pagination.onFetchAll();
+        final remainingTracks = allTracks.skip(initialTracks.length).toList();
+        if (remainingTracks.isNotEmpty) {
+          await playlistNotifier.addTracks(remainingTracks);
         }
       }
     }

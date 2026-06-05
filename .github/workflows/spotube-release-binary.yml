@@ -55,13 +55,13 @@ jobs:
           DOTENV_RELEASE_CONTENT: ${{ secrets.DOTENV_RELEASE }}
         run: |
           if ([string]::IsNullOrWhiteSpace($env:DOTENV_RELEASE_CONTENT)) {
-            @"
-ENABLE_UPDATE_CHECK=1
-LASTFM_API_KEY=
-LASTFM_API_SECRET=
-RELEASE_CHANNEL=${{ inputs.channel }}
-HIDE_DONATIONS=0
-"@ | Set-Content -Path .env
+            @(
+              'ENABLE_UPDATE_CHECK=1'
+              'LASTFM_API_KEY='
+              'LASTFM_API_SECRET='
+              'RELEASE_CHANNEL=${{ inputs.channel }}'
+              'HIDE_DONATIONS=0'
+            ) | Set-Content -Path .env
           } else {
             $env:DOTENV_RELEASE_CONTENT | Set-Content -Path .env
           }

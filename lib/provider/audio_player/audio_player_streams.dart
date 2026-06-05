@@ -19,7 +19,7 @@ import 'package:spotube/services/logger/logger.dart';
 
 class AudioPlayerStreamListeners {
   final Ref ref;
-  late final AudioServices notificationService;
+  AudioServices? notificationService;
   AudioPlayerStreamListeners(this.ref) {
     AudioServices.create(ref, ref.read(audioPlayerProvider.notifier)).then(
       (value) => notificationService = value,
@@ -34,6 +34,7 @@ class AudioPlayerStreamListeners {
     ];
 
     ref.onDispose(() {
+      notificationService?.dispose();
       for (final subscription in subscriptions) {
         subscription.cancel();
       }
@@ -51,7 +52,7 @@ class AudioPlayerStreamListeners {
     return audioPlayer.playlistStream.listen((mpvPlaylist) {
       try {
         if (audioPlayerState.activeTrack == null) return;
-        notificationService.addTrack(audioPlayerState.activeTrack!);
+        notificationService?.addTrack(audioPlayerState.activeTrack!);
         discord.updatePresence(audioPlayerState.activeTrack!);
       } catch (e, stack) {
         AppLogger.reportError(e, stack);

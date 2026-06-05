@@ -5,12 +5,14 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 import 'package:spotube/collections/spotube_icons.dart';
 import 'package:spotube/extensions/context.dart';
+import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/modules/metadata_plugins/plugin_update_available_dialog.dart';
 import 'package:spotube/provider/metadata_plugin/metadata_plugin_provider.dart';
 import 'package:spotube/provider/metadata_plugin/updater/update_checker.dart';
 import 'package:spotube/provider/server/routes/connect.dart';
 import 'package:spotube/services/audio_player/audio_player.dart';
 import 'package:spotube/services/connectivity_adapter.dart';
+import 'package:spotube/services/logger/logger.dart';
 import 'package:spotube/utils/service_utils.dart';
 
 void useGlobalSubscriptions(WidgetRef ref) {
@@ -22,8 +24,17 @@ void useGlobalSubscriptions(WidgetRef ref) {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       ServiceUtils.checkForUpdates(context, ref);
 
-      final pluginUpdate =
-          await ref.read(metadataPluginUpdateCheckerProvider.future);
+      PluginUpdateAvailable? pluginUpdate;
+
+      try {
+        pluginUpdate = await ref.read(metadataPluginUpdateCheckerProvider.future);
+      } catch (error, stackTrace) {
+        await AppLogger.reportError(
+          error,
+          stackTrace,
+          "Global metadata plugin update subscription failed",
+        );
+      }
 
       if (pluginUpdate != null) {
         final pluginConfig = await ref.read(metadataPluginsProvider.future);
@@ -32,7 +43,7 @@ void useGlobalSubscriptions(WidgetRef ref) {
             context: context,
             builder: (context) => MetadataPluginUpdateAvailableDialog(
               plugin: pluginConfig.defaultMetadataPluginConfig!,
-              update: pluginUpdate,
+              update: pluginUpdate!,
             ),
           );
         }

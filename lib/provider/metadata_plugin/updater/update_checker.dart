@@ -12,8 +12,12 @@ final metadataPluginUpdateCheckerProvider =
     return null;
   }
 
-  return metadataPlugin.core
-      .checkUpdate(metadataPluginConfigs.defaultMetadataPluginConfig!);
+  try {
+    return await metadataPlugin.core
+        .checkUpdate(metadataPluginConfigs.defaultMetadataPluginConfig!);
+  } catch (_) {
+    return null;
+  }
 });
 
 final audioSourcePluginUpdateCheckerProvider =
@@ -27,6 +31,10 @@ final audioSourcePluginUpdateCheckerProvider =
     return null;
   }
 
-  return audioSourcePlugin.core
-      .checkUpdate(audioSourcePluginConfigs.defaultAudioSourcePluginConfig!);
+  try {
+    return await audioSourcePlugin.core
+        .checkUpdate(audioSourcePluginConfigs.defaultAudioSourcePluginConfig!);
+  } catch (_) {
+    return null;
+  }
 });

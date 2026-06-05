@@ -102,9 +102,43 @@ class MetadataPluginNotifier extends AsyncNotifier<MetadataPluginState> {
 
     final plugins = await database.pluginsTable.select().get();
 
-    final pluginState = await toStatePlugins(plugins);
+    var pluginState = await toStatePlugins(plugins);
 
     await _loadDefaultPlugins(pluginState);
+
+    final refreshedPlugins = await database.pluginsTable.select().get();
+    pluginState = await toStatePlugins(refreshedPlugins);
+
+    final spotifyPlugin = pluginState.plugins.firstWhereOrNull(
+      (plugin) =>
+          (plugin.repository?.contains("Benisgo/spotube-plugin-spotify") ==
+                  true ||
+              plugin.slug.contains("spotify")) &&
+          plugin.abilities.contains(PluginAbilities.metadata),
+    );
+    final fallbackPlugin = pluginState.plugins.firstWhereOrNull(
+      (plugin) => plugin.abilities.contains(PluginAbilities.metadata),
+    );
+
+    final preferredMetadataPlugin = spotifyPlugin ?? fallbackPlugin;
+    if (preferredMetadataPlugin != null &&
+        pluginState.defaultMetadataPluginConfig != preferredMetadataPlugin) {
+      await setDefaultMetadataPlugin(preferredMetadataPlugin);
+      final latestPlugins = await database.pluginsTable.select().get();
+      pluginState = await toStatePlugins(latestPlugins);
+    }
+
+    if (pluginState.defaultAudioSourcePluginConfig == null) {
+      final defaultAudioSource = pluginState.plugins.firstWhereOrNull(
+        (plugin) => plugin.abilities.contains(PluginAbilities.audioSource),
+      );
+
+      if (defaultAudioSource != null) {
+        await setDefaultAudioSourcePlugin(defaultAudioSource);
+        final latestPlugins = await database.pluginsTable.select().get();
+        pluginState = await toStatePlugins(latestPlugins);
+      }
+    }
 
     return pluginState;
   }
@@ -178,6 +212,7 @@ class MetadataPluginNotifier extends AsyncNotifier<MetadataPluginState> {
 
   Future<void> _loadDefaultPlugins(MetadataPluginState pluginState) async {
     const plugins = [
+      "spotube-plugin-spotify",
       "spotube-plugin-musicbrainz-listenbrainz",
       "spotube-plugin-youtube-audio",
     ];
@@ -188,6 +223,35 @@ class MetadataPluginNotifier extends AsyncNotifier<MetadataPluginState> {
       );
       final pluginConfig =
           await extractPluginArchive(byteData.buffer.asUint8List());
+
+      final installedPlugins = await database.pluginsTable.select().get();
+      final installedPluginConfigs = await toStatePlugins(installedPlugins);
+      final matchingPlugins = installedPluginConfigs.plugins.where((installed) {
+        final sameRepository = pluginConfig.repository != null &&
+            installed.repository == pluginConfig.repository;
+        final sameIdentity = installed.author == pluginConfig.author &&
+            installed.entryPoint == pluginConfig.entryPoint;
+        return sameRepository || sameIdentity;
+      }).toList();
+
+      for (final installed in matchingPlugins) {
+        final isSameBuild = installed.name == pluginConfig.name &&
+            installed.version == pluginConfig.version;
+        if (isSameBuild) continue;
+
+        final isDefaultMetadata =
+            installed == pluginState.defaultMetadataPluginConfig;
+        final isDefaultAudioSource =
+            installed == pluginState.defaultAudioSourcePluginConfig;
+
+        await removePlugin(installed);
+
+        if (isDefaultMetadata || isDefaultAudioSource) {
+          final latestPlugins = await database.pluginsTable.select().get();
+          pluginState = await toStatePlugins(latestPlugins);
+        }
+      }
+
       try {
         await addPlugin(pluginConfig);
       } on MetadataPluginException catch (e) {
@@ -404,6 +468,9 @@ class MetadataPluginNotifier extends AsyncNotifier<MetadataPluginState> {
       throw MetadataPluginException.duplicatePlugin();
     }
 
+    final currentState = state.valueOrNull ??
+        await toStatePlugins(await database.pluginsTable.select().get());
+
     await database.pluginsTable.insertOne(
       PluginsTableCompanion.insert(
         name: plugin.name,
@@ -417,19 +484,16 @@ class MetadataPluginNotifier extends AsyncNotifier<MetadataPluginState> {
         repository: Value(plugin.repository),
         // Setting the very first plugin as the default plugin
         selectedForMetadata: Value(
-          (state.valueOrNull?.plugins
-                      .where(
-                          (d) => d.abilities.contains(PluginAbilities.metadata))
-                      .isEmpty ??
-                  true) &&
+          (currentState.plugins
+                  .where((d) => d.abilities.contains(PluginAbilities.metadata))
+                  .isEmpty) &&
               plugin.abilities.contains(PluginAbilities.metadata),
         ),
         selectedForAudioSource: Value(
-          (state.valueOrNull?.plugins
-                      .where((d) =>
-                          d.abilities.contains(PluginAbilities.audioSource))
-                      .isEmpty ??
-                  true) &&
+          (currentState.plugins
+                  .where(
+                      (d) => d.abilities.contains(PluginAbilities.audioSource))
+                  .isEmpty) &&
               plugin.abilities.contains(PluginAbilities.audioSource),
         ),
       ),
@@ -487,10 +551,10 @@ class MetadataPluginNotifier extends AsyncNotifier<MetadataPluginState> {
     }
 
     final oldPlugin = pluginRes.first;
-    final oldPluginApiVersion = Version.parse(oldPlugin.pluginApiVersion);
-    final newPluginApiVersion = Version.parse(newPlugin.pluginApiVersion);
+    final oldPluginVersion = Version.parse(oldPlugin.version);
+    final newPluginVersion = Version.parse(newPlugin.version);
 
-    return newPluginApiVersion > oldPluginApiVersion;
+    return newPluginVersion > oldPluginVersion;
   }
 
   Future<void> updatePlugin(

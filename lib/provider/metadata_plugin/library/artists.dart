@@ -32,15 +32,6 @@ class MetadataPluginSavedArtistNotifier
       if (_isRecoverableLibraryError(e) && state.value != null) {
         return state.value!;
       }
-      if (_isRecoverableLibraryError(e)) {
-        return SpotubePaginationResponseObject(
-          limit: limit,
-          nextOffset: null,
-          total: 0,
-          hasMore: false,
-          items: [],
-        );
-      }
       rethrow;
     }
   }

@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:auto_route/auto_route.dart';
+import 'package:flutter/services.dart';
 import 'package:hetu_otp_util/hetu_otp_util.dart';
 import 'package:hetu_script/hetu_script.dart';
 import 'package:hetu_spotube_plugin/hetu_spotube_plugin.dart' as spotube_plugin;
@@ -137,6 +138,13 @@ class MetadataPlugin {
 
     await HetuStdLoader.loadBytecodeFlutter(hetu);
     await HetuOtpUtilLoader.loadBytecodeFlutter(hetu);
+    final spotifyGqlBytecode = await rootBundle.load(
+      'assets/bytecode/spotify_gql_api_client.out',
+    );
+    hetu.loadBytecode(
+      bytes: spotifyGqlBytecode.buffer.asUint8List(),
+      moduleName: 'spotify_gql_api_client',
+    );
     await HetuSpotubePluginLoader.loadBytecodeFlutter(hetu);
 
     hetu.loadBytecode(bytes: byteCode, moduleName: "plugin");

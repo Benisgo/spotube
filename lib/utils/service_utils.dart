@@ -254,59 +254,68 @@ abstract class ServiceUtils {
     if (checkUpdate == false) return;
     final packageInfo = await PackageInfo.fromPlatform();
 
-    if (_shouldUseNightlyUpdateChannel(packageInfo)) {
-      final value = await globalDio.getUri(
-        Uri.parse(
-          "https://api.github.com/repos/${Env.updateRepository}/actions/workflows/spotube-release-binary.yml/runs?status=success&per_page=1",
-        ),
-        options: Options(
-          responseType: ResponseType.json,
-        ),
-      );
+    try {
+      if (_shouldUseNightlyUpdateChannel(packageInfo)) {
+        final value = await globalDio.getUri(
+          Uri.parse(
+            "https://api.github.com/repos/${Env.updateRepository}/actions/workflows/spotube-release-binary.yml/runs?status=success&per_page=1",
+          ),
+          options: Options(
+            responseType: ResponseType.json,
+          ),
+        );
 
-      final buildNum = value.data["workflow_runs"][0]["run_number"] as int;
+        final buildNum = value.data["workflow_runs"][0]["run_number"] as int;
 
-      if (buildNum <= int.parse(packageInfo.buildNumber) || !context.mounted) {
-        return;
+        if (buildNum <= int.parse(packageInfo.buildNumber) ||
+            !context.mounted) {
+          return;
+        }
+
+        await showDialog(
+          context: context,
+          barrierDismissible: true,
+          barrierColor: Colors.black.withAlpha(66),
+          builder: (context) {
+            return RootAppUpdateDialog.nightly(nightlyBuildNum: buildNum);
+          },
+        );
+      } else {
+        final value = await globalDio.getUri(
+          Uri.parse(
+            "https://api.github.com/repos/${Env.updateRepository}/releases/latest",
+          ),
+        );
+        final tagName = (value.data["tag_name"] as String).replaceAll("v", "");
+        final currentVersion = packageInfo.version == "Unknown"
+            ? null
+            : Version.parse(packageInfo.version);
+        final latestVersion =
+            tagName == "nightly" ? null : Version.parse(tagName);
+
+        if (currentVersion == null ||
+            latestVersion == null ||
+            (latestVersion.isPreRelease && !currentVersion.isPreRelease) ||
+            (!latestVersion.isPreRelease && currentVersion.isPreRelease)) {
+          return;
+        }
+
+        if (latestVersion <= currentVersion || !context.mounted) return;
+
+        showDialog(
+          context: context,
+          barrierDismissible: true,
+          barrierColor: Colors.black.withAlpha(66),
+          builder: (context) {
+            return RootAppUpdateDialog(version: latestVersion);
+          },
+        );
       }
-
-      await showDialog(
-        context: context,
-        barrierDismissible: true,
-        barrierColor: Colors.black.withAlpha(66),
-        builder: (context) {
-          return RootAppUpdateDialog.nightly(nightlyBuildNum: buildNum);
-        },
-      );
-    } else {
-      final value = await globalDio.getUri(
-        Uri.parse(
-          "https://api.github.com/repos/${Env.updateRepository}/releases/latest",
-        ),
-      );
-      final tagName = (value.data["tag_name"] as String).replaceAll("v", "");
-      final currentVersion = packageInfo.version == "Unknown"
-          ? null
-          : Version.parse(packageInfo.version);
-      final latestVersion =
-          tagName == "nightly" ? null : Version.parse(tagName);
-
-      if (currentVersion == null ||
-          latestVersion == null ||
-          (latestVersion.isPreRelease && !currentVersion.isPreRelease) ||
-          (!latestVersion.isPreRelease && currentVersion.isPreRelease)) {
-        return;
-      }
-
-      if (latestVersion <= currentVersion || !context.mounted) return;
-
-      showDialog(
-        context: context,
-        barrierDismissible: true,
-        barrierColor: Colors.black.withAlpha(66),
-        builder: (context) {
-          return RootAppUpdateDialog(version: latestVersion);
-        },
+    } catch (error, stackTrace) {
+      await AppLogger.reportError(
+        error,
+        stackTrace,
+        "App update check failed",
       );
     }
   }

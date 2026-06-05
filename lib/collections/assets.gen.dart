@@ -30,6 +30,17 @@ class $AssetsBrandingGen {
       [spotubeLogoLight, spotubeLogoIco, spotubeLogoPng];
 }
 
+class $AssetsBytecodeGen {
+  const $AssetsBytecodeGen();
+
+  /// File path: assets/bytecode/spotify_gql_api_client.out
+  String get spotifyGqlApiClient =>
+      'assets/bytecode/spotify_gql_api_client.out';
+
+  /// List of all assets
+  List<String> get values => [spotifyGqlApiClient];
+}
+
 class $AssetsImagesGen {
   const $AssetsImagesGen();
 
@@ -74,6 +85,10 @@ class $AssetsPluginsGen {
       get spotubePluginMusicbrainzListenbrainz =>
           const $AssetsPluginsSpotubePluginMusicbrainzListenbrainzGen();
 
+  /// Directory path: assets/plugins/spotube-plugin-spotify
+  $AssetsPluginsSpotubePluginSpotifyGen get spotubePluginSpotify =>
+      const $AssetsPluginsSpotubePluginSpotifyGen();
+
   /// Directory path: assets/plugins/spotube-plugin-youtube-audio
   $AssetsPluginsSpotubePluginYoutubeAudioGen get spotubePluginYoutubeAudio =>
       const $AssetsPluginsSpotubePluginYoutubeAudioGen();
@@ -109,6 +124,16 @@ class $AssetsPluginsSpotubePluginMusicbrainzListenbrainzGen {
   List<String> get values => [plugin];
 }
 
+class $AssetsPluginsSpotubePluginSpotifyGen {
+  const $AssetsPluginsSpotubePluginSpotifyGen();
+
+  /// File path: assets/plugins/spotube-plugin-spotify/plugin.smplug
+  String get plugin => 'assets/plugins/spotube-plugin-spotify/plugin.smplug';
+
+  /// List of all assets
+  List<String> get values => [plugin];
+}
+
 class $AssetsPluginsSpotubePluginYoutubeAudioGen {
   const $AssetsPluginsSpotubePluginYoutubeAudioGen();
 
@@ -125,6 +150,7 @@ class Assets {
 
   static const String license = 'LICENSE';
   static const $AssetsBrandingGen branding = $AssetsBrandingGen();
+  static const $AssetsBytecodeGen bytecode = $AssetsBytecodeGen();
   static const $AssetsImagesGen images = $AssetsImagesGen();
   static const $AssetsPluginsGen plugins = $AssetsPluginsGen();
 

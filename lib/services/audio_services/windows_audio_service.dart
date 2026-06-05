@@ -15,7 +15,17 @@ class WindowsAudioService {
   final subscriptions = <StreamSubscription>[];
 
   WindowsAudioService(this.ref, this.audioPlayerNotifier)
-      : smtc = SMTCWindows(enabled: false) {
+      : smtc = SMTCWindows(
+          config: const SMTCConfig(
+            playEnabled: true,
+            pauseEnabled: true,
+            stopEnabled: true,
+            nextEnabled: true,
+            prevEnabled: true,
+            fastForwardEnabled: false,
+            rewindEnabled: false,
+          ),
+        ) {
     smtc.setPlaybackStatus(PlaybackStatus.stopped);
     final buttonStream = smtc.buttonPressStream.listen((event) {
       switch (event) {
@@ -76,9 +86,6 @@ class WindowsAudioService {
   }
 
   Future<void> addTrack(SpotubeTrackObject track) async {
-    if (!smtc.enabled) {
-      await smtc.enableSmtc();
-    }
     await smtc.updateMetadata(
       MusicMetadata(
         title: track.name,

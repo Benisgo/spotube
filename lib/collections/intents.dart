@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:spotube/collections/routes.dart';
 import 'package:spotube/collections/routes.gr.dart';
 import 'package:spotube/modules/player/player_controls.dart';
+import 'package:spotube/provider/audio_player/audio_player.dart';
 import 'package:spotube/provider/audio_player/querying_track_info.dart';
 import 'package:spotube/services/audio_player/audio_player.dart';
 import 'package:spotube/utils/platform.dart';
@@ -27,6 +28,67 @@ class PlayPauseAction extends Action<PlayPauseIntent> {
     } else {
       await audioPlayer.pause();
     }
+    return null;
+  }
+}
+
+class PlayIntent extends Intent {
+  const PlayIntent();
+}
+
+class PlayAction extends Action<PlayIntent> {
+  @override
+  invoke(intent) async {
+    await audioPlayer.resume();
+    return null;
+  }
+}
+
+class PauseIntent extends Intent {
+  const PauseIntent();
+}
+
+class PauseAction extends Action<PauseIntent> {
+  @override
+  invoke(intent) async {
+    await audioPlayer.pause();
+    return null;
+  }
+}
+
+class NextTrackIntent extends Intent {
+  const NextTrackIntent();
+}
+
+class NextTrackAction extends Action<NextTrackIntent> {
+  @override
+  invoke(intent) async {
+    await audioPlayer.skipToNext();
+    return null;
+  }
+}
+
+class PreviousTrackIntent extends Intent {
+  const PreviousTrackIntent();
+}
+
+class PreviousTrackAction extends Action<PreviousTrackIntent> {
+  @override
+  invoke(intent) async {
+    await audioPlayer.skipToPrevious();
+    return null;
+  }
+}
+
+class StopIntent extends Intent {
+  final WidgetRef ref;
+  const StopIntent(this.ref);
+}
+
+class StopAction extends Action<StopIntent> {
+  @override
+  invoke(intent) async {
+    await intent.ref.read(audioPlayerProvider.notifier).stop();
     return null;
   }
 }

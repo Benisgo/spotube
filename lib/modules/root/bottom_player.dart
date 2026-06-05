@@ -86,14 +86,14 @@ class BottomPlayer extends HookConsumerWidget {
 
                         final prevSize = await windowManager.getSize();
                         await windowManager.setMinimumSize(
-                          const Size(300, 300),
+                          const Size(260, 120),
                         );
                         await windowManager.setAlwaysOnTop(true);
                         if (!kIsLinux) {
                           await windowManager.setHasShadow(false);
                         }
                         await windowManager.setAlignment(Alignment.topRight);
-                        await windowManager.setSize(const Size(400, 500));
+                        await windowManager.setSize(const Size(320, 170));
                         await Future.delayed(
                           const Duration(milliseconds: 100),
                           () async {

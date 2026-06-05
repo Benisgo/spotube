@@ -764,6 +764,14 @@ class $PreferencesTableTable extends PreferencesTable
       defaultConstraints:
           GeneratedColumn.constraintIsAlways('CHECK ("cache_music" IN (0, 1))'),
       defaultValue: const Constant(true));
+  static const VerificationMeta _miniPlayerTransparencyMeta =
+      const VerificationMeta('miniPlayerTransparency');
+  @override
+  late final GeneratedColumn<double> miniPlayerTransparency =
+      GeneratedColumn<double>('mini_player_transparency', aliasedName, false,
+          type: DriftSqlType.double,
+          requiredDuringInsert: false,
+          defaultValue: const Constant(0.55));
   @override
   late final GeneratedColumnWithTypeConverter<LyricsCharacterEdge, String>
       lyricsCharacterEdge = GeneratedColumn<String>(
@@ -777,12 +785,10 @@ class $PreferencesTableTable extends PreferencesTable
       const VerificationMeta('multiSessionRelayUrl');
   @override
   late final GeneratedColumn<String> multiSessionRelayUrl =
-      GeneratedColumn<String>(
-          'multi_session_relay_url', aliasedName, false,
+      GeneratedColumn<String>('multi_session_relay_url', aliasedName, false,
           type: DriftSqlType.string,
           requiredDuringInsert: false,
-          defaultValue:
-              const Constant(""));
+          defaultValue: const Constant(""));
   @override
   List<GeneratedColumn> get $columns => [
         id,
@@ -809,6 +815,7 @@ class $PreferencesTableTable extends PreferencesTable
         enableConnect,
         connectPort,
         cacheMusic,
+        miniPlayerTransparency,
         lyricsCharacterEdge,
         multiSessionRelayUrl
       ];
@@ -910,6 +917,12 @@ class $PreferencesTableTable extends PreferencesTable
           cacheMusic.isAcceptableOrUnknown(
               data['cache_music']!, _cacheMusicMeta));
     }
+    if (data.containsKey('mini_player_transparency')) {
+      context.handle(
+          _miniPlayerTransparencyMeta,
+          miniPlayerTransparency.isAcceptableOrUnknown(
+              data['mini_player_transparency']!, _miniPlayerTransparencyMeta));
+    }
     if (data.containsKey('multi_session_relay_url')) {
       context.handle(
           _multiSessionRelayUrlMeta,
@@ -983,6 +996,9 @@ class $PreferencesTableTable extends PreferencesTable
           .read(DriftSqlType.int, data['${effectivePrefix}connect_port'])!,
       cacheMusic: attachedDatabase.typeMapping
           .read(DriftSqlType.bool, data['${effectivePrefix}cache_music'])!,
+      miniPlayerTransparency: attachedDatabase.typeMapping.read(
+          DriftSqlType.double,
+          data['${effectivePrefix}mini_player_transparency'])!,
       lyricsCharacterEdge: $PreferencesTableTable.$converterlyricsCharacterEdge
           .fromSql(attachedDatabase.typeMapping.read(DriftSqlType.string,
               data['${effectivePrefix}lyrics_character_edge'])!),
@@ -1048,6 +1064,7 @@ class PreferencesTableData extends DataClass
   final bool enableConnect;
   final int connectPort;
   final bool cacheMusic;
+  final double miniPlayerTransparency;
   final LyricsCharacterEdge lyricsCharacterEdge;
   final String multiSessionRelayUrl;
   const PreferencesTableData(
@@ -1075,6 +1092,7 @@ class PreferencesTableData extends DataClass
       required this.enableConnect,
       required this.connectPort,
       required this.cacheMusic,
+      required this.miniPlayerTransparency,
       required this.lyricsCharacterEdge,
       required this.multiSessionRelayUrl});
   @override
@@ -1136,6 +1154,7 @@ class PreferencesTableData extends DataClass
     map['enable_connect'] = Variable<bool>(enableConnect);
     map['connect_port'] = Variable<int>(connectPort);
     map['cache_music'] = Variable<bool>(cacheMusic);
+    map['mini_player_transparency'] = Variable<double>(miniPlayerTransparency);
     {
       map['lyrics_character_edge'] = Variable<String>($PreferencesTableTable
           .$converterlyricsCharacterEdge
@@ -1173,6 +1192,7 @@ class PreferencesTableData extends DataClass
       enableConnect: Value(enableConnect),
       connectPort: Value(connectPort),
       cacheMusic: Value(cacheMusic),
+      miniPlayerTransparency: Value(miniPlayerTransparency),
       lyricsCharacterEdge: Value(lyricsCharacterEdge),
       multiSessionRelayUrl: Value(multiSessionRelayUrl),
     );
@@ -1214,6 +1234,8 @@ class PreferencesTableData extends DataClass
       enableConnect: serializer.fromJson<bool>(json['enableConnect']),
       connectPort: serializer.fromJson<int>(json['connectPort']),
       cacheMusic: serializer.fromJson<bool>(json['cacheMusic']),
+      miniPlayerTransparency:
+          serializer.fromJson<double>(json['miniPlayerTransparency']),
       lyricsCharacterEdge: $PreferencesTableTable.$converterlyricsCharacterEdge
           .fromJson(serializer.fromJson<String>(json['lyricsCharacterEdge'])),
       multiSessionRelayUrl:
@@ -1256,6 +1278,8 @@ class PreferencesTableData extends DataClass
       'enableConnect': serializer.toJson<bool>(enableConnect),
       'connectPort': serializer.toJson<int>(connectPort),
       'cacheMusic': serializer.toJson<bool>(cacheMusic),
+      'miniPlayerTransparency':
+          serializer.toJson<double>(miniPlayerTransparency),
       'lyricsCharacterEdge': serializer.toJson<String>($PreferencesTableTable
           .$converterlyricsCharacterEdge
           .toJson(lyricsCharacterEdge)),
@@ -1288,6 +1312,7 @@ class PreferencesTableData extends DataClass
           bool? enableConnect,
           int? connectPort,
           bool? cacheMusic,
+          double? miniPlayerTransparency,
           LyricsCharacterEdge? lyricsCharacterEdge,
           String? multiSessionRelayUrl}) =>
       PreferencesTableData(
@@ -1316,6 +1341,8 @@ class PreferencesTableData extends DataClass
         enableConnect: enableConnect ?? this.enableConnect,
         connectPort: connectPort ?? this.connectPort,
         cacheMusic: cacheMusic ?? this.cacheMusic,
+        miniPlayerTransparency:
+            miniPlayerTransparency ?? this.miniPlayerTransparency,
         lyricsCharacterEdge: lyricsCharacterEdge ?? this.lyricsCharacterEdge,
         multiSessionRelayUrl: multiSessionRelayUrl ?? this.multiSessionRelayUrl,
       );
@@ -1380,6 +1407,9 @@ class PreferencesTableData extends DataClass
           data.connectPort.present ? data.connectPort.value : this.connectPort,
       cacheMusic:
           data.cacheMusic.present ? data.cacheMusic.value : this.cacheMusic,
+      miniPlayerTransparency: data.miniPlayerTransparency.present
+          ? data.miniPlayerTransparency.value
+          : this.miniPlayerTransparency,
       lyricsCharacterEdge: data.lyricsCharacterEdge.present
           ? data.lyricsCharacterEdge.value
           : this.lyricsCharacterEdge,
@@ -1416,6 +1446,7 @@ class PreferencesTableData extends DataClass
           ..write('enableConnect: $enableConnect, ')
           ..write('connectPort: $connectPort, ')
           ..write('cacheMusic: $cacheMusic, ')
+          ..write('miniPlayerTransparency: $miniPlayerTransparency, ')
           ..write('lyricsCharacterEdge: $lyricsCharacterEdge, ')
           ..write('multiSessionRelayUrl: $multiSessionRelayUrl')
           ..write(')'))
@@ -1448,6 +1479,7 @@ class PreferencesTableData extends DataClass
         enableConnect,
         connectPort,
         cacheMusic,
+        miniPlayerTransparency,
         lyricsCharacterEdge,
         multiSessionRelayUrl
       ]);
@@ -1479,6 +1511,7 @@ class PreferencesTableData extends DataClass
           other.enableConnect == this.enableConnect &&
           other.connectPort == this.connectPort &&
           other.cacheMusic == this.cacheMusic &&
+          other.miniPlayerTransparency == this.miniPlayerTransparency &&
           other.lyricsCharacterEdge == this.lyricsCharacterEdge &&
           other.multiSessionRelayUrl == this.multiSessionRelayUrl);
 }
@@ -1508,6 +1541,7 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
   final Value<bool> enableConnect;
   final Value<int> connectPort;
   final Value<bool> cacheMusic;
+  final Value<double> miniPlayerTransparency;
   final Value<LyricsCharacterEdge> lyricsCharacterEdge;
   final Value<String> multiSessionRelayUrl;
   const PreferencesTableCompanion({
@@ -1535,6 +1569,7 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
     this.enableConnect = const Value.absent(),
     this.connectPort = const Value.absent(),
     this.cacheMusic = const Value.absent(),
+    this.miniPlayerTransparency = const Value.absent(),
     this.lyricsCharacterEdge = const Value.absent(),
     this.multiSessionRelayUrl = const Value.absent(),
   });
@@ -1563,6 +1598,7 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
     this.enableConnect = const Value.absent(),
     this.connectPort = const Value.absent(),
     this.cacheMusic = const Value.absent(),
+    this.miniPlayerTransparency = const Value.absent(),
     this.lyricsCharacterEdge = const Value.absent(),
     this.multiSessionRelayUrl = const Value.absent(),
   });
@@ -1591,6 +1627,7 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
     Expression<bool>? enableConnect,
     Expression<int>? connectPort,
     Expression<bool>? cacheMusic,
+    Expression<double>? miniPlayerTransparency,
     Expression<String>? lyricsCharacterEdge,
     Expression<String>? multiSessionRelayUrl,
   }) {
@@ -1622,6 +1659,8 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
       if (enableConnect != null) 'enable_connect': enableConnect,
       if (connectPort != null) 'connect_port': connectPort,
       if (cacheMusic != null) 'cache_music': cacheMusic,
+      if (miniPlayerTransparency != null)
+        'mini_player_transparency': miniPlayerTransparency,
       if (lyricsCharacterEdge != null)
         'lyrics_character_edge': lyricsCharacterEdge,
       if (multiSessionRelayUrl != null)
@@ -1654,6 +1693,7 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
       Value<bool>? enableConnect,
       Value<int>? connectPort,
       Value<bool>? cacheMusic,
+      Value<double>? miniPlayerTransparency,
       Value<LyricsCharacterEdge>? lyricsCharacterEdge,
       Value<String>? multiSessionRelayUrl}) {
     return PreferencesTableCompanion(
@@ -1681,6 +1721,8 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
       enableConnect: enableConnect ?? this.enableConnect,
       connectPort: connectPort ?? this.connectPort,
       cacheMusic: cacheMusic ?? this.cacheMusic,
+      miniPlayerTransparency:
+          miniPlayerTransparency ?? this.miniPlayerTransparency,
       lyricsCharacterEdge: lyricsCharacterEdge ?? this.lyricsCharacterEdge,
       multiSessionRelayUrl: multiSessionRelayUrl ?? this.multiSessionRelayUrl,
     );
@@ -1774,6 +1816,10 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
     if (cacheMusic.present) {
       map['cache_music'] = Variable<bool>(cacheMusic.value);
     }
+    if (miniPlayerTransparency.present) {
+      map['mini_player_transparency'] =
+          Variable<double>(miniPlayerTransparency.value);
+    }
     if (lyricsCharacterEdge.present) {
       map['lyrics_character_edge'] = Variable<String>($PreferencesTableTable
           .$converterlyricsCharacterEdge
@@ -1813,6 +1859,7 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
           ..write('enableConnect: $enableConnect, ')
           ..write('connectPort: $connectPort, ')
           ..write('cacheMusic: $cacheMusic, ')
+          ..write('miniPlayerTransparency: $miniPlayerTransparency, ')
           ..write('lyricsCharacterEdge: $lyricsCharacterEdge, ')
           ..write('multiSessionRelayUrl: $multiSessionRelayUrl')
           ..write(')'))
@@ -4605,6 +4652,7 @@ typedef $$PreferencesTableTableCreateCompanionBuilder
   Value<bool> enableConnect,
   Value<int> connectPort,
   Value<bool> cacheMusic,
+  Value<double> miniPlayerTransparency,
   Value<LyricsCharacterEdge> lyricsCharacterEdge,
   Value<String> multiSessionRelayUrl,
 });
@@ -4634,6 +4682,7 @@ typedef $$PreferencesTableTableUpdateCompanionBuilder
   Value<bool> enableConnect,
   Value<int> connectPort,
   Value<bool> cacheMusic,
+  Value<double> miniPlayerTransparency,
   Value<LyricsCharacterEdge> lyricsCharacterEdge,
   Value<String> multiSessionRelayUrl,
 });
@@ -4746,6 +4795,10 @@ class $$PreferencesTableTableFilterComposer
   ColumnFilters<bool> get cacheMusic => $composableBuilder(
       column: $table.cacheMusic, builder: (column) => ColumnFilters(column));
 
+  ColumnFilters<double> get miniPlayerTransparency => $composableBuilder(
+      column: $table.miniPlayerTransparency,
+      builder: (column) => ColumnFilters(column));
+
   ColumnWithTypeConverterFilters<LyricsCharacterEdge, LyricsCharacterEdge,
           String>
       get lyricsCharacterEdge => $composableBuilder(
@@ -4853,6 +4906,10 @@ class $$PreferencesTableTableOrderingComposer
   ColumnOrderings<bool> get cacheMusic => $composableBuilder(
       column: $table.cacheMusic, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<double> get miniPlayerTransparency => $composableBuilder(
+      column: $table.miniPlayerTransparency,
+      builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get lyricsCharacterEdge => $composableBuilder(
       column: $table.lyricsCharacterEdge,
       builder: (column) => ColumnOrderings(column));
@@ -4949,6 +5006,9 @@ class $$PreferencesTableTableAnnotationComposer
   GeneratedColumn<bool> get cacheMusic => $composableBuilder(
       column: $table.cacheMusic, builder: (column) => column);
 
+  GeneratedColumn<double> get miniPlayerTransparency => $composableBuilder(
+      column: $table.miniPlayerTransparency, builder: (column) => column);
+
   GeneratedColumnWithTypeConverter<LyricsCharacterEdge, String>
       get lyricsCharacterEdge => $composableBuilder(
           column: $table.lyricsCharacterEdge, builder: (column) => column);
@@ -5010,6 +5070,7 @@ class $$PreferencesTableTableTableManager extends RootTableManager<
             Value<bool> enableConnect = const Value.absent(),
             Value<int> connectPort = const Value.absent(),
             Value<bool> cacheMusic = const Value.absent(),
+            Value<double> miniPlayerTransparency = const Value.absent(),
             Value<LyricsCharacterEdge> lyricsCharacterEdge =
                 const Value.absent(),
             Value<String> multiSessionRelayUrl = const Value.absent(),
@@ -5039,6 +5100,7 @@ class $$PreferencesTableTableTableManager extends RootTableManager<
             enableConnect: enableConnect,
             connectPort: connectPort,
             cacheMusic: cacheMusic,
+            miniPlayerTransparency: miniPlayerTransparency,
             lyricsCharacterEdge: lyricsCharacterEdge,
             multiSessionRelayUrl: multiSessionRelayUrl,
           ),
@@ -5068,6 +5130,7 @@ class $$PreferencesTableTableTableManager extends RootTableManager<
             Value<bool> enableConnect = const Value.absent(),
             Value<int> connectPort = const Value.absent(),
             Value<bool> cacheMusic = const Value.absent(),
+            Value<double> miniPlayerTransparency = const Value.absent(),
             Value<LyricsCharacterEdge> lyricsCharacterEdge =
                 const Value.absent(),
             Value<String> multiSessionRelayUrl = const Value.absent(),
@@ -5097,6 +5160,7 @@ class $$PreferencesTableTableTableManager extends RootTableManager<
             enableConnect: enableConnect,
             connectPort: connectPort,
             cacheMusic: cacheMusic,
+            miniPlayerTransparency: miniPlayerTransparency,
             lyricsCharacterEdge: lyricsCharacterEdge,
             multiSessionRelayUrl: multiSessionRelayUrl,
           ),

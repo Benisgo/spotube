@@ -227,6 +227,14 @@ class UserPreferencesNotifier extends Notifier<PreferencesTableData> {
     setData(PreferencesTableCompanion(cacheMusic: Value(cache)));
   }
 
+  void setMiniPlayerTransparency(double transparency) {
+    setData(
+      PreferencesTableCompanion(
+        miniPlayerTransparency: Value(transparency.clamp(0.0, 1.0)),
+      ),
+    );
+  }
+
   void setLyricsCharacterEdge(LyricsCharacterEdge edge) {
     setData(PreferencesTableCompanion(lyricsCharacterEdge: Value(edge)));
   }

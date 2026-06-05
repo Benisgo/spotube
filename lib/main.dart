@@ -92,10 +92,6 @@ Future<void> _initializeBackgroundDesktopServices() async {
     () => FlutterDiscordRPC.initialize(Env.discordAppId),
   );
 
-  if (kIsWindows) {
-    await _runStartupStep('SMTC initialize', () => SMTCWindows.initialize());
-  }
-
   await _runStartupStep(
     'local notifier setup',
     () => localNotifier.setup(appName: 'Spotube'),
@@ -140,6 +136,10 @@ Future<void> main(List<String> rawArgs) async {
     if (kIsAndroid || kIsDesktop) {
       await _runStartupStep(
           'NewPipe extractor init', () => NewPipeExtractor.init());
+    }
+
+    if (kIsWindows) {
+      await _runStartupStep('SMTC initialize', () => SMTCWindows.initialize());
     }
 
     if (!kIsWeb) {
@@ -313,6 +313,14 @@ class Spotube extends HookConsumerWidget {
             value,
           );
         }),
+        LogicalKeySet(LogicalKeyboardKey.mediaPlay): const PlayIntent(),
+        LogicalKeySet(LogicalKeyboardKey.mediaPause): const PauseIntent(),
+        LogicalKeySet(LogicalKeyboardKey.mediaPlayPause): PlayPauseIntent(ref),
+        LogicalKeySet(LogicalKeyboardKey.mediaTrackNext):
+            const NextTrackIntent(),
+        LogicalKeySet(LogicalKeyboardKey.mediaTrackPrevious):
+            const PreviousTrackIntent(),
+        LogicalKeySet(LogicalKeyboardKey.mediaStop): StopIntent(ref),
         LogicalKeySet(LogicalKeyboardKey.space): PlayPauseIntent(ref),
         LogicalKeySet(LogicalKeyboardKey.comma, LogicalKeyboardKey.control):
             NavigationIntent(router, "/settings"),
@@ -364,7 +372,12 @@ class Spotube extends HookConsumerWidget {
       },
       actions: {
         ...WidgetsApp.defaultActions,
+        PlayIntent: PlayAction(),
+        PauseIntent: PauseAction(),
         PlayPauseIntent: PlayPauseAction(),
+        NextTrackIntent: NextTrackAction(),
+        PreviousTrackIntent: PreviousTrackAction(),
+        StopIntent: StopAction(),
         NavigationIntent: NavigationAction(),
         HomeTabIntent: HomeTabAction(),
         CloseAppIntent: CloseAppAction(),

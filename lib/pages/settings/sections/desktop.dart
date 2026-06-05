@@ -64,6 +64,36 @@ class SettingsDesktopSection extends HookConsumerWidget {
             onChanged: preferencesNotifier.setDiscordPresence,
           ),
         ),
+        ListTile(
+          leading: const Icon(SpotubeIcons.miniPlayer),
+          title: const Text("Mini-player transparency"),
+          subtitle: Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Row(
+              spacing: 12,
+              children: [
+                Expanded(
+                  child: Slider(
+                    value: SliderValue.single(
+                      preferences.miniPlayerTransparency,
+                    ),
+                    onChanged: (value) {
+                      preferencesNotifier.setMiniPlayerTransparency(
+                        value.value,
+                      );
+                    },
+                  ),
+                ),
+                SizedBox(
+                  width: 44,
+                  child: Text(
+                    "${(preferences.miniPlayerTransparency * 100).round()}%",
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ],
     );
   }

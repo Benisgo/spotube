@@ -24,9 +24,8 @@ enum YoutubeClientEngine {
     return switch (this) {
       YoutubeClientEngine.youtubeExplode =>
         YouTubeExplodeEngine.isAvailableForPlatform,
-      YoutubeClientEngine.ytDlp =>
-        YtDlpEngine.isAvailableForPlatform ||
-            AndroidYtDlpEngine.isAvailableForPlatform,
+      YoutubeClientEngine.ytDlp => YtDlpEngine.isAvailableForPlatform ||
+          AndroidYtDlpEngine.isAvailableForPlatform,
       YoutubeClientEngine.newPipe => NewPipeEngine.isAvailableForPlatform,
     };
   }
@@ -103,6 +102,8 @@ class PreferencesTable extends Table {
       boolean().withDefault(const Constant(false))();
   IntColumn get connectPort => integer().withDefault(const Constant(-1))();
   BoolColumn get cacheMusic => boolean().withDefault(const Constant(true))();
+  RealColumn get miniPlayerTransparency =>
+      real().withDefault(const Constant(0.55))();
   TextColumn get lyricsCharacterEdge => textEnum<LyricsCharacterEdge>()
       .withDefault(Constant(LyricsCharacterEdge.none.name))();
   TextColumn get multiSessionRelayUrl =>
@@ -136,6 +137,7 @@ class PreferencesTable extends Table {
       endlessPlayback: true,
       enableConnect: false,
       cacheMusic: true,
+      miniPlayerTransparency: 0.55,
       connectPort: -1,
       lyricsCharacterEdge: LyricsCharacterEdge.none,
       multiSessionRelayUrl: "",

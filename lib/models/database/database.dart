@@ -68,7 +68,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.withExecutor(super.e);
 
   @override
-  int get schemaVersion => 11;
+  int get schemaVersion => 12;
 
   @override
   MigrationStrategy get migration {
@@ -261,6 +261,16 @@ class AppDatabase extends _$AppDatabase {
           await customStatement(
             "ALTER TABLE preferences_table "
             "ADD COLUMN multi_session_relay_url TEXT NOT NULL DEFAULT ''",
+          ).catchError((error, stackTrace) {
+            if (!error.toString().contains('duplicate column name')) {
+              throw error;
+            }
+          });
+        }
+        if (from < 12 && to >= 12) {
+          await customStatement(
+            "ALTER TABLE preferences_table "
+            "ADD COLUMN mini_player_transparency REAL NOT NULL DEFAULT 0.55",
           ).catchError((error, stackTrace) {
             if (!error.toString().contains('duplicate column name')) {
               throw error;

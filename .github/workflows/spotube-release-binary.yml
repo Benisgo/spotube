@@ -20,6 +20,7 @@ on:
         description: Build artifacts only and skip the GitHub Release upload
 
 env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   FLUTTER_VERSION: 3.35.2
   FLUTTER_CHANNEL: master
 
@@ -37,6 +38,16 @@ jobs:
           channel: ${{ env.FLUTTER_CHANNEL }}
           cache: true
           git-source: https://github.com/flutter/flutter.git
+
+      - name: Patch Flutter for Visual Studio 2026 runners
+        shell: pwsh
+        run: |
+          $file = Join-Path $env:FLUTTER_ROOT 'packages/flutter_tools/lib/src/windows/visual_studio.dart'
+          $content = Get-Content $file -Raw
+          $updated = $content -replace "17 => 'Visual Studio 17 2022',", "18 => 'Visual Studio 18 2026',`n      17 => 'Visual Studio 17 2022',"
+          if ($updated -ne $content) {
+            Set-Content -Path $file -Value $updated
+          }
 
       # - name: free disk space
       #   if: ${{ matrix.platform == 'android' }}

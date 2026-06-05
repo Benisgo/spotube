@@ -49,6 +49,23 @@ jobs:
             Set-Content -Path $file -Value $updated
           }
 
+      - name: Create CI .env
+        shell: pwsh
+        env:
+          DOTENV_RELEASE_CONTENT: ${{ secrets.DOTENV_RELEASE }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:DOTENV_RELEASE_CONTENT)) {
+            @"
+ENABLE_UPDATE_CHECK=1
+LASTFM_API_KEY=
+LASTFM_API_SECRET=
+RELEASE_CHANNEL=${{ inputs.channel }}
+HIDE_DONATIONS=0
+"@ | Set-Content -Path .env
+          } else {
+            $env:DOTENV_RELEASE_CONTENT | Set-Content -Path .env
+          }
+
       # - name: free disk space
       #   if: ${{ matrix.platform == 'android' }}
       #   run: |
@@ -107,6 +124,24 @@ jobs:
       - name: Skip Android build when signing secrets are missing
         if: ${{ steps.android_signing.outputs.enabled != 'true' }}
         run: echo "Android signing secrets are not configured; skipping Android build."
+
+      - name: Create CI .env
+        if: ${{ steps.android_signing.outputs.enabled == 'true' }}
+        shell: bash
+        env:
+          DOTENV_RELEASE_CONTENT: ${{ secrets.DOTENV_RELEASE }}
+        run: |
+          if [[ -n "${DOTENV_RELEASE_CONTENT}" ]]; then
+            printf '%s\n' "${DOTENV_RELEASE_CONTENT}" > .env
+          else
+            cat <<EOF > .env
+ENABLE_UPDATE_CHECK=1
+LASTFM_API_KEY=
+LASTFM_API_SECRET=
+RELEASE_CHANNEL=${{ inputs.channel }}
+HIDE_DONATIONS=0
+EOF
+          fi
 
       - uses: subosito/flutter-action@v2.18.0
         if: ${{ steps.android_signing.outputs.enabled == 'true' }}

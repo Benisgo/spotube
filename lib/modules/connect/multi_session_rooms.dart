@@ -2,10 +2,13 @@ import 'package:flutter/material.dart' show ListTile;
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 import 'package:spotube/collections/spotube_icons.dart';
 import 'package:spotube/extensions/context.dart';
+import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/models/multi_session/multi_session.dart';
+import 'package:spotube/provider/metadata_plugin/search/tracks.dart';
 import 'package:spotube/provider/multi_session/multi_session.dart';
 
 class ConnectPageMultiSessionRooms extends HookConsumerWidget {
@@ -22,6 +25,67 @@ class ConnectPageMultiSessionRooms extends HookConsumerWidget {
     final isConnectedRoom = session.connected && roomCode != null;
     final isHost = session.isHost;
     final members = snapshot?.members ?? const <MultiSessionMember>[];
+    final invite = session.pendingInvite;
+    final inviteDialogKey = useRef<String?>(null);
+
+    useEffect(() {
+      final inviteCode = invite?.code;
+      if (inviteCode == null) {
+        inviteDialogKey.value = null;
+        return null;
+      }
+
+      if (inviteDialogKey.value == inviteCode) {
+        return null;
+      }
+
+      inviteDialogKey.value = inviteCode;
+      Future.microtask(() async {
+        if (!context.mounted) return;
+
+        final shouldLeaveCurrentRoom =
+            session.code != null && session.code != inviteCode;
+
+        final result = await showDialog<bool>(
+          context: context,
+          builder: (context) {
+            final title = invite?.metadata == null
+                ? "Join room $inviteCode?"
+                : "Join room $inviteCode with ${invite!.metadata!.members} member(s)?";
+
+            return AlertDialog(
+              title: Text(title),
+              content: Text(
+                invite?.error ??
+                    "Relay: ${invite?.relayUrl}\nYou can confirm before Spotube joins the room.",
+              ),
+              actions: [
+                Button.secondary(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: Text(context.l10n.cancel),
+                ),
+                Button.primary(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: Text(
+                    shouldLeaveCurrentRoom ? "Leave current & join" : "Join room",
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+
+        if (result == true) {
+          await sessionNotifier.acceptPendingInvite(
+            leaveCurrentRoom: shouldLeaveCurrentRoom,
+          );
+        } else {
+          sessionNotifier.clearPendingInvite();
+        }
+      });
+
+      return null;
+    }, [invite?.code, invite?.error, invite?.metadata?.members, session.code]);
 
     return SliverMainAxisGroup(
       slivers: [
@@ -41,33 +105,25 @@ class ConnectPageMultiSessionRooms extends HookConsumerWidget {
               children: [
                 if (isConnectedRoom) ...[
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Expanded(
-                        child: Text(
-                          "Room $roomCode",
-                          style: theme.typography.large,
-                        ),
-                      ),
-                      HookBuilder(
-                        builder: (context) {
-                          final copied = useState(false);
-
-                          return Button.ghost(
-                            onPressed: () {
-                              Clipboard.setData(
-                                ClipboardData(text: roomCode),
-                              );
-                              copied.value = true;
-                            },
-                            leading: Icon(
-                              copied.value
-                                  ? SpotubeIcons.done
-                                  : SpotubeIcons.clipboard,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          spacing: 6,
+                          children: [
+                            Text(
+                              "Room $roomCode",
+                              style: theme.typography.large,
                             ),
-                            child: Text(context.l10n.copy_to_clipboard),
-                          );
-                        },
+                            Text(
+                              snapshot?.communityQueueEnabled == true
+                                  ? "Community queue is on"
+                                  : "Community queue is off",
+                              style: theme.typography.small,
+                            ),
+                          ],
+                        ),
                       ),
                       Button.outline(
                         onPressed: isHost
@@ -77,6 +133,57 @@ class ConnectPageMultiSessionRooms extends HookConsumerWidget {
                         child: Text(isHost ? "End" : "Leave"),
                       ),
                     ],
+                  ),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      Button.ghost(
+                        onPressed: () => Clipboard.setData(
+                          ClipboardData(text: roomCode),
+                        ),
+                        leading: const Icon(SpotubeIcons.clipboard),
+                        child: const Text("Copy code"),
+                      ),
+                      if (session.can(MultiSessionPermission.invite) &&
+                          sessionNotifier.inviteUri != null)
+                        Button.ghost(
+                          onPressed: () => Clipboard.setData(
+                            ClipboardData(
+                              text: sessionNotifier.inviteUri.toString(),
+                            ),
+                          ),
+                          leading: const Icon(SpotubeIcons.share),
+                          child: const Text("Copy invite link"),
+                        ),
+                      if (session.can(MultiSessionPermission.invite) &&
+                          sessionNotifier.inviteUri != null)
+                        Button.ghost(
+                          onPressed: () => showDialog<void>(
+                            context: context,
+                            builder: (context) => _InviteQrDialog(
+                              inviteUri: sessionNotifier.inviteUri!,
+                            ),
+                          ),
+                          leading: const Icon(SpotubeIcons.grid),
+                          child: const Text("Show QR"),
+                        ),
+                    ],
+                  ),
+                  if (session.can(MultiSessionPermission.editQueue))
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text("Community queue"),
+                        Switch(
+                          value: snapshot?.communityQueueEnabled ?? true,
+                          onChanged: sessionNotifier.setCommunityQueueEnabled,
+                        ),
+                      ],
+                    ),
+                  _SuggestionsSection(
+                    session: session,
+                    notifier: sessionNotifier,
                   ),
                   if (members.isNotEmpty)
                     for (final member in members)
@@ -132,6 +239,105 @@ class ConnectPageMultiSessionRooms extends HookConsumerWidget {
   }
 }
 
+class _SuggestionsSection extends HookConsumerWidget {
+  final MultiSessionState session;
+  final MultiSessionNotifier notifier;
+
+  const _SuggestionsSection({
+    required this.session,
+    required this.notifier,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final snapshot = session.snapshot;
+    final suggestions = snapshot?.suggestions ?? const <MultiSessionSuggestion>[];
+    final members = {
+      for (final member in snapshot?.members ?? const <MultiSessionMember>[])
+        member.id: member,
+    };
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      spacing: 8,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text("Suggestions"),
+            if (session.can(MultiSessionPermission.suggestTracks))
+              Button.ghost(
+                onPressed: () async {
+                  final track = await showDialog<SpotubeFullTrackObject>(
+                    context: context,
+                    builder: (context) => const _SuggestTrackDialog(),
+                  );
+                  if (track != null) {
+                    notifier.suggestTrack(track);
+                  }
+                },
+                leading: const Icon(SpotubeIcons.add),
+                child: const Text("Suggest track"),
+              ),
+          ],
+        ),
+        if (suggestions.isEmpty)
+          const Text("No suggestions yet.")
+        else
+          for (final suggestion in suggestions)
+            SurfaceCard(
+              padding: const EdgeInsets.all(10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                spacing: 8,
+                children: [
+                  Text(suggestion.track.name),
+                  Text(
+                    suggestion.track.artists.map((artist) => artist.name).join(", "),
+                    style: Theme.of(context).typography.small,
+                  ),
+                  Text(
+                    "Suggested by ${members[suggestion.suggestedBy]?.name ?? "Unknown"}",
+                    style: Theme.of(context).typography.small,
+                  ),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Button.ghost(
+                        onPressed: suggestion.voterIds.contains(session.memberId)
+                            ? null
+                            : () => notifier.voteSuggestion(suggestion.id),
+                        leading: const Icon(SpotubeIcons.heart),
+                        child: Text("Upvote (${suggestion.voteCount})"),
+                      ),
+                      if (session.can(MultiSessionPermission.editQueue))
+                        Button.ghost(
+                          onPressed: () => notifier.promoteSuggestion(
+                            suggestion.id,
+                          ),
+                          leading: const Icon(SpotubeIcons.lightning),
+                          child: const Text("Play next"),
+                        ),
+                      if (session.can(MultiSessionPermission.editQueue))
+                        Button.ghost(
+                          onPressed: () => notifier.removeSuggestion(
+                            suggestion.id,
+                          ),
+                          leading: const Icon(SpotubeIcons.trash),
+                          child: const Text("Remove"),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+      ],
+    );
+  }
+}
+
 class _MemberTile extends ConsumerWidget {
   final MultiSessionMember member;
 
@@ -153,16 +359,55 @@ class _MemberTile extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         spacing: 8,
         children: [
-          Text(member.role),
+          Text(member.role == "host" ? "Host" : member.preset.label),
+          if (canManage)
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final preset in [
+                  MultiSessionMemberPreset.listener,
+                  MultiSessionMemberPreset.dj,
+                  MultiSessionMemberPreset.coHost,
+                ])
+                  (member.preset == preset
+                          ? Button.secondary
+                          : Button.outline)(
+                    onPressed: () => notifier.setMemberPreset(member.id, preset),
+                    child: Text(preset.label),
+                  ),
+              ],
+            ),
           if (canManage)
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
                 _PermissionSwitch(
+                  label: "Suggest",
+                  value: member
+                          .permissions[MultiSessionPermission.suggestTracks] ==
+                      true,
+                  onChanged: (value) => notifier.setMemberPermissions(
+                    member.id,
+                    {MultiSessionPermission.suggestTracks: value},
+                  ),
+                ),
+                _PermissionSwitch(
+                  label: "Vote",
+                  value:
+                      member.permissions[MultiSessionPermission.voteTracks] ==
+                          true,
+                  onChanged: (value) => notifier.setMemberPermissions(
+                    member.id,
+                    {MultiSessionPermission.voteTracks: value},
+                  ),
+                ),
+                _PermissionSwitch(
                   label: "Queue",
                   value:
-                      member.permissions[MultiSessionPermission.editQueue] == true,
+                      member.permissions[MultiSessionPermission.editQueue] ==
+                          true,
                   onChanged: (value) => notifier.setMemberPermissions(
                     member.id,
                     {MultiSessionPermission.editQueue: value},
@@ -223,6 +468,102 @@ class _PermissionSwitch extends StatelessWidget {
       children: [
         Text(label),
         Switch(value: value, onChanged: onChanged),
+      ],
+    );
+  }
+}
+
+class _SuggestTrackDialog extends HookConsumerWidget {
+  const _SuggestTrackDialog();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final controller = useTextEditingController();
+    final query = useState("");
+    final result = ref.watch(metadataPluginSearchTracksProvider(query.value));
+    final tracks = result.asData?.value.items ?? const <SpotubeFullTrackObject>[];
+
+    return AlertDialog(
+      title: const Text("Suggest a track"),
+      content: SizedBox(
+        width: 520,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          spacing: 10,
+          children: [
+            TextField(
+              controller: controller,
+              placeholder: const Text("Search tracks"),
+              onChanged: (value) => query.value = value.trim(),
+            ),
+            Flexible(
+              child: SizedBox(
+                height: 320,
+                child: result.isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : ListView.separated(
+                        itemCount: tracks.length,
+                        separatorBuilder: (_, __) => const Divider(),
+                        itemBuilder: (context, index) {
+                          final track = tracks[index];
+                          return ListTile(
+                            title: Text(track.name),
+                            subtitle: Text(
+                              track.artists
+                                  .map((artist) => artist.name)
+                                  .join(", "),
+                            ),
+                            trailing: Button.ghost(
+                              onPressed: () => Navigator.of(context).pop(track),
+                              child: const Text("Suggest"),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        Button.secondary(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(context.l10n.cancel),
+        ),
+      ],
+    );
+  }
+}
+
+class _InviteQrDialog extends StatelessWidget {
+  final Uri inviteUri;
+
+  const _InviteQrDialog({required this.inviteUri});
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text("Invite QR"),
+      content: SizedBox(
+        width: 320,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          spacing: 12,
+          children: [
+            QrImageView(
+              data: inviteUri.toString(),
+              size: 240,
+            ),
+            SelectableText(inviteUri.toString()),
+          ],
+        ),
+      ),
+      actions: [
+        Button.secondary(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(context.l10n.close),
+        ),
       ],
     );
   }

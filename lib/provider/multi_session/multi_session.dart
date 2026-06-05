@@ -85,7 +85,6 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
       final expectedPositionMs =
           previousPositionMs + (audioPlayer.isPlaying ? elapsedMs : 0);
 
-      // Detect explicit seeks or jumps without broadcasting every tick.
       if ((position.inMilliseconds - expectedPositionMs).abs() > 1500) {
         sendPlayback();
       }
@@ -109,25 +108,26 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
     return const MultiSessionState();
   }
 
-  Uri _relayUri(String path) {
-    final relayUrl = ref.read(userPreferencesProvider).multiSessionRelayUrl;
-    final base = Uri.parse(relayUrl.endsWith("/")
-        ? relayUrl.substring(0, relayUrl.length - 1)
-        : relayUrl);
+  String get _relayUrl => ref.read(userPreferencesProvider).multiSessionRelayUrl;
+
+  Uri _relayUri(String path, {String? relayUrl}) {
+    final rawRelay = relayUrl ?? _relayUrl;
+    final base = Uri.parse(rawRelay.endsWith("/")
+        ? rawRelay.substring(0, rawRelay.length - 1)
+        : rawRelay);
     final basePath = base.path.endsWith("/")
         ? base.path.substring(0, base.path.length - 1)
         : base.path;
     return base.replace(path: "$basePath$path");
   }
 
-  String? _relayConfigurationError() {
-    final relayUrl =
-        ref.read(userPreferencesProvider).multiSessionRelayUrl.trim();
-    if (relayUrl.isEmpty || relayUrl == _legacyRelayUrl) {
+  String? _relayConfigurationError([String? relayUrl]) {
+    final value = (relayUrl ?? _relayUrl).trim();
+    if (value.isEmpty || value == _legacyRelayUrl) {
       return "Multi-Session relay is not configured. Open Settings > Playback > Multi-Session relay and enter a live relay URL.";
     }
 
-    final uri = Uri.tryParse(relayUrl);
+    final uri = Uri.tryParse(value);
     if (uri == null || !uri.hasScheme || uri.host.isEmpty) {
       return "Multi-Session relay URL is invalid. Check Settings > Playback > Multi-Session relay.";
     }
@@ -153,6 +153,58 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
     }
 
     return DeviceInfoService.instance.computerName();
+  }
+
+  Uri? get inviteUri {
+    final code = state.code;
+    final relayUrl = _relayUrl.trim();
+    if (code == null || code.isEmpty || relayUrl.isEmpty) return null;
+    return MultiSessionInvite(code: code, relayUrl: relayUrl).toUri();
+  }
+
+  Future<MultiSessionRoomMetadata?> _fetchRoomMetadata(
+    String code, {
+    required String relayUrl,
+  }) async {
+    final relayConfigurationError = _relayConfigurationError(relayUrl);
+    if (relayConfigurationError != null) {
+      throw Exception(relayConfigurationError);
+    }
+
+    final response = await http.get(_relayUri("/rooms/$code", relayUrl: relayUrl));
+    if (response.statusCode >= 400) {
+      throw Exception(response.body);
+    }
+
+    return MultiSessionRoomMetadata.fromJson(
+      (jsonDecode(response.body) as Map).cast<String, dynamic>(),
+    );
+  }
+
+  Future<void> resolveInviteUri(String uriString) async {
+    final invite = parseMultiSessionInviteUri(uriString);
+    if (invite == null) return;
+
+    state = state.copyWith(pendingInvite: invite, clearError: true);
+
+    try {
+      final metadata = await _fetchRoomMetadata(
+        invite.code,
+        relayUrl: invite.relayUrl,
+      );
+      state = state.copyWith(
+        pendingInvite: invite.copyWith(metadata: metadata, clearError: true),
+      );
+    } catch (e, stack) {
+      AppLogger.reportError(e, stack);
+      state = state.copyWith(
+        pendingInvite: invite.copyWith(error: _friendlyError(e)),
+      );
+    }
+  }
+
+  void clearPendingInvite() {
+    state = state.copyWith(clearInvite: true);
   }
 
   Future<void> createRoom() async {
@@ -194,20 +246,24 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
     }
   }
 
-  Future<void> joinRoom(String code) async {
+  Future<void> joinRoom(String code, {String? relayUrl}) async {
     _debugTrace('joinRoom:start:${code.trim().toUpperCase()}');
-    final relayConfigurationError = _relayConfigurationError();
+    final normalizedCode = code.trim().toUpperCase();
+    final relayConfigurationError = _relayConfigurationError(relayUrl);
     if (relayConfigurationError != null) {
       _debugTrace('joinRoom:config-error');
       state = state.copyWith(connecting: false, error: relayConfigurationError);
       return;
     }
 
+    if (relayUrl != null && relayUrl.trim().isNotEmpty) {
+      ref.read(userPreferencesProvider.notifier).setMultiSessionRelayUrl(relayUrl);
+    }
+
     state = state.copyWith(connecting: true, clearError: true);
     try {
-      final normalizedCode = code.trim().toUpperCase();
       final res = await http.post(
-        _relayUri("/rooms/$normalizedCode/join"),
+        _relayUri("/rooms/$normalizedCode/join", relayUrl: relayUrl),
         headers: {"content-type": "application/json"},
         body: jsonEncode({"name": await _participantName()}),
       );
@@ -232,8 +288,22 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
     }
   }
 
+  Future<void> acceptPendingInvite({bool leaveCurrentRoom = false}) async {
+    final invite = state.pendingInvite;
+    if (invite == null) return;
+
+    if (leaveCurrentRoom && state.code != null) {
+      await leaveRoom();
+    }
+
+    await joinRoom(invite.code, relayUrl: invite.relayUrl);
+    state = state.copyWith(clearInvite: true);
+  }
+
   Future<void> _connect() async {
-    _debugTrace('connect:start code=${state.code} gen=${_connectionGeneration + 1}');
+    _debugTrace(
+      'connect:start code=${state.code} gen=${_connectionGeneration + 1}',
+    );
     final relayConfigurationError = _relayConfigurationError();
     if (relayConfigurationError != null) {
       _debugTrace('connect:config-error');
@@ -251,9 +321,7 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
     final token = state.token;
     if (roomCode == null || token == null) return;
 
-    final relayScheme =
-        Uri.parse(ref.read(userPreferencesProvider).multiSessionRelayUrl)
-            .scheme;
+    final relayScheme = Uri.parse(_relayUrl).scheme;
     final uri = _relayUri("/rooms/$roomCode/ws").replace(
       scheme: relayScheme == "https" ? "wss" : "ws",
       queryParameters: {"token": token},
@@ -478,6 +546,14 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
     });
   }
 
+  void setMemberPreset(String memberId, MultiSessionMemberPreset preset) {
+    if (!state.can(MultiSessionPermission.manageMembers)) return;
+    _send("permissions", {
+      "memberId": memberId,
+      "preset": preset.name,
+    });
+  }
+
   void setMemberPermissions(
     String memberId,
     Map<MultiSessionPermission, bool> permissions,
@@ -492,8 +568,34 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
     });
   }
 
+  void setCommunityQueueEnabled(bool enabled) {
+    if (!state.can(MultiSessionPermission.editQueue)) return;
+    _send("communityQueue", {"enabled": enabled});
+  }
+
+  void suggestTrack(SpotubeFullTrackObject track) {
+    if (!state.can(MultiSessionPermission.suggestTracks)) return;
+    _send("suggestion:add", {"track": track.toJson()});
+  }
+
+  void voteSuggestion(String suggestionId) {
+    if (!state.can(MultiSessionPermission.voteTracks)) return;
+    _send("suggestion:vote", {"suggestionId": suggestionId});
+  }
+
+  void removeSuggestion(String suggestionId) {
+    if (!state.can(MultiSessionPermission.editQueue)) return;
+    _send("suggestion:remove", {"suggestionId": suggestionId});
+  }
+
+  void promoteSuggestion(String suggestionId) {
+    if (!state.can(MultiSessionPermission.editQueue)) return;
+    _send("suggestion:promote", {"suggestionId": suggestionId});
+  }
+
   Future<void> leaveRoom() async {
     _beginRoomShutdown(notifyRelay: true, endedByHost: false);
+    await Future<void>.delayed(const Duration(milliseconds: 150));
   }
 
   Future<void> endRoom() async {
@@ -502,6 +604,7 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
       return;
     }
     _beginRoomShutdown(notifyRelay: true, endedByHost: false);
+    await Future<void>.delayed(const Duration(milliseconds: 150));
   }
 }
 

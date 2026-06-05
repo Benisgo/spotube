@@ -2,13 +2,31 @@ export interface Env {
   ROOMS: DurableObjectNamespace<SpotubeRoom>;
 }
 
-type Permission = "controlPlayback" | "editQueue" | "invite" | "manageMembers";
+type Permission =
+  | "controlPlayback"
+  | "editQueue"
+  | "invite"
+  | "manageMembers"
+  | "suggestTracks"
+  | "voteTracks";
+
+type Preset = "listener" | "dj" | "coHost" | "custom";
 
 type Member = {
   id: string;
   name: string;
   role: "host" | "guest";
+  preset: Preset;
   permissions: Record<Permission, boolean>;
+};
+
+type Suggestion = {
+  id: string;
+  track: Record<string, unknown>;
+  suggestedBy: string;
+  createdAt: number;
+  voteCount: number;
+  voterIds: string[];
 };
 
 type RoomState = {
@@ -16,18 +34,40 @@ type RoomState = {
   code: string;
   sequence: number;
   hostToken: string;
-  queue: unknown[];
+  queue: Record<string, unknown>[];
   activeTrackId: string | null;
   positionMs: number;
   playing: boolean;
   members: Record<string, Member>;
+  suggestions: Suggestion[];
+  communityQueueEnabled: boolean;
 };
 
-const guestPermissions = {
+const customPermissions = {
   controlPlayback: false,
   editQueue: false,
   invite: false,
   manageMembers: false,
+  suggestTracks: false,
+  voteTracks: false,
+} satisfies Record<Permission, boolean>;
+
+const listenerPermissions = {
+  ...customPermissions,
+  suggestTracks: true,
+  voteTracks: true,
+} satisfies Record<Permission, boolean>;
+
+const djPermissions = {
+  ...listenerPermissions,
+  controlPlayback: true,
+} satisfies Record<Permission, boolean>;
+
+const coHostPermissions = {
+  ...djPermissions,
+  editQueue: true,
+  invite: true,
+  manageMembers: true,
 } satisfies Record<Permission, boolean>;
 
 const hostPermissions = {
@@ -35,7 +75,22 @@ const hostPermissions = {
   editQueue: true,
   invite: true,
   manageMembers: true,
+  suggestTracks: true,
+  voteTracks: true,
 } satisfies Record<Permission, boolean>;
+
+function permissionsForPreset(preset: Preset) {
+  switch (preset) {
+    case "listener":
+      return listenerPermissions;
+    case "dj":
+      return djPermissions;
+    case "coHost":
+      return coHostPermissions;
+    case "custom":
+      return customPermissions;
+  }
+}
 
 function json(data: unknown, init: ResponseInit = {}) {
   return new Response(JSON.stringify(data), {
@@ -160,13 +215,22 @@ export class SpotubeRoom {
             id: hostId,
             name: body.name ?? "Host",
             role: "host",
+            preset: "coHost",
             permissions: hostPermissions,
           },
         },
+        suggestions: [],
+        communityQueueEnabled: true,
       };
       await this.persist();
       await this.scheduleIdleCleanup();
-      return json({ roomId, code, token: hostToken, memberId: hostId, ownerToken: hostToken });
+      return json({
+        roomId,
+        code,
+        token: hostToken,
+        memberId: hostId,
+        ownerToken: hostToken,
+      });
     }
 
     if (!this.stateValue) return json({ error: "Room not found" }, { status: 404 });
@@ -187,12 +251,18 @@ export class SpotubeRoom {
         id: memberId,
         name: body.name ?? "Guest",
         role: "guest",
-        permissions: guestPermissions,
+        preset: "listener",
+        permissions: { ...listenerPermissions },
       };
       await this.state.storage.put(`token:${memberToken}`, memberId);
       await this.bump();
       await this.scheduleIdleCleanup();
-      return json({ roomId: this.stateValue.roomId, code: this.stateValue.code, token: memberToken, memberId });
+      return json({
+        roomId: this.stateValue.roomId,
+        code: this.stateValue.code,
+        token: memberToken,
+        memberId,
+      });
     }
 
     if (url.pathname === "/ws") {
@@ -214,21 +284,26 @@ export class SpotubeRoom {
 
   private async load() {
     if (this.stateValue) return;
-    this.stateValue = await this.state.storage.get<RoomState>("state") ?? null;
+    this.stateValue = (await this.state.storage.get<RoomState>("state")) ?? null;
   }
 
   private async persist() {
     await this.state.storage.put("state", this.stateValue);
-    if (this.stateValue) await this.state.storage.put(`token:${this.stateValue.hostToken}`, this.hostMemberId());
+    if (this.stateValue) {
+      await this.state.storage.put(`token:${this.stateValue.hostToken}`, this.hostMemberId());
+    }
   }
 
   private hostMemberId() {
-    return Object.values(this.stateValue?.members ?? {}).find((member) => member.role === "host")?.id ?? "";
+    return (
+      Object.values(this.stateValue?.members ?? {}).find((member) => member.role === "host")
+        ?.id ?? ""
+    );
   }
 
   private async memberIdForToken(value: string | null) {
     if (!value) return null;
-    const memberId = await this.state.storage.get<string>(`token:${value}`) ?? null;
+    const memberId = (await this.state.storage.get<string>(`token:${value}`)) ?? null;
     if (!memberId || !this.stateValue?.members[memberId]) {
       return null;
     }
@@ -239,7 +314,7 @@ export class SpotubeRoom {
   private connect(socket: WebSocket, memberId: string) {
     socket.accept();
     this.sockets.set(socket, memberId);
-    this.scheduleIdleCleanup();
+    void this.scheduleIdleCleanup();
     socket.send(JSON.stringify({ type: "snapshot", data: this.publicState() }));
 
     socket.addEventListener("message", async (event) => {
@@ -263,11 +338,11 @@ export class SpotubeRoom {
     });
     socket.addEventListener("close", () => {
       this.sockets.delete(socket);
-      this.scheduleIdleCleanup();
+      void this.scheduleIdleCleanup();
     });
     socket.addEventListener("error", () => {
       this.sockets.delete(socket);
-      this.scheduleIdleCleanup();
+      void this.scheduleIdleCleanup();
     });
   }
 
@@ -305,10 +380,78 @@ export class SpotubeRoom {
     return member?.role === "host" || member?.permissions[permission] === true;
   }
 
-  private async handle(
-    memberId: string,
-    message: { type: string; data?: unknown },
+  private trackId(track: unknown) {
+    if (!track || typeof track !== "object") return null;
+    const value = (track as { id?: unknown }).id;
+    return typeof value === "string" && value.length > 0 ? value : null;
+  }
+
+  private sortedSuggestions() {
+    return [...(this.stateValue?.suggestions ?? [])].sort((a, b) => {
+      const voteOrder = b.voteCount - a.voteCount;
+      if (voteOrder !== 0) return voteOrder;
+      return a.createdAt - b.createdAt;
+    });
+  }
+
+  private applyPreset(member: Member, preset: Preset) {
+    member.preset = preset;
+    member.permissions = { ...permissionsForPreset(preset) };
+  }
+
+  private promoteSuggestion(suggestionId?: string) {
+    if (!this.stateValue || !this.stateValue.communityQueueEnabled) return;
+
+    const suggestion =
+      suggestionId == null
+        ? this.sortedSuggestions()[0]
+        : this.stateValue.suggestions.find((entry) => entry.id === suggestionId);
+    if (!suggestion) return;
+
+    this.stateValue.suggestions = this.stateValue.suggestions.filter(
+      (entry) => entry.id !== suggestion.id,
+    );
+
+    const nextTrack = suggestion.track;
+    const nextTrackId = this.trackId(nextTrack);
+    if (nextTrackId) {
+      this.stateValue.queue = this.stateValue.queue.filter((track) => {
+        const trackId = this.trackId(track);
+        return trackId == null || trackId !== nextTrackId;
+      });
+    }
+
+    if (this.stateValue.queue.length === 0) {
+      this.stateValue.queue = [nextTrack];
+      this.stateValue.activeTrackId = nextTrackId;
+      return;
+    }
+
+    const activeIndex = this.stateValue.activeTrackId
+      ? this.stateValue.queue.findIndex(
+          (track) => this.trackId(track) === this.stateValue?.activeTrackId,
+        )
+      : -1;
+    const insertionIndex = Math.max(activeIndex, 0) + 1;
+    this.stateValue.queue.splice(insertionIndex, 0, nextTrack);
+  }
+
+  private reconcileCommunityQueue() {
+    if (!this.stateValue?.communityQueueEnabled) return;
+    if ((this.stateValue?.suggestions.length ?? 0) === 0) return;
+    this.promoteSuggestion();
+  }
+
+  private samePermissions(
+    left: Record<Permission, boolean>,
+    right: Record<Permission, boolean>,
   ) {
+    return (Object.keys(left) as Permission[]).every(
+      (key) => left[key] === right[key],
+    );
+  }
+
+  private async handle(memberId: string, message: { type: string; data?: unknown }) {
     if (!this.stateValue) return;
 
     if (
@@ -326,6 +469,7 @@ export class SpotubeRoom {
       this.stateValue.positionMs = data.positionMs ?? this.stateValue.positionMs;
       this.stateValue.activeTrackId =
         data.activeTrackId ?? this.stateValue.activeTrackId;
+      this.reconcileCommunityQueue();
       await this.bump();
     }
 
@@ -336,7 +480,7 @@ export class SpotubeRoom {
       typeof message.data === "object"
     ) {
       const data = message.data as {
-        queue?: unknown[];
+        queue?: Record<string, unknown>[];
         activeTrackId?: string | null;
       };
       this.stateValue.queue = Array.isArray(data.queue)
@@ -344,6 +488,7 @@ export class SpotubeRoom {
         : this.stateValue.queue;
       this.stateValue.activeTrackId =
         data.activeTrackId ?? this.stateValue.activeTrackId;
+      this.reconcileCommunityQueue();
       await this.bump();
     }
 
@@ -355,23 +500,126 @@ export class SpotubeRoom {
     ) {
       const data = message.data as {
         memberId?: string;
+        preset?: Preset;
         permissions?: Partial<Record<Permission, boolean>>;
       };
-      if (!data.memberId || !data.permissions) {
+      if (!data.memberId) {
         return;
       }
 
       const member = this.stateValue.members[data.memberId];
       if (member && member.role !== "host") {
-        member.permissions = { ...member.permissions, ...data.permissions };
+        if (data.preset) {
+          this.applyPreset(member, data.preset);
+        }
+
+        if (data.permissions) {
+          member.permissions = { ...member.permissions, ...data.permissions };
+          const presetPermissions = permissionsForPreset(member.preset);
+          if (
+            member.preset !== "custom" &&
+            !this.samePermissions(member.permissions, presetPermissions)
+          ) {
+            member.preset = "custom";
+          }
+        }
+
         await this.bump();
       }
+    }
+
+    if (
+      message.type === "communityQueue" &&
+      this.allowed(memberId, "editQueue") &&
+      message.data &&
+      typeof message.data === "object"
+    ) {
+      const data = message.data as { enabled?: boolean };
+      if (typeof data.enabled === "boolean") {
+        this.stateValue.communityQueueEnabled = data.enabled;
+        this.reconcileCommunityQueue();
+        await this.bump();
+      }
+    }
+
+    if (
+      message.type === "suggestion:add" &&
+      this.allowed(memberId, "suggestTracks") &&
+      message.data &&
+      typeof message.data === "object"
+    ) {
+      const data = message.data as { track?: Record<string, unknown> };
+      if (!data.track || this.trackId(data.track) == null) {
+        return;
+      }
+
+      this.stateValue.suggestions.push({
+        id: token(12),
+        track: data.track,
+        suggestedBy: memberId,
+        createdAt: this.stateValue.sequence + 1,
+        voteCount: 1,
+        voterIds: [memberId],
+      });
+      this.reconcileCommunityQueue();
+      await this.bump();
+    }
+
+    if (
+      message.type === "suggestion:vote" &&
+      this.allowed(memberId, "voteTracks") &&
+      message.data &&
+      typeof message.data === "object"
+    ) {
+      const data = message.data as { suggestionId?: string };
+      if (!data.suggestionId) return;
+
+      const suggestion = this.stateValue.suggestions.find(
+        (entry) => entry.id === data.suggestionId,
+      );
+      if (!suggestion || suggestion.voterIds.includes(memberId)) {
+        return;
+      }
+
+      suggestion.voterIds = [...suggestion.voterIds, memberId];
+      suggestion.voteCount = suggestion.voterIds.length;
+      this.reconcileCommunityQueue();
+      await this.bump();
+    }
+
+    if (
+      message.type === "suggestion:remove" &&
+      this.allowed(memberId, "editQueue") &&
+      message.data &&
+      typeof message.data === "object"
+    ) {
+      const data = message.data as { suggestionId?: string };
+      if (!data.suggestionId) return;
+
+      this.stateValue.suggestions = this.stateValue.suggestions.filter(
+        (entry) => entry.id !== data.suggestionId,
+      );
+      await this.bump();
+    }
+
+    if (
+      message.type === "suggestion:promote" &&
+      this.allowed(memberId, "editQueue") &&
+      message.data &&
+      typeof message.data === "object"
+    ) {
+      const data = message.data as { suggestionId?: string };
+      this.promoteSuggestion(data.suggestionId);
+      await this.bump();
     }
 
     if (message.type === "leave") {
       const member = this.stateValue.members[memberId];
       if (member?.role === "guest") {
         delete this.stateValue.members[memberId];
+        this.stateValue.suggestions = this.stateValue.suggestions.filter(
+          (entry) => entry.suggestedBy !== memberId,
+        );
         await this.bump();
       }
     }

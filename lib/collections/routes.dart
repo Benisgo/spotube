@@ -28,10 +28,19 @@ class AppRouter extends RootStackRouter {
               guards: [
                 AutoRouteGuardCallback(
                   (resolver, router) async {
-                    final authenticated = await ref
-                        .read(metadataPluginAuthenticatedProvider.future);
+                    if (KVStoreService.doneGettingStarted) {
+                      resolver.next(true);
+                      return;
+                    }
 
-                    if (!authenticated && !KVStoreService.doneGettingStarted) {
+                    final authenticated = await ref
+                        .read(metadataPluginAuthenticatedProvider.future)
+                        .timeout(
+                          const Duration(seconds: 8),
+                          onTimeout: () => false,
+                        );
+
+                    if (!authenticated) {
                       resolver.redirect(const GettingStartedRoute());
                     } else {
                       resolver.next(true);

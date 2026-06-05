@@ -18,6 +18,13 @@ Btw it's not just another Electron app 😉
 
 ---
 
+## Fork Notes
+
+This fork adds a few quality-of-life changes on top of upstream Spotube:
+
+- lyrics character edge controls
+- self-hosted multi-session relay support for shared listening rooms
+
 ![Spotube Desktop](assets/branding/spotube-screenshot.png)
 
 ![Spotube Mobile](assets/branding/mobile-screenshots/combined.jpg)

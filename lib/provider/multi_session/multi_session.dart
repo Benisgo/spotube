@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:http/http.dart' as http;
@@ -17,6 +18,7 @@ import 'package:web_socket_channel/status.dart' as status;
 
 class MultiSessionNotifier extends Notifier<MultiSessionState> {
   static const _legacyRelayUrl = "https://spotube-multi-session.workers.dev";
+  static const _remoteSeekThresholdMs = 4000;
 
   WebSocketChannel? _channel;
   StreamSubscription? _subscription;
@@ -33,6 +35,39 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
     if (!kDebugMode) return;
     // ignore: avoid_print
     print('[multi-session] $message');
+  }
+
+  MultiSessionUiNotice _buildNotice(
+    String message, {
+    bool destructive = false,
+  }) {
+    return MultiSessionUiNotice(
+      message: message,
+      destructive: destructive,
+      id: DateTime.now().microsecondsSinceEpoch,
+    );
+  }
+
+  void _pushNotice(
+    String message, {
+    bool destructive = false,
+  }) {
+    state = state.copyWith(
+      notice: _buildNotice(message, destructive: destructive),
+    );
+  }
+
+  bool _guardPermission(
+    MultiSessionPermission permission,
+    String actionLabel,
+  ) {
+    if (state.can(permission)) return true;
+
+    _pushNotice(
+      "You don't have permission to $actionLabel in this room.",
+      destructive: true,
+    );
+    return false;
   }
 
   bool get _canControlPlayback =>
@@ -59,12 +94,28 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
       final nextIds = next.tracks.map((track) => track.id).join(",");
       if (previousIds != nextIds ||
           previous?.currentIndex != next.currentIndex) {
+        if (previousIds != nextIds) {
+          final previousTrackIds =
+              previous?.tracks.map((track) => track.id).toSet() ?? <String>{};
+          final addedTrack =
+              next.tracks.whereType<SpotubeFullTrackObject>().firstWhereOrNull(
+                    (track) => !previousTrackIds.contains(track.id),
+                  );
+          if (addedTrack != null) {
+            _pushNotice("${addedTrack.name} added to queue by $_actorName");
+          }
+        }
         sendQueue();
       }
     });
 
-    final playingSubscription = audioPlayer.playingStream.listen((_) {
+    final playingSubscription = audioPlayer.playingStream.listen((playing) {
       if (!_canControlPlayback) return;
+      _pushNotice(
+        playing
+            ? "Playback resumed by $_actorName"
+            : "Playback paused by $_actorName",
+      );
       _rememberObservedPosition(audioPlayer.position);
       sendPlayback();
     });
@@ -176,6 +227,14 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
     return message;
   }
 
+  String get _actorName => state.currentMember?.name ?? "You";
+
+  MultiSessionMember? _memberById(String memberId) {
+    return state.snapshot?.members
+        .where((member) => member.id == memberId)
+        .firstOrNull;
+  }
+
   Future<String> _participantName() async {
     final user = await ref.read(metadataPluginUserProvider.future);
     final userName = user?.name.trim();
@@ -184,6 +243,27 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
     }
 
     return DeviceInfoService.instance.computerName();
+  }
+
+  Future<Map<String, dynamic>> _participantPayload() async {
+    final user = await ref.read(metadataPluginUserProvider.future);
+    final name = await _participantName();
+    final images = user?.images
+            .where((image) => image.url.trim().isNotEmpty)
+            .map((image) => image.toJson())
+            .toList() ??
+        const <Map<String, dynamic>>[];
+    final avatarUrl = images
+        .map((image) => image["url"]?.toString())
+        .firstWhereOrNull((url) => url != null && url.trim().isNotEmpty);
+
+    return {
+      "name": name,
+      if (images.isNotEmpty) "images": images,
+      if (avatarUrl != null) "imageUrl": avatarUrl,
+      if (avatarUrl != null) "avatarUrl": avatarUrl,
+      if (avatarUrl != null) "photoUrl": avatarUrl,
+    };
   }
 
   Uri? get inviteUri {
@@ -253,7 +333,7 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
       final res = await http.post(
         _relayUri("/rooms"),
         headers: {"content-type": "application/json"},
-        body: jsonEncode({"name": await _participantName()}),
+        body: jsonEncode(await _participantPayload()),
       );
       if (res.statusCode >= 400) throw Exception(res.body);
       final json = jsonDecode(res.body) as Map<String, dynamic>;
@@ -302,7 +382,7 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
       final res = await http.post(
         _relayUri("/rooms/$normalizedCode/join", relayUrl: normalizedRelayUrl),
         headers: {"content-type": "application/json"},
-        body: jsonEncode({"name": await _participantName()}),
+        body: jsonEncode(await _participantPayload()),
       );
       if (res.statusCode >= 400) throw Exception(res.body);
       final json = jsonDecode(res.body) as Map<String, dynamic>;
@@ -455,8 +535,12 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
       final localIds = localState.tracks.map((track) => track.id).join(",");
       final remoteIds = tracks.map((track) => track.id).join(",");
       final index = activeIndex < 0 ? 0 : activeIndex;
+      final activeTrackChanged =
+          localState.activeTrack?.id != snapshot.activeTrackId;
+      final queueChanged =
+          localIds != remoteIds || localState.currentIndex != index;
 
-      if (localIds != remoteIds || localState.currentIndex != index) {
+      if (queueChanged) {
         await ref.read(audioPlayerProvider.notifier).load(
               tracks,
               initialIndex: index,
@@ -464,7 +548,16 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
             );
       }
 
-      await audioPlayer.seek(Duration(milliseconds: snapshot.positionMs));
+      final localPositionMs = audioPlayer.position.inMilliseconds;
+      final positionDriftMs = (snapshot.positionMs - localPositionMs).abs();
+      final shouldSeek = queueChanged ||
+          activeTrackChanged ||
+          localPositionMs == 0 ||
+          positionDriftMs >= _remoteSeekThresholdMs;
+
+      if (shouldSeek) {
+        await audioPlayer.seek(Duration(milliseconds: snapshot.positionMs));
+      }
       _rememberObservedPosition(Duration(milliseconds: snapshot.positionMs));
       if (snapshot.playing && !audioPlayer.isPlaying) {
         await audioPlayer.resume();
@@ -504,7 +597,7 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
       );
     }
 
-    if (channel != null && !kDebugMode) {
+    if (channel != null) {
       unawaited(
         channel.sink.close(status.goingAway).catchError((error, stackTrace) {
           return AppLogger.reportError(
@@ -541,7 +634,7 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
     Timer.run(() {
       unawaited(() async {
         try {
-          if (notifyRelay && previousState.connected && !kDebugMode) {
+          if (notifyRelay && previousState.connected) {
             final eventType = previousState.isHost ? "end" : "leave";
             _debugTrace('shutdown:send:$eventType');
             _channel?.sink.add(encodeRoomEvent(eventType, null));
@@ -585,7 +678,14 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
   }
 
   void setMemberPreset(String memberId, MultiSessionMemberPreset preset) {
-    if (!state.can(MultiSessionPermission.manageMembers)) return;
+    if (!_guardPermission(
+      MultiSessionPermission.manageMembers,
+      "change member roles",
+    )) {
+      return;
+    }
+    final memberName = _memberById(memberId)?.name ?? "That member";
+    _pushNotice("$memberName is now ${preset.label} by $_actorName");
     _send("permissions", {
       "memberId": memberId,
       "preset": preset.name,
@@ -596,7 +696,14 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
     String memberId,
     Map<MultiSessionPermission, bool> permissions,
   ) {
-    if (!state.can(MultiSessionPermission.manageMembers)) return;
+    if (!_guardPermission(
+      MultiSessionPermission.manageMembers,
+      "change member permissions",
+    )) {
+      return;
+    }
+    final memberName = _memberById(memberId)?.name ?? "That member";
+    _pushNotice("Permissions updated for $memberName by $_actorName");
     _send("permissions", {
       "memberId": memberId,
       "permissions": {
@@ -607,28 +714,78 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
   }
 
   void setCommunityQueueEnabled(bool enabled) {
-    if (!state.can(MultiSessionPermission.editQueue)) return;
+    if (!_guardPermission(
+      MultiSessionPermission.editQueue,
+      "edit the queue",
+    )) {
+      return;
+    }
+    _pushNotice(
+      "Community queue ${enabled ? "enabled" : "disabled"} by $_actorName",
+    );
     _send("communityQueue", {"enabled": enabled});
   }
 
   void suggestTrack(SpotubeFullTrackObject track) {
-    if (!state.can(MultiSessionPermission.suggestTracks)) return;
+    if (!_guardPermission(
+      MultiSessionPermission.suggestTracks,
+      "suggest tracks",
+    )) {
+      return;
+    }
+    _pushNotice("${track.name} suggested by $_actorName");
     _send("suggestion:add", {"track": track.toJson()});
   }
 
   void voteSuggestion(String suggestionId) {
-    if (!state.can(MultiSessionPermission.voteTracks)) return;
+    if (!_guardPermission(
+      MultiSessionPermission.voteTracks,
+      "vote on suggestions",
+    )) {
+      return;
+    }
+    _pushNotice("Suggestion upvoted by $_actorName");
     _send("suggestion:vote", {"suggestionId": suggestionId});
   }
 
   void removeSuggestion(String suggestionId) {
-    if (!state.can(MultiSessionPermission.editQueue)) return;
+    if (!_guardPermission(
+      MultiSessionPermission.editQueue,
+      "remove suggestions",
+    )) {
+      return;
+    }
+    _pushNotice("Suggestion removed by $_actorName");
     _send("suggestion:remove", {"suggestionId": suggestionId});
   }
 
   void promoteSuggestion(String suggestionId) {
-    if (!state.can(MultiSessionPermission.editQueue)) return;
+    if (!_guardPermission(
+      MultiSessionPermission.editQueue,
+      "promote suggestions",
+    )) {
+      return;
+    }
+    _pushNotice("Suggestion promoted by $_actorName");
     _send("suggestion:promote", {"suggestionId": suggestionId});
+  }
+
+  Future<void> shutdownForAppClose() async {
+    if (!state.connected || state.code == null) return;
+
+    try {
+      if (state.isHost) {
+        await endRoom().timeout(const Duration(milliseconds: 500));
+      } else {
+        await leaveRoom().timeout(const Duration(milliseconds: 500));
+      }
+    } catch (error, stackTrace) {
+      await AppLogger.reportError(
+        error,
+        stackTrace,
+        "Failed to close multi-session room during app shutdown",
+      );
+    }
   }
 
   Future<void> leaveRoom() async {

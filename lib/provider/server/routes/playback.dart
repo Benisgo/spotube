@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:collection/collection.dart';
 import 'package:dio/dio.dart' hide Response;
 import 'package:dio/dio.dart' as dio_lib;
 import 'package:flutter/foundation.dart';
@@ -109,18 +110,22 @@ class ServerPlaybackRoutes {
       if (resolvedTrack.url != null) return resolvedTrack;
     }
 
-    if (resolvedTrack.siblings.isEmpty) {
-      throw StateError(
-        "No playable source found for ${track.query.name}",
+    final triedTrackIds = <String>{resolvedTrack.info.id};
+    while (resolvedTrack.url == null) {
+      final nextSibling = resolvedTrack.siblings.firstWhereOrNull(
+        (sibling) => !triedTrackIds.contains(sibling.id),
       );
+      if (nextSibling == null) {
+        break;
+      }
+      triedTrackIds.add(nextSibling.id);
+      _ensurePlaybackRequestRelevant(requestedUri);
+      resolvedTrack = await notifier.swapWithSibling(nextSibling);
+      _ensurePlaybackRequestRelevant(requestedUri);
+      if (resolvedTrack.url != null) return resolvedTrack;
     }
 
-    resolvedTrack = await notifier.swapWithNextSibling();
-    if (resolvedTrack.url != null) return resolvedTrack;
-
-    throw StateError(
-      "No playable source found for ${track.query.name}",
-    );
+    throw StateError("No playable source found for ${track.query.name}");
   }
 
   Future<dio_lib.Response> streamTrackInformation(
@@ -229,37 +234,12 @@ class ServerPlaybackRoutes {
       final notifier =
           ref.read(sourcedTrackProvider(activeTrack.query).notifier);
       _ensurePlaybackRequestRelevant(requestedUri);
-      activeTrack = await notifier.refreshStreamingUrl();
-      _ensurePlaybackRequestRelevant(requestedUri);
-      if (activeTrack.url == null && activeTrack.siblings.isEmpty) {
-        _ensurePlaybackRequestRelevant(requestedUri);
-        activeTrack = await notifier.copyWithSibling();
-        _ensurePlaybackRequestRelevant(requestedUri);
-      }
-      if (activeTrack.url == null && activeTrack.siblings.isNotEmpty) {
-        _ensurePlaybackRequestRelevant(requestedUri);
-        activeTrack = await notifier.swapWithNextSibling();
-        _ensurePlaybackRequestRelevant(requestedUri);
-      }
+      activeTrack = await _resolvePlayableTrack(
+        await notifier.refreshStreamingUrl(),
+        requestedUri,
+      );
       url = activeTrack.url!;
-
-      try {
-        res = await fetchStream(url);
-      } catch (refreshError, refreshStack) {
-        AppLogger.reportError(refreshError, refreshStack);
-        if (activeTrack.siblings.isEmpty) {
-          _ensurePlaybackRequestRelevant(requestedUri);
-          activeTrack = await notifier.copyWithSibling();
-          _ensurePlaybackRequestRelevant(requestedUri);
-        }
-        if (activeTrack.siblings.isEmpty) rethrow;
-
-        _ensurePlaybackRequestRelevant(requestedUri);
-        activeTrack = await notifier.swapWithNextSibling();
-        _ensurePlaybackRequestRelevant(requestedUri);
-        url = activeTrack.url!;
-        res = await fetchStream(url);
-      }
+      res = await fetchStream(url);
     }
 
     // Redirect to m3u8 link directly as it handles range requests internally

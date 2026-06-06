@@ -1,15 +1,18 @@
 import 'dart:async';
 
+import 'package:collection/collection.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 import 'package:spotube/collections/spotube_icons.dart';
 import 'package:spotube/extensions/context.dart';
 import 'package:spotube/models/metadata/metadata.dart';
+import 'package:spotube/models/multi_session/multi_session.dart';
 import 'package:spotube/modules/metadata_plugins/plugin_update_available_dialog.dart';
 import 'package:spotube/provider/audio_player/audio_player.dart';
 import 'package:spotube/provider/metadata_plugin/metadata_plugin_provider.dart';
 import 'package:spotube/provider/metadata_plugin/updater/update_checker.dart';
+import 'package:spotube/provider/multi_session/multi_session.dart';
 import 'package:spotube/provider/server/routes/connect.dart';
 import 'package:spotube/services/audio_player/audio_player.dart';
 import 'package:spotube/services/connectivity_adapter.dart';
@@ -20,6 +23,124 @@ void useGlobalSubscriptions(WidgetRef ref) {
   final context = useContext();
   final theme = Theme.of(context);
   final connectRoutes = ref.watch(serverConnectRoutesProvider);
+  final multiSessionState = ref.watch(multiSessionProvider);
+
+  MultiSessionMember? memberById(
+    MultiSessionRoomSnapshot? snapshot,
+    String? memberId,
+  ) {
+    if (snapshot == null || memberId == null) return null;
+    return snapshot.members
+        .where((member) => member.id == memberId)
+        .firstOrNull;
+  }
+
+  void queueToast(VoidCallback show) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!context.mounted) return;
+      show();
+    });
+  }
+
+  void showDestructiveToast(String message) {
+    queueToast(() {
+      showToast(
+        context: context,
+        location: ToastLocation.bottomCenter,
+        builder: (context, overlay) {
+          return SurfaceCard(
+            fillColor: theme.colorScheme.destructive,
+            filled: true,
+            child: Basic(
+              leading: const Icon(
+                SpotubeIcons.error,
+                color: Colors.white,
+              ),
+              title: Text(
+                message,
+                style: const TextStyle(color: Colors.white),
+              ),
+            ),
+          );
+        },
+      );
+    });
+  }
+
+  void showInformationalToast(String message) {
+    queueToast(() {
+      showToast(
+        context: context,
+        location: ToastLocation.topRight,
+        builder: (context, overlay) {
+          return SurfaceCard(
+            child: Basic(
+              title: Text(message),
+            ),
+          );
+        },
+      );
+    });
+  }
+
+  final previousSnapshot = usePrevious(multiSessionState.snapshot);
+  final lastRoomToast = useRef<String?>(null);
+
+  useEffect(() {
+    final notice = multiSessionState.notice;
+    if (notice == null) return null;
+
+    if (notice.destructive) {
+      showDestructiveToast(notice.message);
+    } else {
+      showInformationalToast(notice.message);
+    }
+    return null;
+  }, [multiSessionState.notice?.id]);
+
+  useEffect(() {
+    final snapshot = multiSessionState.snapshot;
+    if (snapshot == null || previousSnapshot == null) return null;
+
+    final previousMemberIds = previousSnapshot.members.map((m) => m.id).toSet();
+    final currentMemberIds = snapshot.members.map((m) => m.id).toSet();
+
+    for (final joined in snapshot.members.where(
+      (member) => !previousMemberIds.contains(member.id),
+    )) {
+      final message = "${joined.name} joined the room";
+      if (message != lastRoomToast.value) {
+        lastRoomToast.value = message;
+        showInformationalToast(message);
+      }
+    }
+
+    for (final left in previousSnapshot.members.where(
+      (member) => !currentMemberIds.contains(member.id),
+    )) {
+      final message = "${left.name} left the room";
+      if (message != lastRoomToast.value) {
+        lastRoomToast.value = message;
+        showInformationalToast(message);
+      }
+    }
+
+    final previousTopSuggestion = previousSnapshot.suggestions.firstOrNull;
+    final currentTopSuggestion = snapshot.suggestions.firstOrNull;
+    if (currentTopSuggestion != null &&
+        currentTopSuggestion.id != previousTopSuggestion?.id) {
+      final actor = memberById(snapshot, currentTopSuggestion.suggestedBy)?.name;
+      final message = actor == null
+          ? "${currentTopSuggestion.track.name} was suggested"
+          : "${currentTopSuggestion.track.name} was suggested by $actor";
+      if (message != lastRoomToast.value) {
+        lastRoomToast.value = message;
+        showInformationalToast(message);
+      }
+    }
+
+    return null;
+  }, [multiSessionState.snapshot?.sequence]);
 
   useEffect(() {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -55,6 +176,7 @@ void useGlobalSubscriptions(WidgetRef ref) {
     StreamSubscription? audioPlayerSubscription;
     bool pausedByStream = false;
     String? lastPlaybackError;
+    bool skippedAfterPlaybackError = false;
 
     String? buildFriendlyPlaybackError(String rawError) {
       final lower = rawError.toLowerCase();
@@ -106,60 +228,64 @@ void useGlobalSubscriptions(WidgetRef ref) {
         // Show notification for connection related issues
         if (!context.mounted) return;
 
-        showToast(
-          context: context,
-          location: ToastLocation.bottomCenter,
-          builder: (context, overlay) {
-            if (connected) {
-              return SurfaceCard(
-                child: Basic(
-                  leading: const Icon(SpotubeIcons.wifi),
-                  title: Text(context.l10n.connection_restored),
-                ),
-              );
-            }
+        queueToast(() {
+          showToast(
+            context: context,
+            location: ToastLocation.bottomCenter,
+            builder: (context, overlay) {
+              if (connected) {
+                return SurfaceCard(
+                  child: Basic(
+                    leading: const Icon(SpotubeIcons.wifi),
+                    title: Text(context.l10n.connection_restored),
+                  ),
+                );
+              }
 
-            return SurfaceCard(
-              fillColor: theme.colorScheme.destructive,
-              filled: true,
-              child: Basic(
-                leading: const Icon(
-                  SpotubeIcons.noWifi,
-                  color: Colors.white,
-                ),
-                trailing: Text(
-                  context.l10n.you_are_offline,
-                  style: const TextStyle(
+              return SurfaceCard(
+                fillColor: theme.colorScheme.destructive,
+                filled: true,
+                child: Basic(
+                  leading: const Icon(
+                    SpotubeIcons.noWifi,
                     color: Colors.white,
                   ),
+                  trailing: Text(
+                    context.l10n.you_are_offline,
+                    style: const TextStyle(
+                      color: Colors.white,
+                    ),
+                  ),
                 ),
-              ),
-            );
-          },
-        );
+              );
+            },
+          );
+        });
       }),
       connectRoutes.connectClientStream.listen((clientOrigin) {
         if (!context.mounted) return;
-        showToast(
-          context: context,
-          location: ToastLocation.topRight,
-          builder: (context, overlay) {
-            return SurfaceCard(
-              fillColor: Colors.yellow[600],
-              filled: true,
-              child: Basic(
-                leading: const Icon(
-                  SpotubeIcons.error,
-                  color: Colors.black,
+        queueToast(() {
+          showToast(
+            context: context,
+            location: ToastLocation.topRight,
+            builder: (context, overlay) {
+              return SurfaceCard(
+                fillColor: Colors.yellow[600],
+                filled: true,
+                child: Basic(
+                  leading: const Icon(
+                    SpotubeIcons.error,
+                    color: Colors.black,
+                  ),
+                  title: Text(
+                    context.l10n.connect_client_alert(clientOrigin),
+                    style: const TextStyle(color: Colors.black),
+                  ),
                 ),
-                title: Text(
-                  context.l10n.connect_client_alert(clientOrigin),
-                  style: const TextStyle(color: Colors.black),
-                ),
-              ),
-            );
-          },
-        );
+              );
+            },
+          );
+        });
       }),
       audioPlayer.errorStream.listen((error) {
         final message = buildFriendlyPlaybackError(error);
@@ -170,28 +296,11 @@ void useGlobalSubscriptions(WidgetRef ref) {
         }
 
         lastPlaybackError = message;
-        showToast(
-          context: context,
-          location: ToastLocation.bottomCenter,
-          builder: (context, overlay) {
-            return SurfaceCard(
-              fillColor: theme.colorScheme.destructive,
-              filled: true,
-              child: Basic(
-                leading: const Icon(
-                  SpotubeIcons.error,
-                  color: Colors.white,
-                ),
-                title: Text(
-                  message,
-                  style: const TextStyle(
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            );
-          },
-        );
+        showDestructiveToast(message);
+        if (!skippedAfterPlaybackError) {
+          skippedAfterPlaybackError = true;
+          unawaited(audioPlayer.skipToNext());
+        }
       })
     ];
 

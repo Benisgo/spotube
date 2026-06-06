@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:spotube/hooks/configurators/use_window_listener.dart';
 import 'package:spotube/models/database/database.dart';
+import 'package:spotube/provider/multi_session/multi_session.dart';
 import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
 
 import 'package:local_notifier/local_notifier.dart';
@@ -22,6 +24,17 @@ final closeNotification = !kIsDesktop
       });
 
 void useCloseBehavior(WidgetRef ref) {
+  Future<void> closeApp() async {
+    await ref.read(multiSessionProvider.notifier).shutdownForAppClose();
+    exit(0);
+  }
+
+  if (closeNotification != null) {
+    closeNotification!.onClickAction = (value) {
+      unawaited(closeApp());
+    };
+  }
+
   useWindowListener(
     onWindowClose: () async {
       final preferences = ref.read(userPreferencesProvider);
@@ -29,7 +42,7 @@ void useCloseBehavior(WidgetRef ref) {
         await windowManager.hide();
         closeNotification?.show();
       } else {
-        exit(0);
+        await closeApp();
       }
     },
   );

@@ -30,6 +30,18 @@ enum MultiSessionMemberPreset {
   }
 }
 
+class MultiSessionUiNotice {
+  final String message;
+  final bool destructive;
+  final int id;
+
+  const MultiSessionUiNotice({
+    required this.message,
+    this.destructive = false,
+    required this.id,
+  });
+}
+
 Map<MultiSessionPermission, bool> multiSessionPresetPermissions(
   MultiSessionMemberPreset preset,
 ) {
@@ -79,6 +91,7 @@ class MultiSessionMember {
   final String role;
   final MultiSessionMemberPreset preset;
   final Map<MultiSessionPermission, bool> permissions;
+  final List<SpotubeImageObject> images;
 
   const MultiSessionMember({
     required this.id,
@@ -86,21 +99,67 @@ class MultiSessionMember {
     required this.role,
     required this.preset,
     required this.permissions,
+    required this.images,
   });
 
-  factory MultiSessionMember.fromJson(Map<String, dynamic> json) {
-    final preset =
-        json["role"] == "host"
-            ? MultiSessionMemberPreset.coHost
-            : MultiSessionMemberPreset.fromName(json["preset"] as String?);
+  static List<SpotubeImageObject> _parseImages(Map<String, dynamic> json) {
+    final results = <SpotubeImageObject>[];
 
-    final defaults =
-        json["role"] == "host"
-            ? {
-              for (final permission in MultiSessionPermission.values)
-                permission: true,
-            }
-            : multiSessionPresetPermissions(preset);
+    void addUrl(String? value) {
+      final url = value?.trim();
+      if (url == null || url.isEmpty) return;
+      if (results.any((image) => image.url == url)) return;
+      results.add(SpotubeImageObject(url: url));
+    }
+
+    final rawImages = json["images"];
+    if (rawImages is List) {
+      for (final item in rawImages) {
+        if (item is String) {
+          addUrl(item);
+          continue;
+        }
+
+        if (item is Map) {
+          final mapped = item.cast<Object?, Object?>();
+          final url = mapped["url"]?.toString().trim();
+          if (url == null || url.isEmpty) continue;
+
+          final width = int.tryParse((mapped["width"] ?? "").toString());
+          final height = int.tryParse((mapped["height"] ?? "").toString());
+          if (results.any((image) => image.url == url)) continue;
+
+          results.add(
+            SpotubeImageObject(
+              url: url,
+              width: width,
+              height: height,
+            ),
+          );
+        }
+      }
+    }
+
+    addUrl(json["imageUrl"]?.toString());
+    addUrl(json["avatarUrl"]?.toString());
+    addUrl(json["photoUrl"]?.toString());
+
+    return results;
+  }
+
+  factory MultiSessionMember.fromJson(Map<String, dynamic> json) {
+    final preset = json["role"] == "host"
+        ? MultiSessionMemberPreset.coHost
+        : MultiSessionMemberPreset.fromName(json["preset"] as String?);
+
+    final defaults = json["role"] == "host"
+        ? {
+            for (final permission in MultiSessionPermission.values)
+              permission: true,
+          }
+        : multiSessionPresetPermissions(preset);
+    final rawPermissions =
+        (json["permissions"] as Map?)?.cast<String, dynamic>();
 
     return MultiSessionMember(
       id: json["id"] as String,
@@ -109,10 +168,11 @@ class MultiSessionMember {
       preset: preset,
       permissions: {
         for (final permission in MultiSessionPermission.values)
-          permission:
-              (json["permissions"] as Map?)?[permission.name] == true ||
-              defaults[permission] == true,
+          permission: rawPermissions?.containsKey(permission.name) == true
+              ? rawPermissions![permission.name] == true
+              : defaults[permission] == true,
       },
+      images: _parseImages(json),
     );
   }
 }
@@ -279,6 +339,7 @@ class MultiSessionState {
   final bool connecting;
   final String? error;
   final MultiSessionInvite? pendingInvite;
+  final MultiSessionUiNotice? notice;
 
   const MultiSessionState({
     this.roomId,
@@ -290,6 +351,7 @@ class MultiSessionState {
     this.connecting = false,
     this.error,
     this.pendingInvite,
+    this.notice,
   });
 
   MultiSessionMember? get currentMember {
@@ -324,14 +386,17 @@ class MultiSessionState {
     bool? connecting,
     String? error,
     MultiSessionInvite? pendingInvite,
+    MultiSessionUiNotice? notice,
     bool clearRoom = false,
     bool clearError = false,
     bool clearInvite = false,
+    bool clearNotice = false,
   }) {
     if (clearRoom) {
       return MultiSessionState(
         error: clearError ? null : error,
         pendingInvite: clearInvite ? null : pendingInvite ?? this.pendingInvite,
+        notice: clearNotice ? null : notice ?? this.notice,
       );
     }
 
@@ -344,8 +409,8 @@ class MultiSessionState {
       connected: connected ?? this.connected,
       connecting: connecting ?? this.connecting,
       error: clearError ? null : error ?? this.error,
-      pendingInvite:
-          clearInvite ? null : pendingInvite ?? this.pendingInvite,
+      pendingInvite: clearInvite ? null : pendingInvite ?? this.pendingInvite,
+      notice: clearNotice ? null : notice ?? this.notice,
     );
   }
 }

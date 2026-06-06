@@ -5,6 +5,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 import 'package:spotube/collections/spotube_icons.dart';
+import 'package:spotube/components/image/universal_image.dart';
 import 'package:spotube/extensions/context.dart';
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/models/multi_session/multi_session.dart';
@@ -22,11 +23,25 @@ class ConnectPageMultiSessionRooms extends HookConsumerWidget {
     final sessionNotifier = ref.read(multiSessionProvider.notifier);
     final roomCode = session.code;
     final snapshot = session.snapshot;
-    final isConnectedRoom = session.connected && roomCode != null;
+    final hasRoom = roomCode != null;
+    final isConnectedRoom = session.connected && hasRoom;
     final isHost = session.isHost;
     final members = snapshot?.members ?? const <MultiSessionMember>[];
     final invite = session.pendingInvite;
     final inviteDialogKey = useRef<String?>(null);
+
+    Future<void> joinFromInput() async {
+      final value = codeController.text.trim();
+      if (value.isEmpty) return;
+
+      final inviteLink = parseMultiSessionInviteUri(value);
+      if (inviteLink != null) {
+        await sessionNotifier.resolveInviteUri(value);
+        return;
+      }
+
+      await sessionNotifier.joinRoom(value);
+    }
 
     useEffect(() {
       final inviteCode = invite?.code;
@@ -87,6 +102,27 @@ class ConnectPageMultiSessionRooms extends HookConsumerWidget {
       return null;
     }, [invite?.code, invite?.error, invite?.metadata?.members, session.code]);
 
+    Widget buildRoomStatusBadge() {
+      if (session.connected) {
+        return const SecondaryBadge(
+          child: Text("Connected"),
+        );
+      }
+      if (session.connecting) {
+        return const PrimaryBadge(
+          child: Text("Connecting"),
+        );
+      }
+      if (hasRoom) {
+        return const DestructiveBadge(
+          child: Text("Reconnecting"),
+        );
+      }
+      return const OutlineBadge(
+        child: Text("Idle"),
+      );
+    }
+
     return SliverMainAxisGroup(
       slivers: [
         SliverPadding(
@@ -103,7 +139,7 @@ class ConnectPageMultiSessionRooms extends HookConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               spacing: 12,
               children: [
-                if (isConnectedRoom) ...[
+                if (hasRoom) ...[
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -116,6 +152,7 @@ class ConnectPageMultiSessionRooms extends HookConsumerWidget {
                               "Room $roomCode",
                               style: theme.typography.large,
                             ),
+                            buildRoomStatusBadge(),
                             Text(
                               snapshot?.communityQueueEnabled == true
                                   ? "Community queue is on"
@@ -126,9 +163,11 @@ class ConnectPageMultiSessionRooms extends HookConsumerWidget {
                         ),
                       ),
                       Button.outline(
-                        onPressed: isHost
-                            ? sessionNotifier.endRoom
-                            : sessionNotifier.leaveRoom,
+                        onPressed: session.connecting
+                            ? null
+                            : isHost
+                                ? sessionNotifier.endRoom
+                                : sessionNotifier.leaveRoom,
                         leading: const Icon(SpotubeIcons.power),
                         child: Text(isHost ? "End" : "Leave"),
                       ),
@@ -170,7 +209,8 @@ class ConnectPageMultiSessionRooms extends HookConsumerWidget {
                         ),
                     ],
                   ),
-                  if (session.can(MultiSessionPermission.editQueue))
+                  if (isConnectedRoom &&
+                      session.can(MultiSessionPermission.editQueue))
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -181,10 +221,11 @@ class ConnectPageMultiSessionRooms extends HookConsumerWidget {
                         ),
                       ],
                     ),
-                  _SuggestionsSection(
-                    session: session,
-                    notifier: sessionNotifier,
-                  ),
+                  if (isConnectedRoom)
+                    _SuggestionsSection(
+                      session: session,
+                      notifier: sessionNotifier,
+                    ),
                   if (members.isNotEmpty)
                     for (final member in members)
                       _MemberTile(member: member),
@@ -209,13 +250,11 @@ class ConnectPageMultiSessionRooms extends HookConsumerWidget {
                       Expanded(
                         child: TextField(
                           controller: codeController,
-                          placeholder: const Text("Room code"),
+                          placeholder: const Text("Room code or invite link"),
                         ),
                       ),
                       Button.outline(
-                        onPressed: session.connecting
-                            ? null
-                            : () => sessionNotifier.joinRoom(codeController.text),
+                        onPressed: session.connecting ? null : joinFromInput,
                         leading: const Icon(SpotubeIcons.login),
                         child: const Text("Join"),
                       ),
@@ -351,8 +390,16 @@ class _MemberTile extends ConsumerWidget {
         member.role != "host";
 
     return ListTile(
-      leading: Icon(
-        member.role == "host" ? SpotubeIcons.user : SpotubeIcons.device,
+      leading: Avatar(
+        initials: Avatar.getInitials(member.name),
+        size: 40,
+        provider: member.images.isNotEmpty
+            ? UniversalImage.imageProvider(
+                member.images.asUrlString(
+                  placeholder: ImagePlaceholder.artist,
+                ),
+              )
+            : null,
       ),
       title: Text(member.name),
       subtitle: Column(

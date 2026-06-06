@@ -21,6 +21,18 @@ import 'package:spotube/utils/platform.dart';
 class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
   BlackListNotifier get _blacklist => ref.read(blacklistProvider.notifier);
 
+  void _prefetchUpcomingSources([int aheadCount = 2]) {
+    final startIndex = state.currentIndex < 0 ? 0 : state.currentIndex;
+    final upcomingTracks = state.tracks
+        .skip(startIndex)
+        .whereType<SpotubeFullTrackObject>()
+        .take(aheadCount + 1);
+
+    for (final track in upcomingTracks) {
+      ref.read(sourcedTrackProvider(track));
+    }
+  }
+
   void _assertAllowedTracks(Iterable<SpotubeTrackObject> tracks) {
     assert(
       tracks.every(
@@ -177,6 +189,7 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
               tracks: Value(state.tracks),
             ),
           );
+          _prefetchUpcomingSources();
         } catch (e, stack) {
           AppLogger.reportError(e, stack);
         }
@@ -426,6 +439,7 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
       currentIndex: safeInitialIndex,
       collections: [],
     );
+    _prefetchUpcomingSources();
 
     await audioPlayer.openPlaylist(
       medias,

@@ -30,6 +30,42 @@ void main() {
     expect(snapshot.suggestions, isEmpty);
   });
 
+  test('explicit member permissions override preset defaults', () {
+    final member = MultiSessionMember.fromJson({
+      'id': 'member-1',
+      'name': 'Listener',
+      'role': 'member',
+      'preset': 'dj',
+      'permissions': {
+        'controlPlayback': false,
+        'suggestTracks': true,
+      },
+    });
+
+    expect(
+      member.permissions[MultiSessionPermission.controlPlayback],
+      isFalse,
+    );
+    expect(member.permissions[MultiSessionPermission.suggestTracks], isTrue);
+  });
+
+  test('member images parse from relay avatar fields', () {
+    final member = MultiSessionMember.fromJson({
+      'id': 'member-1',
+      'name': 'Listener',
+      'role': 'member',
+      'preset': 'listener',
+      'images': const [
+        {'url': ''},
+      ],
+      'avatarUrl': 'https://i.scdn.co/image/avatar-a',
+      'photoUrl': 'https://i.scdn.co/image/avatar-b',
+    });
+
+    expect(member.images, isNotEmpty);
+    expect(member.images.first.url, 'https://i.scdn.co/image/avatar-a');
+  });
+
   test('normalizes relay urls before validation', () {
     expect(
       MultiSessionNotifier.normalizeRelayUrl('relay.example.com'),

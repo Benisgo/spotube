@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 
 import 'package:collection/collection.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
@@ -19,6 +20,11 @@ import 'package:spotube/services/connectivity_adapter.dart';
 import 'package:spotube/services/logger/logger.dart';
 import 'package:spotube/utils/service_utils.dart';
 
+const _maxGlobalToastsPerWindow = 4;
+const _globalToastWindow = Duration(seconds: 8);
+
+final Queue<DateTime> _globalToastTimestamps = Queue<DateTime>();
+
 void useGlobalSubscriptions(WidgetRef ref) {
   final context = useContext();
   final theme = Theme.of(context);
@@ -38,6 +44,17 @@ void useGlobalSubscriptions(WidgetRef ref) {
   void queueToast(VoidCallback show) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!context.mounted) return;
+      final now = DateTime.now();
+      while (_globalToastTimestamps.isNotEmpty &&
+          now.difference(_globalToastTimestamps.first) > _globalToastWindow) {
+        _globalToastTimestamps.removeFirst();
+      }
+
+      if (_globalToastTimestamps.length >= _maxGlobalToastsPerWindow) {
+        return;
+      }
+
+      _globalToastTimestamps.addLast(now);
       show();
     });
   }
@@ -176,6 +193,7 @@ void useGlobalSubscriptions(WidgetRef ref) {
     StreamSubscription? audioPlayerSubscription;
     bool pausedByStream = false;
     String? lastPlaybackError;
+    DateTime? lastPlaybackErrorAt;
     bool skippedAfterPlaybackError = false;
 
     String? buildFriendlyPlaybackError(String rawError) {
@@ -289,13 +307,20 @@ void useGlobalSubscriptions(WidgetRef ref) {
       }),
       audioPlayer.errorStream.listen((error) {
         final message = buildFriendlyPlaybackError(error);
+        final now = DateTime.now();
+        final isRepeatedRecentError =
+            message != null &&
+            message == lastPlaybackError &&
+            lastPlaybackErrorAt != null &&
+            now.difference(lastPlaybackErrorAt!) < const Duration(seconds: 8);
         if (!context.mounted ||
             message == null ||
-            message == lastPlaybackError) {
+            isRepeatedRecentError) {
           return;
         }
 
         lastPlaybackError = message;
+        lastPlaybackErrorAt = now;
         showDestructiveToast(message);
         if (!skippedAfterPlaybackError) {
           skippedAfterPlaybackError = true;

@@ -4,6 +4,7 @@ import 'package:encrypt/encrypt.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:spotube/models/database/database.dart';
 import 'package:spotube/services/wm_tools/wm_tools.dart';
+import 'package:spotube/services/youtube_engine/yt_dlp_auth_browser.dart';
 import 'package:uuid/uuid.dart';
 
 abstract class KVStoreService {
@@ -114,5 +115,13 @@ abstract class KVStoreService {
         engine.name: path,
       }),
     );
+  }
+
+  static YtDlpAuthBrowser get ytDlpAuthBrowser => YtDlpAuthBrowser.fromName(
+        sharedPreferences.getString('ytDlpAuthBrowser'),
+      );
+
+  static Future<void> setYtDlpAuthBrowser(YtDlpAuthBrowser browser) async {
+    await sharedPreferences.setString('ytDlpAuthBrowser', browser.name);
   }
 }

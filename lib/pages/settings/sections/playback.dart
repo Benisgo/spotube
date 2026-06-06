@@ -2,6 +2,7 @@ import 'package:auto_route/auto_route.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart' show ListTile, TextEditingController;
 
+import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 import 'package:spotube/collections/routes.gr.dart';
@@ -14,8 +15,10 @@ import 'package:spotube/extensions/context.dart';
 import 'package:spotube/modules/settings/youtube_engine_not_installed_dialog.dart';
 import 'package:spotube/provider/metadata_plugin/audio_source/quality_presets.dart';
 import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
+import 'package:spotube/services/kv_store/kv_store.dart';
 import 'package:spotube/services/youtube_engine/yt_dlp_binary.dart';
 import 'package:spotube/services/youtube_engine/android_yt_dlp_engine.dart';
+import 'package:spotube/services/youtube_engine/yt_dlp_auth_browser.dart';
 
 import 'package:spotube/utils/platform.dart';
 
@@ -26,6 +29,7 @@ class SettingsPlaybackSection extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, ref) {
+    final ytDlpAuthBrowser = useState(KVStoreService.ytDlpAuthBrowser);
     final preferences = ref.watch(userPreferencesProvider);
     final preferencesNotifier = ref.watch(userPreferencesProvider.notifier);
     final sourcePresets = ref.watch(audioSourcePresetsProvider);
@@ -69,6 +73,25 @@ class SettingsPlaybackSection extends HookConsumerWidget {
             preferencesNotifier.setYoutubeClientEngine(value);
           },
         ),
+        if (kIsDesktop)
+          AdaptiveSelectTile<YtDlpAuthBrowser>(
+            secondary: const Icon(SpotubeIcons.login),
+            title: const Text("yt-dlp auth browser"),
+            value: ytDlpAuthBrowser.value,
+            options: YtDlpAuthBrowser.values
+                .map(
+                  (browser) => SelectItemButton(
+                    value: browser,
+                    child: Text(browser.label),
+                  ),
+                )
+                .toList(),
+            onChanged: (value) async {
+              if (value == null) return;
+              ytDlpAuthBrowser.value = value;
+              await KVStoreService.setYtDlpAuthBrowser(value);
+            },
+          ),
         if (kIsDesktop)
           ListTile(
             leading: const Icon(SpotubeIcons.download),

@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:dio/dio.dart';
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/provider/metadata_plugin/library/playlists.dart';
 import 'package:spotube/provider/metadata_plugin/metadata_plugin_provider.dart';
@@ -9,6 +10,16 @@ import 'package:spotube/services/metadata/metadata.dart';
 
 class MetadataPluginPlaylistNotifier
     extends AutoDisposeFamilyAsyncNotifier<SpotubeFullPlaylistObject, String> {
+  bool _isRecoverablePlaylistError(Object error) {
+    if (error is DioException) {
+      return error.response?.statusCode == 401 ||
+          error.response?.statusCode == 429;
+    }
+
+    final message = error.toString();
+    return message.contains("401") || message.contains("429");
+  }
+
   Future<MetadataPlugin> get metadataPlugin async {
     final metadataPlugin = await ref.read(metadataPluginProvider.future);
 
@@ -23,7 +34,14 @@ class MetadataPluginPlaylistNotifier
   build(playlistId) async {
     ref.cacheFor();
 
-    return (await metadataPlugin).playlist.getPlaylist(playlistId);
+    try {
+      return await (await metadataPlugin).playlist.getPlaylist(playlistId);
+    } catch (e) {
+      if (_isRecoverablePlaylistError(e) && state.value != null) {
+        return state.value!;
+      }
+      rethrow;
+    }
   }
 
   Future<void> create({

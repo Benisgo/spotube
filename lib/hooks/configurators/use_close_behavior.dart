@@ -25,7 +25,10 @@ final closeNotification = !kIsDesktop
 
 void useCloseBehavior(WidgetRef ref) {
   Future<void> closeApp() async {
-    await ref.read(multiSessionProvider.notifier).shutdownForAppClose();
+    await Future.any([
+      ref.read(multiSessionProvider.notifier).shutdownForAppClose(),
+      Future<void>.delayed(const Duration(milliseconds: 150)),
+    ]);
     exit(0);
   }
 

@@ -19,6 +19,7 @@ import 'package:web_socket_channel/status.dart' as status;
 class MultiSessionNotifier extends Notifier<MultiSessionState> {
   static const _legacyRelayUrl = "https://spotube-multi-session.workers.dev";
   static const _remoteSeekThresholdMs = 4000;
+  static const _stringListEquality = ListEquality<String>();
 
   WebSocketChannel? _channel;
   StreamSubscription? _subscription;
@@ -83,6 +84,45 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
   void _rememberObservedPosition(Duration position) {
     _lastObservedPositionMs = position.inMilliseconds;
     _lastObservedAt = DateTime.now();
+  }
+
+  List<String> _queueIds(List<Map<String, dynamic>> queue) {
+    return queue
+        .map((item) => item["id"]?.toString() ?? "")
+        .where((id) => id.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  List<String> _memberSignatures(List<MultiSessionMember> members) {
+    return members
+        .map((member) => "${member.id}:${member.role}:${member.preset.name}")
+        .toList(growable: false);
+  }
+
+  List<String> _suggestionSignatures(List<MultiSessionSuggestion> suggestions) {
+    return suggestions
+        .map((suggestion) => "${suggestion.id}:${suggestion.voteCount}")
+        .toList(growable: false);
+  }
+
+  bool _isPlaybackOnlySnapshotUpdate(
+    MultiSessionRoomSnapshot previous,
+    MultiSessionRoomSnapshot next,
+  ) {
+    return previous.roomId == next.roomId &&
+        previous.code == next.code &&
+        previous.activeTrackId == next.activeTrackId &&
+        previous.playing == next.playing &&
+        previous.communityQueueEnabled == next.communityQueueEnabled &&
+        _stringListEquality.equals(_queueIds(previous.queue), _queueIds(next.queue)) &&
+        _stringListEquality.equals(
+          _memberSignatures(previous.members),
+          _memberSignatures(next.members),
+        ) &&
+        _stringListEquality.equals(
+          _suggestionSignatures(previous.suggestions),
+          _suggestionSignatures(next.suggestions),
+        );
   }
 
   @override
@@ -510,7 +550,13 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
     );
     if ((state.snapshot?.sequence ?? -1) > snapshot.sequence) return;
 
-    state = state.copyWith(snapshot: snapshot, code: snapshot.code);
+    final previousSnapshot = state.snapshot;
+    final isPlaybackOnlyUpdate = previousSnapshot != null &&
+        _isPlaybackOnlySnapshotUpdate(previousSnapshot, snapshot);
+
+    if (!isPlaybackOnlyUpdate || state.code != snapshot.code) {
+      state = state.copyWith(snapshot: snapshot, code: snapshot.code);
+    }
     await _applySnapshot(snapshot);
   }
 
@@ -521,26 +567,31 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
     );
     _applyingRemote = true;
     try {
-      final tracks = snapshot.queue
-          .map(SpotubeTrackObject.fromJson)
-          .whereType<SpotubeFullTrackObject>()
-          .toList();
-      if (tracks.isEmpty) return;
+      final localState = ref.read(audioPlayerProvider);
+      final localTracks = localState.tracks.whereType<SpotubeFullTrackObject>().toList();
+      final remoteTrackIds = _queueIds(snapshot.queue);
+      if (remoteTrackIds.isEmpty) return;
 
       final activeIndex = snapshot.activeTrackId == null
           ? 0
-          : tracks.indexWhere((track) => track.id == snapshot.activeTrackId);
+          : remoteTrackIds.indexOf(snapshot.activeTrackId!);
 
-      final localState = ref.read(audioPlayerProvider);
-      final localIds = localState.tracks.map((track) => track.id).join(",");
-      final remoteIds = tracks.map((track) => track.id).join(",");
+      final localTrackIds =
+          localTracks.map((track) => track.id).toList(growable: false);
       final index = activeIndex < 0 ? 0 : activeIndex;
       final activeTrackChanged =
           localState.activeTrack?.id != snapshot.activeTrackId;
       final queueChanged =
-          localIds != remoteIds || localState.currentIndex != index;
+          !_stringListEquality.equals(localTrackIds, remoteTrackIds) ||
+              localState.currentIndex != index;
 
       if (queueChanged) {
+        final tracks = snapshot.queue
+            .map(SpotubeTrackObject.fromJson)
+            .whereType<SpotubeFullTrackObject>()
+            .toList();
+        if (tracks.isEmpty) return;
+
         await ref.read(audioPlayerProvider.notifier).load(
               tracks,
               initialIndex: index,
@@ -775,9 +826,9 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
 
     try {
       if (state.isHost) {
-        await endRoom().timeout(const Duration(milliseconds: 500));
+        await endRoom().timeout(const Duration(milliseconds: 200));
       } else {
-        await leaveRoom().timeout(const Duration(milliseconds: 500));
+        await leaveRoom().timeout(const Duration(milliseconds: 200));
       }
     } catch (error, stackTrace) {
       await AppLogger.reportError(
@@ -798,7 +849,7 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
       await leaveRoom();
       return;
     }
-    _beginRoomShutdown(notifyRelay: true, endedByHost: false);
+    _beginRoomShutdown(notifyRelay: true, endedByHost: true);
     await Future<void>.delayed(const Duration(milliseconds: 150));
   }
 }

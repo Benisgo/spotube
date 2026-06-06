@@ -1,8 +1,16 @@
 import 'dart:convert';
 
 import 'package:collection/collection.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:shadcn_flutter/shadcn_flutter.dart';
+import 'package:spotube/collections/routes.dart';
+import 'package:spotube/models/database/database.dart';
+import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
+import 'package:spotube/services/kv_store/kv_store.dart';
+import 'package:spotube/services/youtube_engine/deno_binary.dart';
 import 'package:spotube/services/logger/logger.dart';
 import 'package:spotube/services/youtube_engine/newpipe_engine.dart';
+import 'package:spotube/services/youtube_engine/yt_dlp_auth_browser.dart';
 import 'package:spotube/services/youtube_engine/youtube_engine.dart';
 import 'package:spotube/services/youtube_engine/youtube_explode_engine.dart';
 import 'package:spotube/services/youtube_engine/yt_dlp_binary.dart';
@@ -12,8 +20,32 @@ import 'package:yt_dlp_dart/yt_dlp_dart.dart';
 // ignore: depend_on_referenced_packages
 import 'package:http_parser/http_parser.dart';
 
+enum _YtDlpAuthAction {
+  retryWithBrowserSession,
+  useDifferentEngine,
+}
+
+final class _YtDlpFallbackRequested implements Exception {
+  const _YtDlpFallbackRequested();
+}
+
 class YtDlpEngine implements YouTubeEngine {
-  YouTubeEngine get _fallbackEngine {
+  static const _authCooldown = Duration(minutes: 5);
+  static const _browserCookieSources = [
+    YtDlpAuthBrowser.firefox,
+    YtDlpAuthBrowser.edge,
+    YtDlpAuthBrowser.chrome,
+    YtDlpAuthBrowser.chromium,
+    YtDlpAuthBrowser.brave,
+  ];
+  static DateTime? _authCooldownUntil;
+  static Future<_YtDlpAuthAction>? _authPromptFuture;
+
+  YouTubeEngine _getFallbackEngine({bool preferAuthenticatedResilience = false}) {
+    if (preferAuthenticatedResilience) {
+      return YouTubeExplodeEngine();
+    }
+
     if (NewPipeEngine.isAvailableForPlatform) {
       return NewPipeEngine();
     }
@@ -22,13 +54,340 @@ class YtDlpEngine implements YouTubeEngine {
   }
 
   bool _shouldFallback(Object error) {
+    if (error is _YtDlpFallbackRequested) return true;
+
     final message = error.toString().toLowerCase();
     return message.contains("too many requests") ||
         message.contains("http error 429") ||
         message.contains("this video is not available") ||
         message.contains("unable to download webpage") ||
+        message.contains("sign in to confirm you're not a bot") ||
         message.contains("no supported javascript runtime") ||
         message.contains("command failed with exit code 1");
+  }
+
+  bool _requiresAuthentication(Object error) {
+    final message = error.toString().toLowerCase();
+    return message.contains("sign in to confirm you're not a bot") ||
+        message.contains("use --cookies-from-browser") ||
+        message.contains("use --cookies") ||
+        message.contains("login_required");
+  }
+
+  bool get _isInAuthCooldown {
+    final cooldownUntil = _authCooldownUntil;
+    if (cooldownUntil == null) return false;
+    if (DateTime.now().isAfter(cooldownUntil)) {
+      _authCooldownUntil = null;
+      return false;
+    }
+    return true;
+  }
+
+  void _markAuthCooldown() {
+    _authCooldownUntil = DateTime.now().add(_authCooldown);
+  }
+
+  String _fallbackEngineLabel(YouTubeEngine fallback) {
+    return switch (fallback) {
+      NewPipeEngine() => "NewPipe",
+      YouTubeExplodeEngine() => "YouTubeExplode",
+      _ => fallback.runtimeType.toString(),
+    };
+  }
+
+  YoutubeClientEngine _fallbackPreference(YouTubeEngine fallback) {
+    return switch (fallback) {
+      NewPipeEngine() => YoutubeClientEngine.newPipe,
+      _ => YoutubeClientEngine.youtubeExplode,
+    };
+  }
+
+  Future<void> _switchPreferredEngine(YouTubeEngine fallback) async {
+    final context = rootNavigatorKey.currentContext;
+    if (context == null || !context.mounted) return;
+
+    ProviderScope.containerOf(
+      context,
+      listen: false,
+    ).read(userPreferencesProvider.notifier).setYoutubeClientEngine(
+          _fallbackPreference(fallback),
+        );
+  }
+
+  Future<_YtDlpAuthAction> _promptForAuthAction(YouTubeEngine fallback) async {
+    final existingPrompt = _authPromptFuture;
+    if (existingPrompt != null) {
+      return existingPrompt;
+    }
+
+    final future = _showAuthPrompt(fallback);
+    _authPromptFuture = future;
+
+    try {
+      return await future;
+    } finally {
+      if (identical(_authPromptFuture, future)) {
+        _authPromptFuture = null;
+      }
+    }
+  }
+
+  Future<_YtDlpAuthAction> _showAuthPrompt(YouTubeEngine fallback) async {
+    final context = rootNavigatorKey.currentContext;
+    if (context == null || !context.mounted) {
+      return _YtDlpAuthAction.useDifferentEngine;
+    }
+
+    final fallbackLabel = _fallbackEngineLabel(fallback);
+    final result = await showDialog<_YtDlpAuthAction>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: AlertDialog(
+              title: const Text("yt-dlp needs authentication"),
+              content: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 360),
+                child: Text(
+                  "YouTube blocked yt-dlp on this network or session. Spotube can try your signed-in browser session, or switch to $fallbackLabel instead.",
+                ),
+              ),
+              actions: [
+                Button.secondary(
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop(
+                      _YtDlpAuthAction.useDifferentEngine,
+                    );
+                  },
+                  child: Text("Use $fallbackLabel"),
+                ),
+                Button.primary(
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop(
+                      _YtDlpAuthAction.retryWithBrowserSession,
+                    );
+                  },
+                  child: const Text("Retry with browser session"),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    return result ?? _YtDlpAuthAction.useDifferentEngine;
+  }
+
+  Future<bool> _ensureDenoForRetry(YouTubeEngine fallback) async {
+    if (await DenoBinary.ensureAvailable(downloadIfMissing: false)) {
+      return true;
+    }
+
+    final context = rootNavigatorKey.currentContext;
+    if (context == null || !context.mounted) {
+      return false;
+    }
+
+    final fallbackLabel = _fallbackEngineLabel(fallback);
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        var isDownloading = false;
+        double? progress;
+        String? errorText;
+
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: AlertDialog(
+                  title: const Text("Deno is required for yt-dlp"),
+                  content: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 360),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      spacing: 12,
+                      children: [
+                        const Text(
+                          "yt-dlp needs Deno to solve YouTube's challenge scripts. Download Deno automatically, or switch to another engine instead.",
+                        ),
+                        if (isDownloading) ...[
+                          LinearProgressIndicator(value: progress ?? 0),
+                          Text(
+                            progress == null
+                                ? "Downloading Deno..."
+                                : "Downloading Deno... ${(progress! * 100).clamp(0, 100).toStringAsFixed(0)}%",
+                          ),
+                        ],
+                        if (errorText != null)
+                          Text(
+                            errorText!,
+                            style: const TextStyle(color: Colors.red),
+                          ),
+                      ],
+                    ),
+                  ),
+                  actions: [
+                    Button.secondary(
+                      onPressed: isDownloading
+                          ? null
+                          : () => Navigator.of(dialogContext).pop(false),
+                      child: Text("Use $fallbackLabel"),
+                    ),
+                    Button.primary(
+                      onPressed: isDownloading
+                          ? null
+                          : () async {
+                              setState(() {
+                                isDownloading = true;
+                                progress = 0;
+                                errorText = null;
+                              });
+
+                              final installed = await DenoBinary.ensureAvailable(
+                                downloadIfMissing: true,
+                                onReceiveProgress: (received, total) {
+                                  setState(() {
+                                    progress = total > 0
+                                        ? received / total
+                                        : null;
+                                  });
+                                },
+                              );
+
+                              if (!dialogContext.mounted) return;
+
+                              if (installed) {
+                                Navigator.of(dialogContext).pop(true);
+                                return;
+                              }
+
+                              setState(() {
+                                isDownloading = false;
+                                errorText =
+                                    "Spotube couldn't download Deno automatically. You can switch engines and try again later.";
+                              });
+                            },
+                      child: Text(
+                        isDownloading
+                            ? "Downloading Deno..."
+                            : "Download Deno automatically",
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    return result ?? false;
+  }
+
+  Future<List<String>> _jsRuntimeArgs() async {
+    final denoPath = await DenoBinary.findInstalledBinaryPath();
+    if (denoPath == null) return const [];
+
+    final value = denoPath == "deno" ? "deno" : "deno:$denoPath";
+    return ["--js-runtimes", value];
+  }
+
+  Future<T> _runExtractWithBrowserCookies<T>({
+    required String target,
+    required String formatSpecifiers,
+    required Future<T> Function(List<String> extraArgs) extractor,
+  }) async {
+    final selectedBrowser = KVStoreService.ytDlpAuthBrowser;
+    final browsers = selectedBrowser == YtDlpAuthBrowser.auto
+        ? _browserCookieSources
+        : [selectedBrowser];
+    final failures = <String>[];
+    Object? lastError;
+    StackTrace? lastStackTrace;
+
+    for (final browser in browsers) {
+      final browserArg = browser.ytDlpArgument;
+      if (browserArg == null) continue;
+      try {
+        return await extractor([
+          "--cookies-from-browser",
+          browserArg,
+        ]);
+      } catch (error, stackTrace) {
+        failures.add("${browser.label}: ${error.toString()}");
+        lastError = error;
+        lastStackTrace = stackTrace;
+      }
+    }
+
+    if (lastError != null && lastStackTrace != null) {
+      await AppLogger.reportError(
+        Exception(
+          "yt-dlp browser-session retry failed. ${failures.join(' | ')}",
+        ),
+        lastStackTrace,
+        "yt-dlp authenticated retry failed for $target",
+      );
+      throw Exception(
+        "yt-dlp browser-session retry failed. ${failures.join(' | ')}",
+      );
+    }
+
+    throw Exception("yt-dlp authenticated retry failed for $target");
+  }
+
+  Future<T> _extractWithAuthRetry<T>({
+    required String target,
+    required String formatSpecifiers,
+    required Future<T> Function(List<String> extraArgs) extractor,
+  }) async {
+    if (_isInAuthCooldown) {
+      throw const _YtDlpFallbackRequested();
+    }
+
+    try {
+      final result = await extractor(const []);
+      _authCooldownUntil = null;
+      return result;
+    } catch (error) {
+      if (!_requiresAuthentication(error)) rethrow;
+    }
+
+    final fallback = _getFallbackEngine(preferAuthenticatedResilience: true);
+    final authAction = await _promptForAuthAction(fallback);
+    if (authAction == _YtDlpAuthAction.useDifferentEngine) {
+      _markAuthCooldown();
+      await _switchPreferredEngine(fallback);
+      throw const _YtDlpFallbackRequested();
+    }
+
+    if (!await _ensureDenoForRetry(fallback)) {
+      _markAuthCooldown();
+      await _switchPreferredEngine(fallback);
+      throw const _YtDlpFallbackRequested();
+    }
+
+    try {
+      final result = await _runExtractWithBrowserCookies(
+        target: target,
+        formatSpecifiers: formatSpecifiers,
+        extractor: extractor,
+      );
+      _authCooldownUntil = null;
+      return result;
+    } catch (error) {
+      _markAuthCooldown();
+      rethrow;
+    }
   }
 
   Future<T> _runWithFallback<T>(
@@ -41,12 +400,16 @@ class YtDlpEngine implements YouTubeEngine {
     } catch (error, stackTrace) {
       if (!_shouldFallback(error)) rethrow;
 
-      final fallback = _fallbackEngine;
-      await AppLogger.reportError(
-        error,
-        stackTrace,
-        "yt-dlp $operation failed, falling back to ${fallback.runtimeType}",
+      final fallback = _getFallbackEngine(
+        preferAuthenticatedResilience: _requiresAuthentication(error),
       );
+      if (error is! _YtDlpFallbackRequested) {
+        await AppLogger.reportError(
+          error,
+          stackTrace,
+          "yt-dlp $operation failed, falling back to ${fallback.runtimeType}",
+        );
+      }
       return secondary(fallback);
     }
   }
@@ -121,16 +484,25 @@ class YtDlpEngine implements YouTubeEngine {
     return _runWithFallback(
       "stream manifest lookup",
       () async {
-        final formats = await YtDlp.instance.extractInfo(
-          "https://www.youtube.com/watch?v=$videoId",
+        final formats = await _extractWithAuthRetry<List>(
+          target: "https://www.youtube.com/watch?v=$videoId",
           formatSpecifiers: "%(formats)j",
-          extraArgs: [
-            "--no-check-certificate",
-            "--geo-bypass",
-            "--quiet",
-            "--ignore-errors",
-          ],
-        ) as List;
+          extractor: (authArgs) async {
+            final jsRuntimeArgs = await _jsRuntimeArgs();
+            return await YtDlp.instance.extractInfo(
+              "https://www.youtube.com/watch?v=$videoId",
+              formatSpecifiers: "%(formats)j",
+              extraArgs: [
+                "--no-check-certificate",
+                "--geo-bypass",
+                "--quiet",
+                "--ignore-errors",
+                ...jsRuntimeArgs,
+                ...authArgs,
+              ],
+            ) as List;
+          },
+        );
 
         final manifest = _parseFormats(formats, videoId);
         if (manifest.audioOnly.isEmpty) {
@@ -148,17 +520,26 @@ class YtDlpEngine implements YouTubeEngine {
     return _runWithFallback(
       "video lookup",
       () async {
-        final info = await YtDlp.instance.extractInfo(
-          "https://www.youtube.com/watch?v=$videoId",
+        final info = await _extractWithAuthRetry<Map<String, dynamic>>(
+          target: "https://www.youtube.com/watch?v=$videoId",
           formatSpecifiers: "%()j",
-          extraArgs: [
-            "--skip-download",
-            "--no-check-certificate",
-            "--geo-bypass",
-            "--quiet",
-            "--ignore-errors",
-          ],
-        ) as Map<String, dynamic>;
+          extractor: (authArgs) async {
+            final jsRuntimeArgs = await _jsRuntimeArgs();
+            return await YtDlp.instance.extractInfo(
+              "https://www.youtube.com/watch?v=$videoId",
+              formatSpecifiers: "%()j",
+              extraArgs: [
+                "--skip-download",
+                "--no-check-certificate",
+                "--geo-bypass",
+                "--quiet",
+                "--ignore-errors",
+                ...jsRuntimeArgs,
+                ...authArgs,
+              ],
+            ) as Map<String, dynamic>;
+          },
+        );
 
         return _parseInfo(info);
       },
@@ -171,16 +552,25 @@ class YtDlpEngine implements YouTubeEngine {
     return _runWithFallback(
       "video+stream lookup",
       () async {
-        final info = await YtDlp.instance.extractInfo(
-          "https://www.youtube.com/watch?v=$videoId",
+        final info = await _extractWithAuthRetry<Map<String, dynamic>>(
+          target: "https://www.youtube.com/watch?v=$videoId",
           formatSpecifiers: "%()j",
-          extraArgs: [
-            "--no-check-certificate",
-            "--geo-bypass",
-            "--quiet",
-            "--ignore-errors",
-          ],
-        ) as Map<String, dynamic>;
+          extractor: (authArgs) async {
+            final jsRuntimeArgs = await _jsRuntimeArgs();
+            return await YtDlp.instance.extractInfo(
+              "https://www.youtube.com/watch?v=$videoId",
+              formatSpecifiers: "%()j",
+              extraArgs: [
+                "--no-check-certificate",
+                "--geo-bypass",
+                "--quiet",
+                "--ignore-errors",
+                ...jsRuntimeArgs,
+                ...authArgs,
+              ],
+            ) as Map<String, dynamic>;
+          },
+        );
 
         final manifest = _parseFormats(info["formats"] as List? ?? [], videoId);
         if (manifest.audioOnly.isEmpty) {
@@ -195,23 +585,61 @@ class YtDlpEngine implements YouTubeEngine {
 
   @override
   Future<List<Video>> searchVideos(String query) async {
-    final stdout = await YtDlp.instance.extractInfoString(
-      "ytsearch10:$query",
-      formatSpecifiers: "%()j",
-      extraArgs: [
-        "--skip-download",
-        "--no-check-certificate",
-        "--geo-bypass",
-        "--quiet",
-        "--ignore-errors",
-        "--flat-playlist",
-        "--no-playlist",
-      ],
+    final stdout = await _runWithFallback(
+      "search lookup",
+      () => _extractWithAuthRetry<String>(
+        target: "ytsearch10:$query",
+        formatSpecifiers: "%()j",
+        extractor: (authArgs) async {
+          final jsRuntimeArgs = await _jsRuntimeArgs();
+          return YtDlp.instance.extractInfoString(
+            "ytsearch10:$query",
+            formatSpecifiers: "%()j",
+            extraArgs: [
+              "--skip-download",
+              "--no-check-certificate",
+              "--geo-bypass",
+              "--quiet",
+              "--ignore-errors",
+              "--flat-playlist",
+              "--no-playlist",
+              ...jsRuntimeArgs,
+              ...authArgs,
+            ],
+          );
+        },
+      ),
+      (fallback) async {
+        final videos = await fallback.searchVideos(query);
+        return jsonEncode(
+          videos
+              .map(
+                (video) => {
+                  "id": video.id.value,
+                  "title": video.title,
+                  "channel": video.author,
+                  "channel_id": video.channelId.value,
+                  "upload_date": video.uploadDate?.millisecondsSinceEpoch
+                          .toString() ??
+                      "",
+                  "description": video.description,
+                  "duration": video.duration?.inSeconds ?? 0,
+                  "tags": video.keywords,
+                  "view_count": video.engagement.viewCount,
+                  "like_count": video.engagement.likeCount,
+                  "is_live": video.isLive,
+                },
+              )
+              .toList(),
+        );
+      },
     );
 
-    final json = jsonDecode(
-      "[${stdout.split("\n").where((s) => s.trim().isNotEmpty).join(",")}]",
-    ) as List;
+    final json = stdout.trim().startsWith("[")
+        ? jsonDecode(stdout) as List
+        : jsonDecode(
+            "[${stdout.split("\n").where((s) => s.trim().isNotEmpty).join(",")}]",
+          ) as List;
 
     return json.map((e) => _parseInfo(e)).toList();
   }

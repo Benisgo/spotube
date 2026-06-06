@@ -38,10 +38,12 @@ String? get _randomUserAgent => _deviceClients
     .payload["context"]["client"]["userAgent"];
 
 class ServerPlaybackRoutes {
+  static const _streamFailureCooldown = Duration(seconds: 8);
   final Ref ref;
   UserPreferences get userPreferences => ref.read(userPreferencesProvider);
   AudioPlayerState get playlist => ref.read(audioPlayerProvider);
   final Dio dio;
+  final Map<String, DateTime> _recentStreamFailures = {};
 
   ServerPlaybackRoutes(this.ref) : dio = Dio();
 
@@ -54,6 +56,28 @@ class ServerPlaybackRoutes {
     if (_isPlaybackRequestRelevant(requestedUri)) return;
 
     throw StateError("Stale playback request: $requestedUri");
+  }
+
+  String _streamFailureKey(SourcedTrack track) => track.query.id;
+
+  bool _isInStreamFailureCooldown(SourcedTrack track) {
+    final lastFailureAt = _recentStreamFailures[_streamFailureKey(track)];
+    if (lastFailureAt == null) return false;
+
+    final stillCoolingDown =
+        DateTime.now().difference(lastFailureAt) < _streamFailureCooldown;
+    if (!stillCoolingDown) {
+      _recentStreamFailures.remove(_streamFailureKey(track));
+    }
+    return stillCoolingDown;
+  }
+
+  void _markStreamFailure(SourcedTrack track) {
+    _recentStreamFailures[_streamFailureKey(track)] = DateTime.now();
+  }
+
+  void _clearStreamFailure(SourcedTrack track) {
+    _recentStreamFailures.remove(_streamFailureKey(track));
   }
 
   Future<String> _getTrackCacheFilePath(SourcedTrack track) async {
@@ -206,7 +230,18 @@ class ServerPlaybackRoutes {
       );
     }
 
-    var activeTrack = await _resolvePlayableTrack(track, requestedUri);
+    if (_isInStreamFailureCooldown(track)) {
+      throw StateError("Recent playback failure: ${track.query.id}");
+    }
+
+    SourcedTrack activeTrack;
+    try {
+      activeTrack = await _resolvePlayableTrack(track, requestedUri);
+    } catch (e, stack) {
+      _markStreamFailure(track);
+      AppLogger.reportError(e, stack);
+      rethrow;
+    }
     String url = activeTrack.url!;
 
     Options optionsFor(String sourceUrl) => Options(
@@ -234,13 +269,27 @@ class ServerPlaybackRoutes {
       final notifier =
           ref.read(sourcedTrackProvider(activeTrack.query).notifier);
       _ensurePlaybackRequestRelevant(requestedUri);
-      activeTrack = await _resolvePlayableTrack(
-        await notifier.refreshStreamingUrl(),
-        requestedUri,
-      );
+      try {
+        activeTrack = await _resolvePlayableTrack(
+          await notifier.refreshStreamingUrl(),
+          requestedUri,
+        );
+      } catch (resolveError, resolveStack) {
+        _markStreamFailure(activeTrack);
+        AppLogger.reportError(resolveError, resolveStack);
+        rethrow;
+      }
       url = activeTrack.url!;
-      res = await fetchStream(url);
+      try {
+        res = await fetchStream(url);
+      } catch (retryError, retryStack) {
+        _markStreamFailure(activeTrack);
+        AppLogger.reportError(retryError, retryStack);
+        rethrow;
+      }
     }
+
+    _clearStreamFailure(activeTrack);
 
     // Redirect to m3u8 link directly as it handles range requests internally
     if (res.headers.value("content-type") == "application/vnd.apple.mpegurl") {
@@ -343,6 +392,11 @@ class ServerPlaybackRoutes {
     } on StateError catch (e) {
       if (e.message.toString().startsWith("Stale playback request:")) {
         return Response(410);
+      }
+      if (e.message.toString().startsWith("Recent playback failure:")) {
+        return Response.internalServerError(
+          body: "Track is temporarily unavailable",
+        );
       }
       rethrow;
     } catch (e, stack) {

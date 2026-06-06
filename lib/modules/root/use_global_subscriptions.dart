@@ -7,6 +7,7 @@ import 'package:spotube/collections/spotube_icons.dart';
 import 'package:spotube/extensions/context.dart';
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/modules/metadata_plugins/plugin_update_available_dialog.dart';
+import 'package:spotube/provider/audio_player/audio_player.dart';
 import 'package:spotube/provider/metadata_plugin/metadata_plugin_provider.dart';
 import 'package:spotube/provider/metadata_plugin/updater/update_checker.dart';
 import 'package:spotube/provider/server/routes/connect.dart';
@@ -27,7 +28,8 @@ void useGlobalSubscriptions(WidgetRef ref) {
       PluginUpdateAvailable? pluginUpdate;
 
       try {
-        pluginUpdate = await ref.read(metadataPluginUpdateCheckerProvider.future);
+        pluginUpdate =
+            await ref.read(metadataPluginUpdateCheckerProvider.future);
       } catch (error, stackTrace) {
         await AppLogger.reportError(
           error,
@@ -52,6 +54,19 @@ void useGlobalSubscriptions(WidgetRef ref) {
 
     StreamSubscription? audioPlayerSubscription;
     bool pausedByStream = false;
+    String? lastPlaybackError;
+
+    String? buildFriendlyPlaybackError(String rawError) {
+      final lower = rawError.toLowerCase();
+      if (lower.contains("failed to open http://localhost") ||
+          lower.contains("failed to open http://127.0.0.1")) {
+        final activeTrack = ref.read(audioPlayerProvider).activeTrack;
+        final trackName = activeTrack?.name ?? "This track";
+        return "$trackName couldn't be streamed right now. Try another source or YouTube engine.";
+      }
+
+      return null;
+    }
 
     final subscriptions = [
       ConnectionCheckerService.instance.onConnectivityChanged
@@ -108,14 +123,14 @@ void useGlobalSubscriptions(WidgetRef ref) {
               fillColor: theme.colorScheme.destructive,
               filled: true,
               child: Basic(
-                leading: Icon(
+                leading: const Icon(
                   SpotubeIcons.noWifi,
-                  color: theme.colorScheme.destructiveForeground,
+                  color: Colors.white,
                 ),
                 trailing: Text(
                   context.l10n.you_are_offline,
-                  style: TextStyle(
-                    color: theme.colorScheme.destructiveForeground,
+                  style: const TextStyle(
+                    color: Colors.white,
                   ),
                 ),
               ),
@@ -140,6 +155,38 @@ void useGlobalSubscriptions(WidgetRef ref) {
                 title: Text(
                   context.l10n.connect_client_alert(clientOrigin),
                   style: const TextStyle(color: Colors.black),
+                ),
+              ),
+            );
+          },
+        );
+      }),
+      audioPlayer.errorStream.listen((error) {
+        final message = buildFriendlyPlaybackError(error);
+        if (!context.mounted ||
+            message == null ||
+            message == lastPlaybackError) {
+          return;
+        }
+
+        lastPlaybackError = message;
+        showToast(
+          context: context,
+          location: ToastLocation.bottomCenter,
+          builder: (context, overlay) {
+            return SurfaceCard(
+              fillColor: theme.colorScheme.destructive,
+              filled: true,
+              child: Basic(
+                leading: const Icon(
+                  SpotubeIcons.error,
+                  color: Colors.white,
+                ),
+                title: Text(
+                  message,
+                  style: const TextStyle(
+                    color: Colors.white,
+                  ),
                 ),
               ),
             );

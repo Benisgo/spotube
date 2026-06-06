@@ -108,10 +108,38 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
     return const MultiSessionState();
   }
 
-  String get _relayUrl => ref.read(userPreferencesProvider).multiSessionRelayUrl;
+  static bool _looksLikeLocalRelayHost(String value) {
+    final lower = value.toLowerCase();
+    return lower.startsWith("localhost") ||
+        lower.startsWith("127.") ||
+        lower.startsWith("[::1]") ||
+        lower.startsWith("::1");
+  }
+
+  static String normalizeRelayUrl(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return "";
+
+    final parsed = Uri.tryParse(trimmed);
+    final looksLikeAuthority = trimmed.contains("://");
+    if (parsed != null && parsed.hasScheme && looksLikeAuthority) {
+      return switch (parsed.scheme.toLowerCase()) {
+        "ws" => parsed.replace(scheme: "http").toString(),
+        "wss" => parsed.replace(scheme: "https").toString(),
+        _ => parsed.toString(),
+      };
+    }
+
+    final scheme = _looksLikeLocalRelayHost(trimmed) ? "http" : "https";
+    final normalized = Uri.tryParse("$scheme://$trimmed");
+    return normalized?.toString() ?? trimmed;
+  }
+
+  String get _relayUrl =>
+      normalizeRelayUrl(ref.read(userPreferencesProvider).multiSessionRelayUrl);
 
   Uri _relayUri(String path, {String? relayUrl}) {
-    final rawRelay = relayUrl ?? _relayUrl;
+    final rawRelay = normalizeRelayUrl(relayUrl ?? _relayUrl);
     final base = Uri.parse(rawRelay.endsWith("/")
         ? rawRelay.substring(0, rawRelay.length - 1)
         : rawRelay);
@@ -122,13 +150,16 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
   }
 
   String? _relayConfigurationError([String? relayUrl]) {
-    final value = (relayUrl ?? _relayUrl).trim();
+    final value = normalizeRelayUrl(relayUrl ?? _relayUrl);
     if (value.isEmpty || value == _legacyRelayUrl) {
       return "Multi-Session relay is not configured. Open Settings > Playback > Multi-Session relay and enter a live relay URL.";
     }
 
     final uri = Uri.tryParse(value);
-    if (uri == null || !uri.hasScheme || uri.host.isEmpty) {
+    if (uri == null ||
+        !uri.hasScheme ||
+        uri.host.isEmpty ||
+        !(uri.scheme == "http" || uri.scheme == "https")) {
       return "Multi-Session relay URL is invalid. Check Settings > Playback > Multi-Session relay.";
     }
 
@@ -157,7 +188,7 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
 
   Uri? get inviteUri {
     final code = state.code;
-    final relayUrl = _relayUrl.trim();
+    final relayUrl = _relayUrl;
     if (code == null || code.isEmpty || relayUrl.isEmpty) return null;
     return MultiSessionInvite(code: code, relayUrl: relayUrl).toUri();
   }
@@ -171,7 +202,8 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
       throw Exception(relayConfigurationError);
     }
 
-    final response = await http.get(_relayUri("/rooms/$code", relayUrl: relayUrl));
+    final response =
+        await http.get(_relayUri("/rooms/$code", relayUrl: relayUrl));
     if (response.statusCode >= 400) {
       throw Exception(response.body);
     }
@@ -256,14 +288,19 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
       return;
     }
 
-    if (relayUrl != null && relayUrl.trim().isNotEmpty) {
-      ref.read(userPreferencesProvider.notifier).setMultiSessionRelayUrl(relayUrl);
+    final normalizedRelayUrl =
+        relayUrl == null ? null : normalizeRelayUrl(relayUrl);
+
+    if (normalizedRelayUrl != null && normalizedRelayUrl.isNotEmpty) {
+      ref
+          .read(userPreferencesProvider.notifier)
+          .setMultiSessionRelayUrl(normalizedRelayUrl);
     }
 
     state = state.copyWith(connecting: true, clearError: true);
     try {
       final res = await http.post(
-        _relayUri("/rooms/$normalizedCode/join", relayUrl: relayUrl),
+        _relayUri("/rooms/$normalizedCode/join", relayUrl: normalizedRelayUrl),
         headers: {"content-type": "application/json"},
         body: jsonEncode({"name": await _participantName()}),
       );
@@ -378,7 +415,8 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
     if (_closingRoom || _intentionalDisconnect) return;
 
     final event = jsonDecode(message as String) as Map<String, dynamic>;
-    _debugTrace('message:type=${event["type"]} gen=$generation code=${state.code}');
+    _debugTrace(
+        'message:type=${event["type"]} gen=$generation code=${state.code}');
     if (event["type"] == "ended") {
       _beginRoomShutdown(notifyRelay: false, endedByHost: true);
       state = const MultiSessionState(error: "Room ended");

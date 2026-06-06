@@ -264,7 +264,9 @@ class UserPreferencesNotifier extends Notifier<PreferencesTableData> {
   }
 
   void setMultiSessionRelayUrl(String url) {
-    setData(PreferencesTableCompanion(multiSessionRelayUrl: Value(url)));
+    setData(
+      PreferencesTableCompanion(multiSessionRelayUrl: Value(url.trim())),
+    );
   }
 }
 

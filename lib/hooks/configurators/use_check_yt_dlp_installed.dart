@@ -19,7 +19,7 @@ void useCheckYtDlpInstalled(WidgetRef ref) {
       );
 
       if (youtubeEngine == YoutubeClientEngine.ytDlp &&
-          !await YtDlpBinary.ensureAvailable(downloadIfMissing: true) &&
+          !await YtDlpBinary.ensureAvailable(downloadIfMissing: false) &&
           !await YtDlpEngine.isInstalled() &&
           context.mounted) {
         await showDialog(

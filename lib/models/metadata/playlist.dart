@@ -1,5 +1,30 @@
 part of 'metadata.dart';
 
+Map<String, dynamic> _normalizeSpotubePlaylistJson(Map<String, dynamic> json) {
+  final normalized = Map<String, dynamic>.from(json);
+  normalized["id"] = (normalized["id"] ?? "").toString();
+  normalized["name"] = (normalized["name"] ?? "").toString();
+  normalized["description"] = (normalized["description"] ?? "").toString();
+  normalized["externalUri"] = (normalized["externalUri"] ?? "").toString();
+
+  final owner = normalized["owner"];
+  if (owner is Map) {
+    normalized["owner"] = _normalizeSpotubeUserJson(
+      owner.cast<String, dynamic>(),
+    );
+  }
+
+  final collaborators = normalized["collaborators"];
+  if (collaborators is List) {
+    normalized["collaborators"] = collaborators
+        .whereType<Map>()
+        .map((item) => _normalizeSpotubeUserJson(item.cast<String, dynamic>()))
+        .toList();
+  }
+
+  return normalized;
+}
+
 @freezed
 class SpotubeFullPlaylistObject with _$SpotubeFullPlaylistObject {
   factory SpotubeFullPlaylistObject({
@@ -15,7 +40,7 @@ class SpotubeFullPlaylistObject with _$SpotubeFullPlaylistObject {
   }) = _SpotubeFullPlaylistObject;
 
   factory SpotubeFullPlaylistObject.fromJson(Map<String, dynamic> json) =>
-      _$SpotubeFullPlaylistObjectFromJson(json);
+      _$SpotubeFullPlaylistObjectFromJson(_normalizeSpotubePlaylistJson(json));
 }
 
 @freezed
@@ -30,5 +55,6 @@ class SpotubeSimplePlaylistObject with _$SpotubeSimplePlaylistObject {
   }) = _SpotubeSimplePlaylistObject;
 
   factory SpotubeSimplePlaylistObject.fromJson(Map<String, dynamic> json) =>
-      _$SpotubeSimplePlaylistObjectFromJson(json);
+      _$SpotubeSimplePlaylistObjectFromJson(
+          _normalizeSpotubePlaylistJson(json));
 }

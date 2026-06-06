@@ -44,6 +44,17 @@ class ServerPlaybackRoutes {
 
   ServerPlaybackRoutes(this.ref) : dio = Dio();
 
+  bool _isPlaybackRequestRelevant(String requestedUri) {
+    return requestedUri == audioPlayer.currentSource ||
+        requestedUri == audioPlayer.nextSource;
+  }
+
+  void _ensurePlaybackRequestRelevant(String requestedUri) {
+    if (_isPlaybackRequestRelevant(requestedUri)) return;
+
+    throw StateError("Stale playback request: $requestedUri");
+  }
+
   Future<String> _getTrackCacheFilePath(SourcedTrack track) async {
     return join(
       await UserPreferencesNotifier.getMusicCacheDir(),
@@ -77,6 +88,41 @@ class ServerPlaybackRoutes {
     return sourcedTrack;
   }
 
+  Future<SourcedTrack> _resolvePlayableTrack(
+    SourcedTrack track,
+    String requestedUri,
+  ) async {
+    _ensurePlaybackRequestRelevant(requestedUri);
+    if (track.url != null) return track;
+
+    final notifier = ref.read(sourcedTrackProvider(track.query).notifier);
+
+    _ensurePlaybackRequestRelevant(requestedUri);
+    var resolvedTrack = await notifier.refreshStreamingUrl();
+    _ensurePlaybackRequestRelevant(requestedUri);
+    if (resolvedTrack.url != null) return resolvedTrack;
+
+    if (resolvedTrack.siblings.isEmpty) {
+      _ensurePlaybackRequestRelevant(requestedUri);
+      resolvedTrack = await notifier.copyWithSibling();
+      _ensurePlaybackRequestRelevant(requestedUri);
+      if (resolvedTrack.url != null) return resolvedTrack;
+    }
+
+    if (resolvedTrack.siblings.isEmpty) {
+      throw StateError(
+        "No playable source found for ${track.query.name}",
+      );
+    }
+
+    resolvedTrack = await notifier.swapWithNextSibling();
+    if (resolvedTrack.url != null) return resolvedTrack;
+
+    throw StateError(
+      "No playable source found for ${track.query.name}",
+    );
+  }
+
   Future<dio_lib.Response> streamTrackInformation(
     Request request,
     SourcedTrack track,
@@ -103,11 +149,9 @@ class ServerPlaybackRoutes {
       );
     }
 
-    String url = track.url ??
-        await ref
-            .read(sourcedTrackProvider(track.query).notifier)
-            .swapWithNextSibling()
-            .then((track) => track.url!);
+    final requestedUri = request.requestedUri.toString();
+    final resolvedTrack = await _resolvePlayableTrack(track, requestedUri);
+    final url = resolvedTrack.url!;
 
     final options = Options(
       headers: {
@@ -134,6 +178,7 @@ class ServerPlaybackRoutes {
       "Headers: ${request.headers}",
     );
 
+    final requestedUri = request.requestedUri.toString();
     final trackCacheFile = File(await _getTrackCacheFilePath(track));
 
     if (await trackCacheFile.exists() && userPreferences.cacheMusic) {
@@ -156,12 +201,8 @@ class ServerPlaybackRoutes {
       );
     }
 
-    var activeTrack = track;
-    String url = activeTrack.url ??
-        await ref
-            .read(sourcedTrackProvider(activeTrack.query).notifier)
-            .swapWithNextSibling()
-            .then((track) => track.url!);
+    var activeTrack = await _resolvePlayableTrack(track, requestedUri);
+    String url = activeTrack.url!;
 
     Options optionsFor(String sourceUrl) => Options(
           headers: {
@@ -175,39 +216,54 @@ class ServerPlaybackRoutes {
           validateStatus: (status) => status! < 400,
         );
 
-    var options = optionsFor(url);
+    Future<dio_lib.Response<ResponseBody>> fetchStream(String sourceUrl) {
+      return dio.get<ResponseBody>(sourceUrl, options: optionsFor(sourceUrl));
+    }
 
-    dio_lib.Response? contentLengthRes;
+    dio_lib.Response<ResponseBody> res;
     try {
-      contentLengthRes = await dio.head(
-        url,
-        options: options.copyWith(responseType: ResponseType.bytes),
-      );
+      res = await fetchStream(url);
     } catch (e, stack) {
       AppLogger.reportError(e, stack);
 
       final notifier =
           ref.read(sourcedTrackProvider(activeTrack.query).notifier);
+      _ensurePlaybackRequestRelevant(requestedUri);
       activeTrack = await notifier.refreshStreamingUrl();
+      _ensurePlaybackRequestRelevant(requestedUri);
+      if (activeTrack.url == null && activeTrack.siblings.isEmpty) {
+        _ensurePlaybackRequestRelevant(requestedUri);
+        activeTrack = await notifier.copyWithSibling();
+        _ensurePlaybackRequestRelevant(requestedUri);
+      }
+      if (activeTrack.url == null && activeTrack.siblings.isNotEmpty) {
+        _ensurePlaybackRequestRelevant(requestedUri);
+        activeTrack = await notifier.swapWithNextSibling();
+        _ensurePlaybackRequestRelevant(requestedUri);
+      }
       url = activeTrack.url!;
-      options = optionsFor(url);
 
       try {
-        contentLengthRes = await dio.head(url, options: options);
+        res = await fetchStream(url);
       } catch (refreshError, refreshStack) {
         AppLogger.reportError(refreshError, refreshStack);
+        if (activeTrack.siblings.isEmpty) {
+          _ensurePlaybackRequestRelevant(requestedUri);
+          activeTrack = await notifier.copyWithSibling();
+          _ensurePlaybackRequestRelevant(requestedUri);
+        }
         if (activeTrack.siblings.isEmpty) rethrow;
 
+        _ensurePlaybackRequestRelevant(requestedUri);
         activeTrack = await notifier.swapWithNextSibling();
+        _ensurePlaybackRequestRelevant(requestedUri);
         url = activeTrack.url!;
-        options = optionsFor(url);
-        contentLengthRes = await dio.head(url, options: options);
+        res = await fetchStream(url);
       }
     }
 
     // Redirect to m3u8 link directly as it handles range requests internally
-    if (contentLengthRes.headers.value("content-type") ==
-        "application/vnd.apple.mpegurl") {
+    if (res.headers.value("content-type") == "application/vnd.apple.mpegurl") {
       return dio_lib.Response<Uint8List>(
         statusCode: 301,
         statusMessage: "M3U8 Redirect",
@@ -219,8 +275,6 @@ class ServerPlaybackRoutes {
         isRedirect: true,
       );
     }
-
-    final res = await dio.get<ResponseBody>(url, options: options);
 
     AppLogger.log.i(
       "Response for track: ${track.query.name}\n"
@@ -306,6 +360,11 @@ class ServerPlaybackRoutes {
         res.statusCode!,
         headers: res.headers.map,
       );
+    } on StateError catch (e) {
+      if (e.message.toString().startsWith("Stale playback request:")) {
+        return Response(410);
+      }
+      rethrow;
     } catch (e, stack) {
       AppLogger.reportError(e, stack);
       return Response.internalServerError();
@@ -340,6 +399,11 @@ class ServerPlaybackRoutes {
         body: res.data,
         headers: res.headers.map,
       );
+    } on StateError catch (e) {
+      if (e.message.toString().startsWith("Stale playback request:")) {
+        return Response(410);
+      }
+      rethrow;
     } catch (e, stack) {
       AppLogger.reportError(e, stack);
       return Response.internalServerError();

@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart' show ListTile, TextEditingController;
@@ -16,7 +14,6 @@ import 'package:spotube/extensions/context.dart';
 import 'package:spotube/modules/settings/youtube_engine_not_installed_dialog.dart';
 import 'package:spotube/provider/metadata_plugin/audio_source/quality_presets.dart';
 import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
-import 'package:spotube/services/kv_store/kv_store.dart';
 import 'package:spotube/services/youtube_engine/yt_dlp_binary.dart';
 import 'package:spotube/services/youtube_engine/android_yt_dlp_engine.dart';
 
@@ -57,13 +54,10 @@ class SettingsPlaybackSection extends HookConsumerWidget {
           onChanged: (value) async {
             if (value == null) return;
             if (value == YoutubeClientEngine.ytDlp) {
-              final customPath = KVStoreService.getYoutubeEnginePath(value);
               final isInstalled = kIsAndroid
                   ? await AndroidYtDlpEngine.isInstalled()
-                  : await YtDlpBinary.ensureAvailable(downloadIfMissing: true);
-              if (!isInstalled &&
-                  (customPath == null || !await File(customPath).exists()) &&
-                  context.mounted) {
+                  : await YtDlpBinary.ensureAvailable(downloadIfMissing: false);
+              if (!isInstalled && context.mounted) {
                 final hasInstalled = await showDialog<bool>(
                   context: context,
                   builder: (context) =>
@@ -75,6 +69,57 @@ class SettingsPlaybackSection extends HookConsumerWidget {
             preferencesNotifier.setYoutubeClientEngine(value);
           },
         ),
+        if (kIsDesktop)
+          ListTile(
+            leading: const Icon(SpotubeIcons.download),
+            title: const Text("Re-test managed yt-dlp download"),
+            subtitle: const Text(
+              "Deletes Spotube's managed yt-dlp binary so the auto-download flow can be tested again",
+            ),
+            onTap: () async {
+              final hasManagedBinary = await YtDlpBinary.hasManagedBinary();
+              if (!context.mounted) return;
+
+              final shouldRemove = await showDialog<bool>(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text("Re-test managed yt-dlp download"),
+                  content: Text(
+                    hasManagedBinary
+                        ? "This will remove Spotube's managed yt-dlp binary. The next time yt-dlp is needed, Spotube will go through the auto-download flow again."
+                        : "No managed yt-dlp binary is currently stored by Spotube. The next time yt-dlp is needed, Spotube will go through the auto-download flow again.",
+                  ),
+                  actions: [
+                    Button.secondary(
+                      onPressed: () => Navigator.of(context).pop(false),
+                      child: Text(context.l10n.cancel),
+                    ),
+                    Button.primary(
+                      onPressed: () => Navigator.of(context).pop(true),
+                      child: Text(hasManagedBinary ? "Remove" : "OK"),
+                    ),
+                  ],
+                ),
+              );
+
+              if (shouldRemove != true) return;
+
+              await YtDlpBinary.removeManagedBinary();
+              if (!context.mounted) return;
+
+              showToast(
+                context: context,
+                builder: (context, overlay) => const SurfaceCard(
+                  child: Basic(
+                    leading: Icon(SpotubeIcons.download),
+                    title: Text(
+                      "Managed yt-dlp reset. The next yt-dlp use will trigger the auto-download flow again.",
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
         if (sourcePresets.presets.isNotEmpty) ...[
           AdaptiveSelectTile(
             secondary: const Icon(SpotubeIcons.plugin),
@@ -309,7 +354,7 @@ class SettingsPlaybackSection extends HookConsumerWidget {
                 ],
               ),
             );
-            if (value == null || value.isEmpty) return;
+            if (value == null) return;
             preferencesNotifier.setMultiSessionRelayUrl(value);
           },
         ),

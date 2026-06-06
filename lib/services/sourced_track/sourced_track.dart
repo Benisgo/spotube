@@ -74,7 +74,7 @@ class SourcedTrack extends BasicSourcedTrack {
 
       final manifest = await audioSource.audioSource.streams(siblings.first);
 
-      return SourcedTrack(
+      final sourcedTrack = SourcedTrack(
         ref: ref,
         siblings: siblings.skip(1).toList(),
         info: siblings.first,
@@ -82,6 +82,8 @@ class SourcedTrack extends BasicSourcedTrack {
         sources: manifest,
         query: query,
       );
+
+      return sourcedTrack.resolvePlayableSource();
     }
     final item = SpotubeAudioSourceMatchObject.fromJson(
       jsonDecode(cachedSource.sourceInfo),
@@ -99,7 +101,7 @@ class SourcedTrack extends BasicSourcedTrack {
 
     AppLogger.log.i("${query.name}: ${sourcedTrack.url}");
 
-    return sourcedTrack;
+    return sourcedTrack.resolvePlayableSource();
   }
 
   static List<SpotubeAudioSourceMatchObject> rankResults(
@@ -190,6 +192,38 @@ class SourcedTrack extends BasicSourcedTrack {
     );
   }
 
+  Future<SourcedTrack> resolvePlayableSource() async {
+    var current = this;
+    if (current.url != null) return current;
+
+    if (current.siblings.isEmpty) {
+      current = await current.copyWithSibling();
+      if (current.url != null) return current;
+    }
+
+    final triedSourceIds = <String>{current.info.id};
+
+    while (current.url == null) {
+      final nextSibling = current.siblings.firstWhereOrNull(
+        (sibling) => !triedSourceIds.contains(sibling.id),
+      );
+
+      if (nextSibling == null) {
+        return current;
+      }
+
+      triedSourceIds.add(nextSibling.id);
+      final swapped = await current.swapWithSibling(nextSibling);
+      if (swapped == null) {
+        return current;
+      }
+
+      current = swapped;
+    }
+
+    return current;
+  }
+
   Future<SourcedTrack?> swapWithSibling(
     SpotubeAudioSourceMatchObject sibling,
   ) async {
@@ -237,7 +271,7 @@ class SourcedTrack extends BasicSourcedTrack {
           mode: InsertMode.replace,
         );
 
-    return SourcedTrack(
+    final sourcedTrack = SourcedTrack(
       ref: ref,
       source: source,
       siblings: newSiblings,
@@ -245,6 +279,8 @@ class SourcedTrack extends BasicSourcedTrack {
       info: newSourceInfo,
       query: query,
     );
+
+    return sourcedTrack;
   }
 
   Future<SourcedTrack?> swapWithSiblingOfIndex(int index) {
@@ -295,7 +331,7 @@ class SourcedTrack extends BasicSourcedTrack {
 
     AppLogger.log.i("Refreshing ${query.name}: ${sourcedTrack.url}");
 
-    return sourcedTrack;
+    return sourcedTrack.resolvePlayableSource();
   }
 
   String? get url {
@@ -340,9 +376,17 @@ class SourcedTrack extends BasicSourcedTrack {
     }
 
     // Find the preset with closest quality to the supplied quality
-    return sources.where((source) {
+    final matchingContainerSources = sources.where((source) {
       return source.container == preset.name;
-    }).reduce((prev, curr) {
+    }).toList();
+
+    if (matchingContainerSources.isEmpty) {
+      return qualityIndex >= (preset.qualities.length / 2)
+          ? sources.last
+          : sources.first;
+    }
+
+    return matchingContainerSources.reduce((prev, curr) {
       if (quality is SpotubeAudioLosslessContainerQuality) {
         final prevDiff = ((prev.sampleRate ?? 0) - quality.sampleRate).abs() +
             ((prev.bitDepth ?? 0) - quality.bitDepth).abs();

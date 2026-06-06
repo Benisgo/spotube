@@ -38,7 +38,17 @@ class SourcedTrackNotifier
 
   Future<SourcedTrack> swapWithNextSibling() async {
     return await update((prev) async {
-      return await prev.swapWithSibling(prev.siblings.first) as SourcedTrack;
+      final withSiblings =
+          prev.siblings.isEmpty ? await prev.copyWithSibling() : prev;
+
+      if (withSiblings.siblings.isEmpty) {
+        return withSiblings;
+      }
+
+      return await withSiblings.swapWithSibling(
+            withSiblings.siblings.first,
+          ) ??
+          withSiblings;
     });
   }
 }

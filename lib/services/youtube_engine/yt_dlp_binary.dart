@@ -34,6 +34,23 @@ class YtDlpBinary {
     return File(join(directory.path, fileName));
   }
 
+  static Future<bool> hasManagedBinary() async {
+    final binary = await managedBinaryFile;
+    return binary.exists();
+  }
+
+  static Future<void> removeManagedBinary() async {
+    final binary = await managedBinaryFile;
+    if (await binary.exists()) {
+      await binary.delete();
+    }
+
+    final tempBinary = File("${binary.path}.part");
+    if (await tempBinary.exists()) {
+      await tempBinary.delete();
+    }
+  }
+
   static Future<String?> _getCustomBinaryPath() async {
     final customPath =
         KVStoreService.getYoutubeEnginePath(YoutubeClientEngine.ytDlp);
@@ -90,8 +107,7 @@ class YtDlpBinary {
     if (kIsWindows) return;
 
     final mode = await file.stat();
-    const executableMask =
-        64 | 8 | 1; // owner/group/others executable bits
+    const executableMask = 64 | 8 | 1; // owner/group/others executable bits
     final permissions = mode.mode | executableMask;
 
     await Process.run("chmod", [permissions.toRadixString(8), file.path]);

@@ -251,6 +251,10 @@ class UserPreferencesNotifier extends Notifier<PreferencesTableData> {
     setData(PreferencesTableCompanion(cacheMusic: Value(cache)));
   }
 
+  void setExperimentalScoring(bool enabled) {
+    setData(PreferencesTableCompanion(experimentalScoring: Value(enabled)));
+  }
+
   void setMiniPlayerTransparency(double transparency) {
     setData(
       PreferencesTableCompanion(

@@ -211,6 +211,17 @@ class SettingsPlaybackSection extends HookConsumerWidget {
           ),
         ),
         ListTile(
+          leading: const Icon(SpotubeIcons.magic),
+          title: const Text("Experimental scoring"),
+          subtitle: const Text(
+            "Prefer music-only YouTube matches over music videos when resolving tracks",
+          ),
+          trailing: Switch(
+            value: preferences.experimentalScoring,
+            onChanged: preferencesNotifier.setExperimentalScoring,
+          ),
+        ),
+        ListTile(
           leading: const Icon(SpotubeIcons.playlistRemove),
           title: Text(context.l10n.blacklist),
           subtitle: Text(context.l10n.blacklist_description),

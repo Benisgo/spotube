@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/models/multi_session/multi_session.dart';
 import 'package:spotube/provider/multi_session/multi_session.dart';
+import 'package:spotube/services/sourced_track/sourced_track.dart';
 
 void main() {
   test('parses multi-session invite uri', () {
@@ -99,5 +100,57 @@ void main() {
     expect(playlist.externalUri, '');
     expect(playlist.owner.name, '');
     expect(playlist.owner.externalUri, '');
+  });
+
+  test('experimental scoring prefers music-only matches over music videos', () {
+    final SpotubeFullTrackObject track = SpotubeTrackObject.full(
+      id: 'track-1',
+      name: 'Let It Go',
+      externalUri: 'spotify:track:1',
+      artists: [
+        SpotubeSimpleArtistObject(
+          id: 'artist-1',
+          name: 'Idina Menzel',
+          externalUri: 'spotify:artist:1',
+        ),
+      ],
+      album: SpotubeSimpleAlbumObject(
+        id: 'album-1',
+        name: 'Frozen',
+        externalUri: 'spotify:album:1',
+        artists: [
+          SpotubeSimpleArtistObject(
+            id: 'artist-1',
+            name: 'Idina Menzel',
+            externalUri: 'spotify:artist:1',
+          ),
+        ],
+        images: const [],
+        albumType: SpotubeAlbumType.album,
+        releaseDate: '2013-01-01',
+      ),
+      durationMs: 225000,
+      isrc: 'US1234567890',
+      explicit: false,
+    ) as SpotubeFullTrackObject;
+
+    final ranked = SourcedTrack.rankResultsExperimental([
+      SpotubeAudioSourceMatchObject(
+        id: 'video',
+        title: 'Let It Go (Official Music Video)',
+        artists: const ['DisneyMusicVEVO'],
+        duration: const Duration(minutes: 4, seconds: 3),
+        externalUri: 'https://youtube.com/watch?v=video',
+      ),
+      SpotubeAudioSourceMatchObject(
+        id: 'audio',
+        title: 'Let It Go',
+        artists: const ['Idina Menzel - Topic'],
+        duration: const Duration(minutes: 3, seconds: 45),
+        externalUri: 'https://youtube.com/watch?v=audio',
+      ),
+    ], track);
+
+    expect(ranked.first.id, 'audio');
   });
 }

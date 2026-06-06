@@ -68,7 +68,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.withExecutor(super.e);
 
   @override
-  int get schemaVersion => 14;
+  int get schemaVersion => 15;
 
   @override
   MigrationStrategy get migration {
@@ -307,6 +307,16 @@ class AppDatabase extends _$AppDatabase {
           await customStatement(
             "ALTER TABLE preferences_table "
             "ADD COLUMN crossfade_duration_seconds INTEGER NOT NULL DEFAULT 5",
+          ).catchError((error, stackTrace) {
+            if (!error.toString().contains('duplicate column name')) {
+              throw error;
+            }
+          });
+        }
+        if (from < 15 && to >= 15) {
+          await customStatement(
+            "ALTER TABLE preferences_table "
+            "ADD COLUMN experimental_scoring INTEGER NOT NULL DEFAULT 0",
           ).catchError((error, stackTrace) {
             if (!error.toString().contains('duplicate column name')) {
               throw error;

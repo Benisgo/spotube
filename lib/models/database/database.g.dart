@@ -792,6 +792,16 @@ class $PreferencesTableTable extends PreferencesTable
       defaultConstraints:
           GeneratedColumn.constraintIsAlways('CHECK ("cache_music" IN (0, 1))'),
       defaultValue: const Constant(true));
+  static const VerificationMeta _experimentalScoringMeta =
+      const VerificationMeta('experimentalScoring');
+  @override
+  late final GeneratedColumn<bool> experimentalScoring = GeneratedColumn<bool>(
+      'experimental_scoring', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("experimental_scoring" IN (0, 1))'),
+      defaultValue: const Constant(false));
   static const VerificationMeta _miniPlayerTransparencyMeta =
       const VerificationMeta('miniPlayerTransparency');
   @override
@@ -846,6 +856,7 @@ class $PreferencesTableTable extends PreferencesTable
         crossfadeDurationSeconds,
         connectPort,
         cacheMusic,
+        experimentalScoring,
         miniPlayerTransparency,
         lyricsCharacterEdge,
         multiSessionRelayUrl
@@ -967,6 +978,12 @@ class $PreferencesTableTable extends PreferencesTable
           cacheMusic.isAcceptableOrUnknown(
               data['cache_music']!, _cacheMusicMeta));
     }
+    if (data.containsKey('experimental_scoring')) {
+      context.handle(
+          _experimentalScoringMeta,
+          experimentalScoring.isAcceptableOrUnknown(
+              data['experimental_scoring']!, _experimentalScoringMeta));
+    }
     if (data.containsKey('mini_player_transparency')) {
       context.handle(
           _miniPlayerTransparencyMeta,
@@ -1054,6 +1071,8 @@ class $PreferencesTableTable extends PreferencesTable
           .read(DriftSqlType.int, data['${effectivePrefix}connect_port'])!,
       cacheMusic: attachedDatabase.typeMapping
           .read(DriftSqlType.bool, data['${effectivePrefix}cache_music'])!,
+      experimentalScoring: attachedDatabase.typeMapping.read(
+          DriftSqlType.bool, data['${effectivePrefix}experimental_scoring'])!,
       miniPlayerTransparency: attachedDatabase.typeMapping.read(
           DriftSqlType.double,
           data['${effectivePrefix}mini_player_transparency'])!,
@@ -1125,6 +1144,7 @@ class PreferencesTableData extends DataClass
   final int crossfadeDurationSeconds;
   final int connectPort;
   final bool cacheMusic;
+  final bool experimentalScoring;
   final double miniPlayerTransparency;
   final LyricsCharacterEdge lyricsCharacterEdge;
   final String multiSessionRelayUrl;
@@ -1156,6 +1176,7 @@ class PreferencesTableData extends DataClass
       required this.crossfadeDurationSeconds,
       required this.connectPort,
       required this.cacheMusic,
+      required this.experimentalScoring,
       required this.miniPlayerTransparency,
       required this.lyricsCharacterEdge,
       required this.multiSessionRelayUrl});
@@ -1221,6 +1242,7 @@ class PreferencesTableData extends DataClass
     map['crossfade_duration_seconds'] = Variable<int>(crossfadeDurationSeconds);
     map['connect_port'] = Variable<int>(connectPort);
     map['cache_music'] = Variable<bool>(cacheMusic);
+    map['experimental_scoring'] = Variable<bool>(experimentalScoring);
     map['mini_player_transparency'] = Variable<double>(miniPlayerTransparency);
     {
       map['lyrics_character_edge'] = Variable<String>($PreferencesTableTable
@@ -1262,6 +1284,7 @@ class PreferencesTableData extends DataClass
       crossfadeDurationSeconds: Value(crossfadeDurationSeconds),
       connectPort: Value(connectPort),
       cacheMusic: Value(cacheMusic),
+      experimentalScoring: Value(experimentalScoring),
       miniPlayerTransparency: Value(miniPlayerTransparency),
       lyricsCharacterEdge: Value(lyricsCharacterEdge),
       multiSessionRelayUrl: Value(multiSessionRelayUrl),
@@ -1309,6 +1332,8 @@ class PreferencesTableData extends DataClass
           serializer.fromJson<int>(json['crossfadeDurationSeconds']),
       connectPort: serializer.fromJson<int>(json['connectPort']),
       cacheMusic: serializer.fromJson<bool>(json['cacheMusic']),
+      experimentalScoring:
+          serializer.fromJson<bool>(json['experimentalScoring']),
       miniPlayerTransparency:
           serializer.fromJson<double>(json['miniPlayerTransparency']),
       lyricsCharacterEdge: $PreferencesTableTable.$converterlyricsCharacterEdge
@@ -1357,6 +1382,7 @@ class PreferencesTableData extends DataClass
           serializer.toJson<int>(crossfadeDurationSeconds),
       'connectPort': serializer.toJson<int>(connectPort),
       'cacheMusic': serializer.toJson<bool>(cacheMusic),
+      'experimentalScoring': serializer.toJson<bool>(experimentalScoring),
       'miniPlayerTransparency':
           serializer.toJson<double>(miniPlayerTransparency),
       'lyricsCharacterEdge': serializer.toJson<String>($PreferencesTableTable
@@ -1394,6 +1420,7 @@ class PreferencesTableData extends DataClass
           int? crossfadeDurationSeconds,
           int? connectPort,
           bool? cacheMusic,
+          bool? experimentalScoring,
           double? miniPlayerTransparency,
           LyricsCharacterEdge? lyricsCharacterEdge,
           String? multiSessionRelayUrl}) =>
@@ -1428,6 +1455,7 @@ class PreferencesTableData extends DataClass
             crossfadeDurationSeconds ?? this.crossfadeDurationSeconds,
         connectPort: connectPort ?? this.connectPort,
         cacheMusic: cacheMusic ?? this.cacheMusic,
+        experimentalScoring: experimentalScoring ?? this.experimentalScoring,
         miniPlayerTransparency:
             miniPlayerTransparency ?? this.miniPlayerTransparency,
         lyricsCharacterEdge: lyricsCharacterEdge ?? this.lyricsCharacterEdge,
@@ -1503,6 +1531,9 @@ class PreferencesTableData extends DataClass
           data.connectPort.present ? data.connectPort.value : this.connectPort,
       cacheMusic:
           data.cacheMusic.present ? data.cacheMusic.value : this.cacheMusic,
+      experimentalScoring: data.experimentalScoring.present
+          ? data.experimentalScoring.value
+          : this.experimentalScoring,
       miniPlayerTransparency: data.miniPlayerTransparency.present
           ? data.miniPlayerTransparency.value
           : this.miniPlayerTransparency,
@@ -1545,6 +1576,7 @@ class PreferencesTableData extends DataClass
           ..write('crossfadeDurationSeconds: $crossfadeDurationSeconds, ')
           ..write('connectPort: $connectPort, ')
           ..write('cacheMusic: $cacheMusic, ')
+          ..write('experimentalScoring: $experimentalScoring, ')
           ..write('miniPlayerTransparency: $miniPlayerTransparency, ')
           ..write('lyricsCharacterEdge: $lyricsCharacterEdge, ')
           ..write('multiSessionRelayUrl: $multiSessionRelayUrl')
@@ -1581,6 +1613,7 @@ class PreferencesTableData extends DataClass
         crossfadeDurationSeconds,
         connectPort,
         cacheMusic,
+        experimentalScoring,
         miniPlayerTransparency,
         lyricsCharacterEdge,
         multiSessionRelayUrl
@@ -1616,6 +1649,7 @@ class PreferencesTableData extends DataClass
           other.crossfadeDurationSeconds == this.crossfadeDurationSeconds &&
           other.connectPort == this.connectPort &&
           other.cacheMusic == this.cacheMusic &&
+          other.experimentalScoring == this.experimentalScoring &&
           other.miniPlayerTransparency == this.miniPlayerTransparency &&
           other.lyricsCharacterEdge == this.lyricsCharacterEdge &&
           other.multiSessionRelayUrl == this.multiSessionRelayUrl);
@@ -1649,6 +1683,7 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
   final Value<int> crossfadeDurationSeconds;
   final Value<int> connectPort;
   final Value<bool> cacheMusic;
+  final Value<bool> experimentalScoring;
   final Value<double> miniPlayerTransparency;
   final Value<LyricsCharacterEdge> lyricsCharacterEdge;
   final Value<String> multiSessionRelayUrl;
@@ -1680,6 +1715,7 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
     this.crossfadeDurationSeconds = const Value.absent(),
     this.connectPort = const Value.absent(),
     this.cacheMusic = const Value.absent(),
+    this.experimentalScoring = const Value.absent(),
     this.miniPlayerTransparency = const Value.absent(),
     this.lyricsCharacterEdge = const Value.absent(),
     this.multiSessionRelayUrl = const Value.absent(),
@@ -1712,6 +1748,7 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
     this.crossfadeDurationSeconds = const Value.absent(),
     this.connectPort = const Value.absent(),
     this.cacheMusic = const Value.absent(),
+    this.experimentalScoring = const Value.absent(),
     this.miniPlayerTransparency = const Value.absent(),
     this.lyricsCharacterEdge = const Value.absent(),
     this.multiSessionRelayUrl = const Value.absent(),
@@ -1744,6 +1781,7 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
     Expression<int>? crossfadeDurationSeconds,
     Expression<int>? connectPort,
     Expression<bool>? cacheMusic,
+    Expression<bool>? experimentalScoring,
     Expression<double>? miniPlayerTransparency,
     Expression<String>? lyricsCharacterEdge,
     Expression<String>? multiSessionRelayUrl,
@@ -1781,6 +1819,8 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
         'crossfade_duration_seconds': crossfadeDurationSeconds,
       if (connectPort != null) 'connect_port': connectPort,
       if (cacheMusic != null) 'cache_music': cacheMusic,
+      if (experimentalScoring != null)
+        'experimental_scoring': experimentalScoring,
       if (miniPlayerTransparency != null)
         'mini_player_transparency': miniPlayerTransparency,
       if (lyricsCharacterEdge != null)
@@ -1818,6 +1858,7 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
       Value<int>? crossfadeDurationSeconds,
       Value<int>? connectPort,
       Value<bool>? cacheMusic,
+      Value<bool>? experimentalScoring,
       Value<double>? miniPlayerTransparency,
       Value<LyricsCharacterEdge>? lyricsCharacterEdge,
       Value<String>? multiSessionRelayUrl}) {
@@ -1851,6 +1892,7 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
           crossfadeDurationSeconds ?? this.crossfadeDurationSeconds,
       connectPort: connectPort ?? this.connectPort,
       cacheMusic: cacheMusic ?? this.cacheMusic,
+      experimentalScoring: experimentalScoring ?? this.experimentalScoring,
       miniPlayerTransparency:
           miniPlayerTransparency ?? this.miniPlayerTransparency,
       lyricsCharacterEdge: lyricsCharacterEdge ?? this.lyricsCharacterEdge,
@@ -1957,6 +1999,9 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
     if (cacheMusic.present) {
       map['cache_music'] = Variable<bool>(cacheMusic.value);
     }
+    if (experimentalScoring.present) {
+      map['experimental_scoring'] = Variable<bool>(experimentalScoring.value);
+    }
     if (miniPlayerTransparency.present) {
       map['mini_player_transparency'] =
           Variable<double>(miniPlayerTransparency.value);
@@ -2003,6 +2048,7 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
           ..write('crossfadeDurationSeconds: $crossfadeDurationSeconds, ')
           ..write('connectPort: $connectPort, ')
           ..write('cacheMusic: $cacheMusic, ')
+          ..write('experimentalScoring: $experimentalScoring, ')
           ..write('miniPlayerTransparency: $miniPlayerTransparency, ')
           ..write('lyricsCharacterEdge: $lyricsCharacterEdge, ')
           ..write('multiSessionRelayUrl: $multiSessionRelayUrl')
@@ -4846,6 +4892,7 @@ typedef $$PreferencesTableTableCreateCompanionBuilder
   Value<int> crossfadeDurationSeconds,
   Value<int> connectPort,
   Value<bool> cacheMusic,
+  Value<bool> experimentalScoring,
   Value<double> miniPlayerTransparency,
   Value<LyricsCharacterEdge> lyricsCharacterEdge,
   Value<String> multiSessionRelayUrl,
@@ -4879,6 +4926,7 @@ typedef $$PreferencesTableTableUpdateCompanionBuilder
   Value<int> crossfadeDurationSeconds,
   Value<int> connectPort,
   Value<bool> cacheMusic,
+  Value<bool> experimentalScoring,
   Value<double> miniPlayerTransparency,
   Value<LyricsCharacterEdge> lyricsCharacterEdge,
   Value<String> multiSessionRelayUrl,
@@ -5004,6 +5052,10 @@ class $$PreferencesTableTableFilterComposer
   ColumnFilters<bool> get cacheMusic => $composableBuilder(
       column: $table.cacheMusic, builder: (column) => ColumnFilters(column));
 
+  ColumnFilters<bool> get experimentalScoring => $composableBuilder(
+      column: $table.experimentalScoring,
+      builder: (column) => ColumnFilters(column));
+
   ColumnFilters<double> get miniPlayerTransparency => $composableBuilder(
       column: $table.miniPlayerTransparency,
       builder: (column) => ColumnFilters(column));
@@ -5127,6 +5179,10 @@ class $$PreferencesTableTableOrderingComposer
   ColumnOrderings<bool> get cacheMusic => $composableBuilder(
       column: $table.cacheMusic, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<bool> get experimentalScoring => $composableBuilder(
+      column: $table.experimentalScoring,
+      builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<double> get miniPlayerTransparency => $composableBuilder(
       column: $table.miniPlayerTransparency,
       builder: (column) => ColumnOrderings(column));
@@ -5236,6 +5292,9 @@ class $$PreferencesTableTableAnnotationComposer
   GeneratedColumn<bool> get cacheMusic => $composableBuilder(
       column: $table.cacheMusic, builder: (column) => column);
 
+  GeneratedColumn<bool> get experimentalScoring => $composableBuilder(
+      column: $table.experimentalScoring, builder: (column) => column);
+
   GeneratedColumn<double> get miniPlayerTransparency => $composableBuilder(
       column: $table.miniPlayerTransparency, builder: (column) => column);
 
@@ -5303,6 +5362,7 @@ class $$PreferencesTableTableTableManager extends RootTableManager<
             Value<int> crossfadeDurationSeconds = const Value.absent(),
             Value<int> connectPort = const Value.absent(),
             Value<bool> cacheMusic = const Value.absent(),
+            Value<bool> experimentalScoring = const Value.absent(),
             Value<double> miniPlayerTransparency = const Value.absent(),
             Value<LyricsCharacterEdge> lyricsCharacterEdge =
                 const Value.absent(),
@@ -5336,6 +5396,7 @@ class $$PreferencesTableTableTableManager extends RootTableManager<
             crossfadeDurationSeconds: crossfadeDurationSeconds,
             connectPort: connectPort,
             cacheMusic: cacheMusic,
+            experimentalScoring: experimentalScoring,
             miniPlayerTransparency: miniPlayerTransparency,
             lyricsCharacterEdge: lyricsCharacterEdge,
             multiSessionRelayUrl: multiSessionRelayUrl,
@@ -5369,6 +5430,7 @@ class $$PreferencesTableTableTableManager extends RootTableManager<
             Value<int> crossfadeDurationSeconds = const Value.absent(),
             Value<int> connectPort = const Value.absent(),
             Value<bool> cacheMusic = const Value.absent(),
+            Value<bool> experimentalScoring = const Value.absent(),
             Value<double> miniPlayerTransparency = const Value.absent(),
             Value<LyricsCharacterEdge> lyricsCharacterEdge =
                 const Value.absent(),
@@ -5402,6 +5464,7 @@ class $$PreferencesTableTableTableManager extends RootTableManager<
             crossfadeDurationSeconds: crossfadeDurationSeconds,
             connectPort: connectPort,
             cacheMusic: cacheMusic,
+            experimentalScoring: experimentalScoring,
             miniPlayerTransparency: miniPlayerTransparency,
             lyricsCharacterEdge: lyricsCharacterEdge,
             multiSessionRelayUrl: multiSessionRelayUrl,

@@ -10,6 +10,7 @@ import 'package:spotube/models/playback/track_sources.dart';
 import 'package:spotube/provider/database/database.dart';
 import 'package:spotube/provider/metadata_plugin/audio_source/quality_presets.dart';
 import 'package:spotube/provider/metadata_plugin/metadata_plugin_provider.dart';
+import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
 import 'package:spotube/services/dio/dio.dart';
 import 'package:spotube/services/logger/logger.dart';
 import 'package:spotube/services/metadata/errors/exceptions.dart';
@@ -19,6 +20,30 @@ import 'package:spotube/utils/service_utils.dart';
 
 final officialMusicRegex = RegExp(
   r"official\s(video|audio|music\svideo|lyric\svideo|visualizer)",
+  caseSensitive: false,
+);
+final officialAudioRegex = RegExp(
+  r"official\s(audio|audio\svideo)",
+  caseSensitive: false,
+);
+final musicVideoRegex = RegExp(
+  r"\b(official\svideo|music\svideo|mv)\b",
+  caseSensitive: false,
+);
+final lyricVideoRegex = RegExp(
+  r"\b(lyric\svideo|lyrics?)\b",
+  caseSensitive: false,
+);
+final livePerformanceRegex = RegExp(
+  r"\b(live|performance|concert|session|acoustic|karaoke)\b",
+  caseSensitive: false,
+);
+final remixStyleRegex = RegExp(
+  r"\b(remix|cover|sped\s?up|slowed|nightcore)\b",
+  caseSensitive: false,
+);
+final youtubeMusicRegex = RegExp(
+  r"\b(provided to youtube by|topic)\b",
   caseSensitive: false,
 );
 
@@ -153,6 +178,78 @@ class SourcedTrack extends BasicSourcedTrack {
         .toList();
   }
 
+  static List<SpotubeAudioSourceMatchObject> rankResultsExperimental(
+    List<SpotubeAudioSourceMatchObject> results,
+    SpotubeFullTrackObject track,
+  ) {
+    final trackName = track.name.toLowerCase();
+    final artistNames = track.artists.map((artist) => artist.name.toLowerCase());
+    final expectedDurationSeconds = track.durationMs ~/ 1000;
+
+    return results
+        .map((sibling) {
+          final title = sibling.title.toLowerCase();
+          final siblingArtists = sibling.artists.map((artist) => artist.toLowerCase());
+          var score = 0;
+
+          if (title.contains(trackName)) {
+            score += 8;
+          }
+
+          for (final artistName in artistNames) {
+            if (siblingArtists.any((artist) => artist == artistName)) {
+              score += 5;
+            }
+            if (title.contains(artistName)) {
+              score += 3;
+            }
+          }
+
+          final durationDelta =
+              (sibling.duration.inSeconds - expectedDurationSeconds).abs();
+          if (durationDelta <= 2) {
+            score += 6;
+          } else if (durationDelta <= 5) {
+            score += 4;
+          } else if (durationDelta <= 10) {
+            score += 2;
+          } else if (durationDelta >= 30) {
+            score -= 3;
+          }
+
+          if (youtubeMusicRegex.hasMatch(title)) {
+            score += 8;
+          }
+          if (officialAudioRegex.hasMatch(title)) {
+            score += 5;
+          }
+          if (title.contains("audio")) {
+            score += 2;
+          }
+          if (officialMusicRegex.hasMatch(title)) {
+            score += 1;
+          }
+
+          if (musicVideoRegex.hasMatch(title)) {
+            score -= 8;
+          }
+          if (lyricVideoRegex.hasMatch(title)) {
+            score -= 5;
+          }
+          if (livePerformanceRegex.hasMatch(title)) {
+            score -= 6;
+          }
+          if (remixStyleRegex.hasMatch(title)) {
+            score -= 4;
+          }
+
+          return (sibling: sibling, score: score);
+        })
+        .sorted((a, b) => b.score.compareTo(a.score))
+        .map((entry) => entry.sibling)
+        .toList();
+  }
+
   static Future<List<SpotubeAudioSourceMatchObject>> fetchSiblings({
     required SpotubeFullTrackObject query,
     required Ref ref,
@@ -164,10 +261,15 @@ class SourcedTrack extends BasicSourcedTrack {
     }
 
     final videoResults = <SpotubeAudioSourceMatchObject>[];
+    final experimentalScoring = ref.read(
+      userPreferencesProvider.select((value) => value.experimentalScoring),
+    );
 
     final searchResults = await audioSource.audioSource.matches(query);
 
-    if (ServiceUtils.onlyContainsEnglish(query.name)) {
+    if (experimentalScoring) {
+      videoResults.addAll(rankResultsExperimental(searchResults, query));
+    } else if (ServiceUtils.onlyContainsEnglish(query.name)) {
       videoResults.addAll(searchResults);
     } else {
       videoResults.addAll(rankResults(searchResults, query));

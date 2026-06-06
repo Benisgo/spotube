@@ -9,6 +9,7 @@ import 'package:spotube/components/image/universal_image.dart';
 import 'package:spotube/extensions/context.dart';
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/models/multi_session/multi_session.dart';
+import 'package:spotube/provider/metadata_plugin/core/user.dart';
 import 'package:spotube/provider/metadata_plugin/search/tracks.dart';
 import 'package:spotube/provider/multi_session/multi_session.dart';
 
@@ -388,14 +389,21 @@ class _MemberTile extends ConsumerWidget {
     final notifier = ref.read(multiSessionProvider.notifier);
     final canManage = session.can(MultiSessionPermission.manageMembers) &&
         member.role != "host";
+    final currentUser = ref.watch(metadataPluginUserProvider).valueOrNull;
+    final displayImages =
+        member.images.isNotEmpty
+            ? member.images
+            : member.id == session.memberId
+                ? currentUser?.images ?? const <SpotubeImageObject>[]
+                : const <SpotubeImageObject>[];
 
     return ListTile(
       leading: Avatar(
         initials: Avatar.getInitials(member.name),
         size: 40,
-        provider: member.images.isNotEmpty
+        provider: displayImages.isNotEmpty
             ? UniversalImage.imageProvider(
-                member.images.asUrlString(
+                displayImages.asUrlString(
                   placeholder: ImagePlaceholder.artist,
                 ),
               )

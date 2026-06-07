@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
 
@@ -27,6 +28,10 @@ final _loggingToLoggerLevel = {
 class AppLogger {
   static late final Logger log;
   static late final File logFile;
+  static late final File criticalLogFile;
+  static Future<void> _traceWriteQueue = Future.value();
+  static Future<void> _criticalWriteQueue = Future.value();
+  static int _traceBacklog = 0;
 
   static initialize(bool verbose) {
     log = Logger(
@@ -81,6 +86,7 @@ class AppLogger {
         _initInternalPackageLoggers();
 
         getLogsPath().then((value) => logFile = value);
+        getCriticalLogsPath().then((value) => criticalLogFile = value);
 
         return body();
       },
@@ -111,6 +117,27 @@ class AppLogger {
     return file;
   }
 
+  static Future<File> getCriticalLogsPath() async {
+    String dir = (await getApplicationDocumentsDirectory()).path;
+    if (kIsAndroid) {
+      dir = (await getExternalStorageDirectory())?.path ?? "";
+    }
+
+    if (kIsMacOS) {
+      dir = join((await getLibraryDirectory()).path, "Logs");
+    }
+
+    if (kIsLinux) {
+      dir = join(_getXdgStateHome(), "spotube");
+    }
+
+    final file = File(join(dir, ".spotube_critical_logs"));
+    if (!await file.exists()) {
+      await file.create(recursive: true);
+    }
+    return file;
+  }
+
   static Future<void> reportError(
     dynamic error, [
     StackTrace? stackTrace,
@@ -126,6 +153,83 @@ class AppLogger {
         mode: FileMode.writeOnlyAppend,
       );
     }
+  }
+
+  // #region agent log
+  static const _agentDebugLogPath =
+      r'C:\Users\Ahmed Mohamed\Documents\GitHub\spotube\debug-9dd842.log';
+
+  static Future<void> _agentDebugWriteQueue = Future.value();
+
+  static void agentDebug(
+    String location,
+    String message,
+    Map<String, dynamic> data, {
+    String hypothesisId = 'A',
+    String runId = 'post-fix',
+  }) {
+    if (!kDebugMode) return;
+    try {
+      final line = jsonEncode({
+        'sessionId': '9dd842',
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+        'location': location,
+        'message': message,
+        'data': data,
+        'hypothesisId': hypothesisId,
+        'runId': runId,
+      });
+      _agentDebugWriteQueue = _agentDebugWriteQueue
+          .then(
+            (_) async {
+              await File(_agentDebugLogPath).writeAsString(
+                '$line\n',
+                mode: FileMode.append,
+              );
+            },
+          )
+          .catchError((_) async {});
+    } catch (_) {}
+  }
+  // #endregion
+
+  static void trace(String message) {
+    log.i(message);
+
+    if (!kReleaseMode) return;
+    if (_traceBacklog > 200) return;
+
+    try {
+      final file = logFile;
+      _traceBacklog++;
+      _traceWriteQueue = _traceWriteQueue
+          .then(
+            (_) => file.writeAsString(
+              "[${DateTime.now()}][trace] $message\n",
+              mode: FileMode.writeOnlyAppend,
+            ),
+          )
+          .whenComplete(() {
+            _traceBacklog = (_traceBacklog - 1).clamp(0, 1 << 30);
+          })
+          .catchError((_) => file);
+    } catch (_) {}
+  }
+
+  static void criticalTrace(String message) {
+    log.i("[critical] $message");
+
+    try {
+      final file = criticalLogFile;
+      _criticalWriteQueue = _criticalWriteQueue
+          .then(
+            (_) => file.writeAsString(
+              "[${DateTime.now()}][critical] $message\n",
+              mode: FileMode.writeOnlyAppend,
+            ),
+          )
+          .catchError((_) => file);
+    } catch (_) {}
   }
 
   static String _getXdgStateHome() {

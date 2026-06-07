@@ -8,7 +8,6 @@ import 'package:spotube/models/database/database.dart';
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/models/playback/track_sources.dart';
 import 'package:spotube/provider/database/database.dart';
-import 'package:spotube/provider/metadata_plugin/audio_source/quality_presets.dart';
 import 'package:spotube/provider/metadata_plugin/metadata_plugin_provider.dart';
 import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
 import 'package:spotube/services/dio/dio.dart';
@@ -47,7 +46,26 @@ final youtubeMusicRegex = RegExp(
   caseSensitive: false,
 );
 
+String _normalizeSearchText(String value) {
+  return value
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9\s]'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+}
+
+String _stripDecorators(String value) {
+  return value
+      .replaceAll(RegExp(r'\([^)]*\)'), ' ')
+      .replaceAll(RegExp(r'\[[^\]]*\]'), ' ')
+      .replaceAll(RegExp(r'\b(official|audio|video|lyrics?|lyric video|visualizer|topic|provided to youtube by|music video)\b', caseSensitive: false), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+}
+
 class SourcedTrack extends BasicSourcedTrack {
+  static final Map<String, Future<SourcedTrack>> _inFlightFetches = {};
+  static final Map<String, SourcedTrack> _resolvedFetches = {};
   final Ref ref;
 
   SourcedTrack({
@@ -63,18 +81,58 @@ class SourcedTrack extends BasicSourcedTrack {
     required SpotubeFullTrackObject query,
     required Ref ref,
   }) async {
+    final resolved = _resolvedFetches[query.id];
+    if (resolved != null) {
+      AppLogger.trace("[sourced_track] reuse resolved track=${query.id}");
+      AppLogger.criticalTrace("[sourced_track] reuse resolved track=${query.id}");
+      return resolved;
+    }
+
+    final inflight = _inFlightFetches[query.id];
+    if (inflight != null) {
+      AppLogger.trace("[sourced_track] join in-flight track=${query.id}");
+      return inflight;
+    }
+
+    final future = _fetchFromTrackInternal(query: query, ref: ref);
+    _inFlightFetches[query.id] = future;
+
+    try {
+      final resolvedTrack = await future;
+      _resolvedFetches[query.id] = resolvedTrack;
+      return resolvedTrack;
+    } finally {
+      final active = _inFlightFetches[query.id];
+      if (identical(active, future)) {
+        _inFlightFetches.remove(query.id);
+      }
+    }
+  }
+
+  static Future<SourcedTrack> _fetchFromTrackInternal({
+    required SpotubeFullTrackObject query,
+    required Ref ref,
+  }) async {
+    AppLogger.trace("[sourced_track] fetchFromTrack start track=${query.id}");
+    AppLogger.criticalTrace("[sourced_track] fetchFromTrack start track=${query.id}");
+    AppLogger.criticalTrace("[sourced_track] await audioSourcePluginProvider track=${query.id}");
     final audioSource = await ref.read(audioSourcePluginProvider.future);
-    final audioSourceConfig = await ref.read(metadataPluginsProvider
-        .selectAsync((data) => data.defaultAudioSourcePluginConfig));
-    if (audioSource == null || audioSourceConfig == null) {
+    AppLogger.criticalTrace("[sourced_track] audioSourcePluginProvider done track=${query.id} null=${audioSource == null}");
+    AppLogger.criticalTrace(
+      "[sourced_track] audio source slug sync track=${query.id} null=${audioSource == null}",
+    );
+    if (audioSource == null) {
       throw MetadataPluginException.noDefaultAudioSourcePlugin();
     }
 
-    final database = ref.read(databaseProvider);
+    AppLogger.criticalTrace("[sourced_track] await database track=${query.id}");
+    final database = AppDatabase.current ?? ref.read(databaseProvider)!;
+    AppLogger.criticalTrace("[sourced_track] database done track=${query.id}");
+    AppLogger.criticalTrace("[sourced_track] db cache query start track=${query.id}");
     final cachedSource = await (database.select(database.sourceMatchTable)
           ..where((s) =>
               s.trackId.equals(query.id) &
-              s.sourceType.equals(audioSourceConfig.slug))
+              s.sourceType.equals(audioSource.slug))
           ..limit(1)
           ..orderBy([
             (s) =>
@@ -82,8 +140,13 @@ class SourcedTrack extends BasicSourcedTrack {
           ]))
         .get()
         .then((s) => s.firstOrNull);
+    AppLogger.criticalTrace(
+      "[sourced_track] db cache query done track=${query.id} hit=${cachedSource != null}",
+    );
 
     if (cachedSource == null) {
+      AppLogger.trace("[sourced_track] cache miss track=${query.id}");
+      AppLogger.criticalTrace("[sourced_track] cache miss track=${query.id}");
       final siblings = await fetchSiblings(ref: ref, query: query);
       if (siblings.isEmpty) {
         throw TrackNotFoundError(query);
@@ -93,27 +156,48 @@ class SourcedTrack extends BasicSourcedTrack {
             SourceMatchTableCompanion.insert(
               trackId: query.id,
               sourceInfo: Value(jsonEncode(siblings.first)),
-              sourceType: audioSourceConfig.slug,
+              sourceType: audioSource.slug,
             ),
           );
 
+      AppLogger.criticalTrace(
+        "[sourced_track] streams start track=${query.id} source=${siblings.first.id}",
+      );
       final manifest = await audioSource.audioSource.streams(siblings.first);
+      AppLogger.criticalTrace(
+        "[sourced_track] streams done track=${query.id} source=${siblings.first.id} count=${manifest.length}",
+      );
 
       final sourcedTrack = SourcedTrack(
         ref: ref,
         siblings: siblings.skip(1).toList(),
         info: siblings.first,
-        source: audioSourceConfig.slug,
+        source: audioSource.slug,
         sources: manifest,
         query: query,
       );
 
-      return sourcedTrack.resolvePlayableSource();
+      final resolved = await sourcedTrack.resolvePlayableSource();
+      AppLogger.trace(
+        "[sourced_track] fetchFromTrack resolved track=${query.id} url=${resolved.url != null} siblings=${resolved.siblings.length}",
+      );
+      AppLogger.criticalTrace(
+        "[sourced_track] fetchFromTrack resolved track=${query.id} url=${resolved.url != null} siblings=${resolved.siblings.length}",
+      );
+      return resolved;
     }
+    AppLogger.trace("[sourced_track] cache hit track=${query.id}");
+    AppLogger.criticalTrace("[sourced_track] cache hit track=${query.id}");
     final item = SpotubeAudioSourceMatchObject.fromJson(
       jsonDecode(cachedSource.sourceInfo),
     );
+    AppLogger.criticalTrace(
+      "[sourced_track] streams start track=${query.id} source=${item.id}",
+    );
     final manifest = await audioSource.audioSource.streams(item);
+    AppLogger.criticalTrace(
+      "[sourced_track] streams done track=${query.id} source=${item.id} count=${manifest.length}",
+    );
 
     final sourcedTrack = SourcedTrack(
       ref: ref,
@@ -121,12 +205,19 @@ class SourcedTrack extends BasicSourcedTrack {
       sources: manifest,
       info: item,
       query: query,
-      source: audioSourceConfig.slug,
+      source: audioSource.slug,
     );
 
     AppLogger.log.i("${query.name}: ${sourcedTrack.url}");
 
-    return sourcedTrack.resolvePlayableSource();
+    final resolved = await sourcedTrack.resolvePlayableSource();
+    AppLogger.trace(
+      "[sourced_track] fetchFromTrack resolved track=${query.id} url=${resolved.url != null} siblings=${resolved.siblings.length}",
+    );
+    AppLogger.criticalTrace(
+      "[sourced_track] fetchFromTrack resolved track=${query.id} url=${resolved.url != null} siblings=${resolved.siblings.length}",
+    );
+    return resolved;
   }
 
   static List<SpotubeAudioSourceMatchObject> rankResults(
@@ -183,26 +274,72 @@ class SourcedTrack extends BasicSourcedTrack {
     SpotubeFullTrackObject track,
   ) {
     final trackName = track.name.toLowerCase();
+    final normalizedTrackName = _normalizeSearchText(track.name);
     final artistNames = track.artists.map((artist) => artist.name.toLowerCase());
+    final normalizedArtistNames =
+        track.artists.map((artist) => _normalizeSearchText(artist.name)).toList();
     final expectedDurationSeconds = track.durationMs ~/ 1000;
 
     return results
         .map((sibling) {
           final title = sibling.title.toLowerCase();
-          final siblingArtists = sibling.artists.map((artist) => artist.toLowerCase());
+          final normalizedTitle = _normalizeSearchText(title);
+          final cleanedNormalizedTitle =
+              _normalizeSearchText(_stripDecorators(sibling.title));
+          final siblingArtists =
+              sibling.artists.map((artist) => artist.toLowerCase()).toList();
+          final normalizedSiblingArtists =
+              siblingArtists.map(_normalizeSearchText).toList();
           var score = 0;
 
           if (title.contains(trackName)) {
             score += 8;
           }
+          if (normalizedTitle == normalizedTrackName) {
+            score += 12;
+          } else if (cleanedNormalizedTitle == normalizedTrackName) {
+            score += 9;
+          } else if (cleanedNormalizedTitle.contains(normalizedTrackName)) {
+            score += 4;
+          }
 
+          final titleWordCount = cleanedNormalizedTitle
+              .split(' ')
+              .where((part) => part.isNotEmpty)
+              .length;
+          final trackWordCount = normalizedTrackName
+              .split(' ')
+              .where((part) => part.isNotEmpty)
+              .length;
+          if (titleWordCount > trackWordCount + 3) {
+            score -= 4;
+          }
+
+          var hasStrongArtistMatch = false;
           for (final artistName in artistNames) {
-            if (siblingArtists.any((artist) => artist == artistName)) {
+            final normalizedArtistName = _normalizeSearchText(artistName);
+            final exactArtistMatch = normalizedSiblingArtists.any(
+              (artist) =>
+                  artist == normalizedArtistName ||
+                  artist.contains(normalizedArtistName) ||
+                  normalizedArtistName.contains(artist),
+            );
+            if (exactArtistMatch) {
               score += 5;
+              hasStrongArtistMatch = true;
             }
-            if (title.contains(artistName)) {
+            if (normalizedTitle.contains(normalizedArtistName)) {
               score += 3;
+              hasStrongArtistMatch = true;
             }
+          }
+
+          if (!hasStrongArtistMatch) {
+            score -= 10;
+          } else if (normalizedArtistNames.any(
+            (artist) => normalizedTitle.startsWith('$artist '),
+          )) {
+            score += 3;
           }
 
           final durationDelta =
@@ -234,7 +371,7 @@ class SourcedTrack extends BasicSourcedTrack {
             score -= 8;
           }
           if (lyricVideoRegex.hasMatch(title)) {
-            score -= 5;
+            score -= 8;
           }
           if (livePerformanceRegex.hasMatch(title)) {
             score -= 6;
@@ -254,6 +391,8 @@ class SourcedTrack extends BasicSourcedTrack {
     required SpotubeFullTrackObject query,
     required Ref ref,
   }) async {
+    AppLogger.trace("[sourced_track] fetchSiblings start track=${query.id}");
+    AppLogger.criticalTrace("[sourced_track] fetchSiblings start track=${query.id}");
     final audioSource = await ref.read(audioSourcePluginProvider.future);
 
     if (audioSource == null) {
@@ -275,7 +414,14 @@ class SourcedTrack extends BasicSourcedTrack {
       videoResults.addAll(rankResults(searchResults, query));
     }
 
-    return videoResults.toSet().toList();
+    final ranked = videoResults.toSet().toList();
+    AppLogger.trace(
+      "[sourced_track] fetchSiblings done track=${query.id} results=${ranked.length}",
+    );
+    AppLogger.criticalTrace(
+      "[sourced_track] fetchSiblings done track=${query.id} results=${ranked.length}",
+    );
+    return ranked;
   }
 
   Future<SourcedTrack> copyWithSibling() async {
@@ -295,6 +441,12 @@ class SourcedTrack extends BasicSourcedTrack {
   }
 
   Future<SourcedTrack> resolvePlayableSource() async {
+    AppLogger.trace(
+      "[sourced_track] resolvePlayableSource start track=${query.id} url=${url != null} siblings=${siblings.length}",
+    );
+    AppLogger.criticalTrace(
+      "[sourced_track] resolvePlayableSource start track=${query.id} url=${url != null} siblings=${siblings.length}",
+    );
     var current = this;
     if (current.url != null) return current;
 
@@ -323,20 +475,27 @@ class SourcedTrack extends BasicSourcedTrack {
       current = swapped;
     }
 
+    AppLogger.trace(
+      "[sourced_track] resolvePlayableSource done track=${query.id} url=${current.url != null} siblings=${current.siblings.length}",
+    );
+    AppLogger.criticalTrace(
+      "[sourced_track] resolvePlayableSource done track=${query.id} url=${current.url != null} siblings=${current.siblings.length}",
+    );
     return current;
   }
 
   Future<SourcedTrack?> swapWithSibling(
     SpotubeAudioSourceMatchObject sibling,
   ) async {
+    AppLogger.trace(
+      "[sourced_track] swapWithSibling track=${query.id} from=${info.id} to=${sibling.id}",
+    );
     if (sibling.id == info.id) {
       return null;
     }
 
     final audioSource = await ref.read(audioSourcePluginProvider.future);
-    final audioSourceConfig = await ref.read(metadataPluginsProvider
-        .selectAsync((data) => data.defaultAudioSourcePluginConfig));
-    if (audioSource == null || audioSourceConfig == null) {
+    if (audioSource == null) {
       throw MetadataPluginException.noDefaultAudioSourcePlugin();
     }
 
@@ -359,7 +518,7 @@ class SourcedTrack extends BasicSourcedTrack {
           ..where(
             (table) =>
                 table.trackId.equals(query.id) &
-                table.sourceType.equals(audioSourceConfig.slug),
+                table.sourceType.equals(audioSource.slug),
           ))
         .go();
 
@@ -367,7 +526,7 @@ class SourcedTrack extends BasicSourcedTrack {
           SourceMatchTableCompanion.insert(
             trackId: query.id,
             sourceInfo: Value(jsonEncode(sibling)),
-            sourceType: audioSourceConfig.slug,
+            sourceType: audioSource.slug,
             createdAt: Value(DateTime.now()),
           ),
           mode: InsertMode.replace,
@@ -382,6 +541,7 @@ class SourcedTrack extends BasicSourcedTrack {
       query: query,
     );
 
+    _resolvedFetches[query.id] = sourcedTrack;
     return sourcedTrack;
   }
 
@@ -390,10 +550,9 @@ class SourcedTrack extends BasicSourcedTrack {
   }
 
   Future<SourcedTrack> refreshStream() async {
+    AppLogger.trace("[sourced_track] refreshStream start track=${query.id}");
     final audioSource = await ref.read(audioSourcePluginProvider.future);
-    final audioSourceConfig = await ref.read(metadataPluginsProvider
-        .selectAsync((data) => data.defaultAudioSourcePluginConfig));
-    if (audioSource == null || audioSourceConfig == null) {
+    if (audioSource == null) {
       throw MetadataPluginException.noDefaultAudioSourcePlugin();
     }
 
@@ -433,16 +592,52 @@ class SourcedTrack extends BasicSourcedTrack {
 
     AppLogger.log.i("Refreshing ${query.name}: ${sourcedTrack.url}");
 
-    return sourcedTrack.resolvePlayableSource();
+    final resolved = await sourcedTrack.resolvePlayableSource();
+    AppLogger.trace(
+      "[sourced_track] refreshStream done track=${query.id} url=${resolved.url != null}",
+    );
+    _resolvedFetches[query.id] = resolved;
+    return resolved;
+  }
+
+  SpotubeAudioSourceStreamObject? get preferredPlaybackStream {
+    if (sources.isEmpty) return null;
+
+    final sorted = [...sources]..sort((a, b) {
+      int score(SpotubeAudioSourceStreamObject source) {
+        var value = 0;
+        if (source.container == "mp4") {
+          value += 4;
+        } else if (source.container == "webm") {
+          value += 3;
+        } else {
+          value += 1;
+        }
+
+        if (source.type == SpotubeMediaCompressionType.lossless) {
+          value += 2;
+        }
+
+        return value;
+      }
+
+      final scoreDiff = score(b).compareTo(score(a));
+      if (scoreDiff != 0) return scoreDiff;
+
+      final bitrateDiff = (b.bitrate ?? 0).compareTo(a.bitrate ?? 0);
+      if (bitrateDiff != 0) return bitrateDiff;
+
+      final sampleRateDiff = (b.sampleRate ?? 0).compareTo(a.sampleRate ?? 0);
+      if (sampleRateDiff != 0) return sampleRateDiff;
+
+      return (b.bitDepth ?? 0).compareTo(a.bitDepth ?? 0);
+    });
+
+    return sorted.firstOrNull;
   }
 
   String? get url {
-    final preferences = ref.read(audioSourcePresetsProvider);
-
-    return getUrlOfQuality(
-      preferences.presets[preferences.selectedStreamingContainerIndex],
-      preferences.selectedStreamingQualityIndex,
-    );
+    return preferredPlaybackStream?.url;
   }
 
   /// Returns the URL of the track based on the codec and quality preferences.
@@ -513,8 +708,21 @@ class SourcedTrack extends BasicSourcedTrack {
   }
 
   SpotubeAudioSourceContainerPreset? get qualityPreset {
-    final presetState = ref.read(audioSourcePresetsProvider);
-    return presetState.presets
-        .elementAtOrNull(presetState.selectedStreamingContainerIndex);
+    final stream = preferredPlaybackStream;
+    if (stream == null) return null;
+
+    return switch (stream.type) {
+      SpotubeMediaCompressionType.lossless =>
+        SpotubeAudioSourceContainerPreset.lossless(
+          type: stream.type,
+          name: stream.container,
+          qualities: const <SpotubeAudioLosslessContainerQuality>[],
+        ),
+      SpotubeMediaCompressionType.lossy => SpotubeAudioSourceContainerPreset.lossy(
+          type: stream.type,
+          name: stream.container,
+          qualities: const <SpotubeAudioLossyContainerQuality>[],
+        ),
+    };
   }
 }

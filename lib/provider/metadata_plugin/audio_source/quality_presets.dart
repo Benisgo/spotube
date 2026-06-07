@@ -52,7 +52,15 @@ class AudioSourceAvailableQualityPresetsNotifier
       }
     });
 
-    return AudioSourcePresetsState();
+    final initialState = AudioSourcePresetsState();
+    final isInitialLossless = initialState.presets
+            .elementAtOrNull(initialState.selectedStreamingContainerIndex)
+        is SpotubeAudioSourceContainerPresetLossless;
+    audioPlayer.setDemuxerBufferSize(
+      isInitialLossless ? 6 * 1024 * 1024 : 4 * 1024 * 1024,
+    );
+
+    return initialState;
   }
 
   void _initialize(

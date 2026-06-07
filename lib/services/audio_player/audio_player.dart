@@ -8,7 +8,6 @@ import 'package:media_kit/media_kit.dart' as mk;
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/services/audio_player/custom_player.dart';
 import 'package:spotube/services/audio_player/playback_state.dart';
-import 'package:spotube/services/logger/logger.dart';
 import 'package:spotube/utils/platform.dart';
 
 part 'audio_players_streams_mixin.dart';
@@ -41,7 +40,7 @@ class SpotubeMedia extends mk.Media {
 
 abstract class AudioPlayerInterface {
   late final CustomPlayer _primaryPlayer;
-  late final CustomPlayer _secondaryPlayer;
+  CustomPlayer? _secondaryPlayer;
 
   final _durationStreamController = StreamController<Duration>.broadcast();
   final _positionStreamController = StreamController<Duration>.broadcast();
@@ -65,6 +64,7 @@ abstract class AudioPlayerInterface {
   final _playlistStreamController = StreamController<mk.Playlist>.broadcast();
 
   final List<StreamSubscription> _playerSubscriptions = [];
+  final List<StreamSubscription> _secondarySubscriptions = [];
 
   mk.Playlist _playlist = const mk.Playlist([]);
   int _currentIndex = -1;
@@ -74,16 +74,62 @@ abstract class AudioPlayerInterface {
   double _targetVolume = 1.0;
   bool _primaryPlayerActive = true;
   bool _isCrossfading = false;
+  bool _crossfadePreloadEnabled = false;
   Timer? _crossfadeTimer;
   Timer? _crossfadeHandoffTimer;
+  String? _lastEmittedPlaylistSignature;
+  DateTime? _lastPositionForwardedAt;
+
+  String _playlistSignature(mk.Playlist playlist) =>
+      '${playlist.medias.length}:${playlist.index}:${playlist.medias.map((m) => m.uri).join("|")}';
+
+  void _emitPlaylistSnapshot(mk.Playlist playlist) {
+    final signature = _playlistSignature(playlist);
+    if (_lastEmittedPlaylistSignature == signature) return;
+    _lastEmittedPlaylistSignature = signature;
+    _playlistStreamController.add(playlist);
+  }
+
+  void _trace(String message) {}
+
+  void _critical(String message) {}
+
+  bool get _mirrorsSecondaryPlayer => _crossfadePreloadEnabled || _isCrossfading;
+
+  Future<void> _mirrorSecondary(
+    Future<void> Function(CustomPlayer player) action,
+  ) async {
+    if (!_mirrorsSecondaryPlayer) return;
+    await _ensureSecondaryPlayer();
+    await action(_secondaryPlayer!);
+  }
+
+  Future<void> _ensureSecondaryPlayer() async {
+    if (_secondaryPlayer != null) return;
+    _secondaryPlayer = _createPlayer();
+    _bindPlayer(
+      _secondaryPlayer!,
+      isPrimary: false,
+      into: _secondarySubscriptions,
+    );
+  }
+
+  Future<void> _disposeSecondaryPlayer() async {
+    if (_secondaryPlayer == null) return;
+    try {
+      await _secondaryPlayer!.stop();
+    } catch (_) {}
+    for (final subscription in _secondarySubscriptions) {
+      await subscription.cancel();
+    }
+    _secondarySubscriptions.clear();
+    await _secondaryPlayer!.dispose();
+    _secondaryPlayer = null;
+  }
 
   AudioPlayerInterface() {
     _primaryPlayer = _createPlayer();
-    _secondaryPlayer = _createPlayer();
-
-    _bindPlayer(_primaryPlayer, isPrimary: true);
-    _bindPlayer(_secondaryPlayer, isPrimary: false);
-
+    _bindPlayer(_primaryPlayer, isPrimary: true, into: _playerSubscriptions);
     _emitPlaybackSnapshot(includePlaylist: true);
   }
 
@@ -96,32 +142,44 @@ abstract class AudioPlayerInterface {
       ),
     );
 
-    player.stream.error.listen((event) {
-      AppLogger.reportError(event, StackTrace.current);
-    });
-
     return player;
   }
 
-  CustomPlayer get _activePlayer =>
-      _primaryPlayerActive ? _primaryPlayer : _secondaryPlayer;
+  CustomPlayer get _activePlayer {
+    final secondary = _secondaryPlayer;
+    if (secondary == null) return _primaryPlayer;
+    return _primaryPlayerActive ? _primaryPlayer : secondary;
+  }
 
-  CustomPlayer get _inactivePlayer =>
-      _primaryPlayerActive ? _secondaryPlayer : _primaryPlayer;
+  CustomPlayer get _inactivePlayer {
+    final secondary = _secondaryPlayer;
+    if (secondary == null) return _primaryPlayer;
+    return _primaryPlayerActive ? secondary : _primaryPlayer;
+  }
 
   bool _isActivePlayer(bool isPrimary) => _primaryPlayerActive == isPrimary;
 
-  void _bindPlayer(CustomPlayer player, {required bool isPrimary}) {
-    _playerSubscriptions.addAll([
+  void _bindPlayer(
+    CustomPlayer player, {
+    required bool isPrimary,
+    required List<StreamSubscription> into,
+  }) {
+    into.addAll([
       player.stream.duration.listen((event) {
         if (_isActivePlayer(isPrimary)) {
           _durationStreamController.add(event);
         }
       }),
       player.stream.position.listen((event) {
-        if (_isActivePlayer(isPrimary)) {
-          _positionStreamController.add(event);
+        if (!_isActivePlayer(isPrimary)) return;
+        final now = DateTime.now();
+        if (_lastPositionForwardedAt != null &&
+            now.difference(_lastPositionForwardedAt!) <
+                const Duration(milliseconds: 200)) {
+          return;
         }
+        _lastPositionForwardedAt = now;
+        _positionStreamController.add(event);
       }),
       player.stream.buffer.listen((event) {
         if (_isActivePlayer(isPrimary)) {
@@ -153,6 +211,7 @@ abstract class AudioPlayerInterface {
       }),
       player.stream.buffering.listen((event) {
         if (_isActivePlayer(isPrimary)) {
+          _critical("buffering=$event isPrimary=$isPrimary");
           _bufferingStreamController.add(event);
         }
       }),
@@ -161,6 +220,7 @@ abstract class AudioPlayerInterface {
           if (_isCrossfading && event == AudioPlaybackState.completed) {
             return;
           }
+          _critical("playerState=$event isPrimary=$isPrimary");
           _playerStateStreamController.add(event);
         }
       }),
@@ -193,6 +253,7 @@ abstract class AudioPlayerInterface {
       }),
       player.stream.error.listen((event) {
         if (_isActivePlayer(isPrimary)) {
+          _critical("playerError=$event isPrimary=$isPrimary");
           _errorStreamController.add(event);
         }
       }),
@@ -200,14 +261,18 @@ abstract class AudioPlayerInterface {
   }
 
   void _syncPlaylistFromActive(mk.Playlist playlist) {
+    _trace(
+      "syncPlaylistFromActive medias=${playlist.medias.length} playlistIndex=${playlist.index}",
+    );
     final safeIndex = playlist.medias.isEmpty
         ? -1
         : min(max(_currentIndex, 0), playlist.medias.length - 1);
     _playlist = mk.Playlist(playlist.medias, index: max(safeIndex, 0));
-    _playlistStreamController.add(_playlist);
+    _emitPlaylistSnapshot(_playlist);
   }
 
   void _syncIndexFromActive(int index) {
+    _trace("syncIndexFromActive incoming=$index");
     if (_playlist.medias.isEmpty) {
       _currentIndex = -1;
       return;
@@ -224,7 +289,7 @@ abstract class AudioPlayerInterface {
     if (activeSource != null) {
       _activeSourceStreamController.add(activeSource);
     }
-    _playlistStreamController.add(
+    _emitPlaylistSnapshot(
       mk.Playlist(_playlist.medias, index: max(_currentIndex, 0)),
     );
   }
@@ -242,7 +307,7 @@ abstract class AudioPlayerInterface {
     _selectedDeviceStreamController.add(_activePlayer.state.audioDevice);
 
     if (includePlaylist) {
-      _playlistStreamController.add(
+      _emitPlaylistSnapshot(
         mk.Playlist(_playlist.medias, index: max(_currentIndex, 0)),
       );
       final activeSource = currentSource;
@@ -279,17 +344,31 @@ abstract class AudioPlayerInterface {
     }
 
     final safeIndex = index.clamp(0, _playlist.medias.length - 1).toInt();
+    _critical(
+      "openPlayerWithPlaylist index=$safeIndex play=$play uri=${_playlist.medias[safeIndex].uri}",
+    );
     await player.open(
       mk.Playlist(_playlist.medias, index: safeIndex),
       play: play,
     );
+    _critical(
+      "openPlayerWithPlaylist complete index=$safeIndex play=$play uri=${_playlist.medias[safeIndex].uri}",
+    );
   }
 
   Future<void> _prepareInactivePlayer() async {
+    _trace("prepareInactivePlayer preload=$_crossfadePreloadEnabled");
+    _critical("prepareInactivePlayer preload=$_crossfadePreloadEnabled");
+    if (!_crossfadePreloadEnabled) {
+      return;
+    }
+
     if (_playlist.medias.isEmpty) {
       await _inactivePlayer.stop();
       return;
     }
+
+    await _ensureSecondaryPlayer();
 
     final nextIndex = _nextIndexFrom(_currentIndex);
     if (nextIndex == null) {
@@ -312,7 +391,9 @@ abstract class AudioPlayerInterface {
     _crossfadeHandoffTimer?.cancel();
     _crossfadeHandoffTimer = null;
 
-    if (stopInactivePlayer && _inactivePlayer.state.playing) {
+    if (_secondaryPlayer != null &&
+        stopInactivePlayer &&
+        _inactivePlayer.state.playing) {
       await _inactivePlayer.pause();
       await _inactivePlayer.seek(Duration.zero);
       await _inactivePlayer.setVolume(0);
@@ -438,6 +519,7 @@ abstract class AudioPlayerInterface {
   bool get isCrossfading => _isCrossfading;
 
   Future<bool> startCrossfadeToNext(Duration duration) async {
+    await _ensureSecondaryPlayer();
     final nextIndex = _nextIndexFrom(_currentIndex);
     if (_isCrossfading ||
         !isPlaying ||
@@ -478,6 +560,18 @@ abstract class AudioPlayerInterface {
 
   Future<void> stopCrossfadeAndRestore() async {
     await _stopCrossfade();
+    await _prepareInactivePlayer();
+  }
+
+  Future<void> setCrossfadePreloadEnabled(bool enabled) async {
+    _crossfadePreloadEnabled = enabled;
+
+    if (!enabled) {
+      await _disposeSecondaryPlayer();
+      return;
+    }
+
+    await _ensureSecondaryPlayer();
     await _prepareInactivePlayer();
   }
 

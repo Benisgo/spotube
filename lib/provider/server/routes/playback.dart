@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:collection/collection.dart';
 import 'package:dio/dio.dart' hide Response;
@@ -15,7 +16,6 @@ import 'package:spotube/models/parser/range_headers.dart';
 import 'package:spotube/provider/audio_player/audio_player.dart';
 import 'package:spotube/provider/audio_player/state.dart';
 
-import 'package:spotube/provider/server/active_track_sources.dart';
 import 'package:spotube/provider/server/sourced_track_provider.dart';
 import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
 import 'package:spotube/services/audio_player/audio_player.dart';
@@ -44,8 +44,22 @@ class ServerPlaybackRoutes {
   AudioPlayerState get playlist => ref.read(audioPlayerProvider);
   final Dio dio;
   final Map<String, DateTime> _recentStreamFailures = {};
+  final Map<String, CancelToken> _activeUpstreamRequests = {};
+  final Map<String, int> _streamRequestCounts = {};
+  final Map<String, int> _upstreamAttemptCounts = {};
 
   ServerPlaybackRoutes(this.ref) : dio = Dio();
+
+  String _memoryLabel() =>
+      "${(ProcessInfo.currentRss / (1024 * 1024)).toStringAsFixed(1)}MB";
+
+  void _trace(String message) {
+    AppLogger.trace("[playback] $message | rss=${_memoryLabel()}");
+  }
+
+  void _critical(String message) {
+    AppLogger.criticalTrace("[playback] $message | rss=${_memoryLabel()}");
+  }
 
   bool _isPlaybackRequestRelevant(String requestedUri) {
     return requestedUri == audioPlayer.currentSource ||
@@ -80,6 +94,127 @@ class ServerPlaybackRoutes {
     _recentStreamFailures.remove(_streamFailureKey(track));
   }
 
+  CancelToken _replaceUpstreamRequest(String requestedUri) {
+    final replaced = _activeUpstreamRequests.remove(requestedUri);
+    if (replaced != null) {
+      _trace(
+        "cancel previous upstream uri=$requestedUri active=${_activeUpstreamRequests.length}",
+      );
+      replaced.cancel("Superseded");
+    }
+    final token = CancelToken();
+    _activeUpstreamRequests[requestedUri] = token;
+    _trace(
+      "register upstream uri=$requestedUri active=${_activeUpstreamRequests.length}",
+    );
+    return token;
+  }
+
+  void _clearUpstreamRequest(String requestedUri, CancelToken token) {
+    final activeToken = _activeUpstreamRequests[requestedUri];
+    if (identical(activeToken, token)) {
+      _activeUpstreamRequests.remove(requestedUri);
+      _trace(
+        "clear upstream uri=$requestedUri active=${_activeUpstreamRequests.length}",
+      );
+    }
+  }
+
+  Stream<Uint8List> _attachUpstreamCleanup(
+    String requestedUri,
+    CancelToken token,
+    Stream<Uint8List> source,
+  ) {
+    late final StreamSubscription<Uint8List> subscription;
+    late final StreamController<Uint8List> controller;
+    controller = StreamController<Uint8List>(
+      onListen: () {
+        _trace("listen upstream stream uri=$requestedUri");
+        _critical("listen upstream stream uri=$requestedUri");
+        subscription = source.listen(
+          controller.add,
+          onError: (error, stackTrace) {
+            _clearUpstreamRequest(requestedUri, token);
+            _trace("error upstream stream uri=$requestedUri error=$error");
+            _critical("error upstream stream uri=$requestedUri error=$error");
+            controller.addError(error, stackTrace);
+          },
+          onDone: () {
+            _clearUpstreamRequest(requestedUri, token);
+            _trace("done upstream stream uri=$requestedUri");
+            _critical("done upstream stream uri=$requestedUri");
+            controller.close();
+          },
+          cancelOnError: true,
+        );
+      },
+      onPause: () => subscription.pause(),
+      onResume: () => subscription.resume(),
+      onCancel: () async {
+        await subscription.cancel();
+        _trace("cancel upstream stream uri=$requestedUri");
+        _critical("cancel upstream stream uri=$requestedUri");
+        _clearUpstreamRequest(requestedUri, token);
+      },
+    );
+
+    return controller.stream;
+  }
+
+  RangeHeader? _getRequestedRange(Request request) {
+    final rawRange = request.headers["range"];
+    if (rawRange == null || rawRange.isEmpty) return null;
+
+    try {
+      return RangeHeader.parse(rawRange);
+    } catch (error, stackTrace) {
+      AppLogger.reportError(error, stackTrace);
+      return null;
+    }
+  }
+
+  ({int start, int end, int total}) _resolveByteRange(
+    int totalLength,
+    RangeHeader? requestedRange,
+  ) {
+    final total = max(totalLength, 0);
+    if (total == 0) {
+      return (start: 0, end: 0, total: 0);
+    }
+
+    final start = requestedRange == null
+        ? 0
+        : requestedRange.start.clamp(0, total - 1);
+    final end = requestedRange?.end == null
+        ? total - 1
+        : requestedRange!.end!.clamp(start, total - 1);
+
+    return (start: start, end: end, total: total);
+  }
+
+  Map<String, List<String>> _cachedTrackHeaders({
+    required SourcedTrack track,
+    required int totalLength,
+    required int start,
+    required int end,
+    required bool isPartial,
+  }) {
+    final contentLength = totalLength == 0 ? 0 : (end - start + 1);
+
+    return {
+      "content-type": ["audio/${track.qualityPreset!.name}"],
+      "content-length": ["$contentLength"],
+      "accept-ranges": ["bytes"],
+      "connection": ["close"],
+      if (isPartial && totalLength > 0)
+        "content-range": ["bytes $start-$end/$totalLength"],
+    };
+  }
+
+  bool _shouldBypassStreamingProxy(SourcedTrack track) {
+    return true;
+  }
+
   Future<String> _getTrackCacheFilePath(SourcedTrack track) async {
     return join(
       await UserPreferencesNotifier.getMusicCacheDir(),
@@ -96,20 +231,21 @@ class ServerPlaybackRoutes {
     final track =
         playlist.tracks.firstWhere((element) => element.id == trackId);
 
-    final activeSourcedTrack =
-        await ref.read(activeTrackSourcesProvider.future);
+    if (track is SpotubeLocalTrackObject) {
+      return null;
+    }
 
-    final media = audioPlayer.playlist.medias
-        .firstWhere((e) => e.uri == request.requestedUri.toString());
-    final spotubeMedia =
-        media is SpotubeMedia ? media : SpotubeMedia.media(media);
-    final sourcedTrack = activeSourcedTrack?.track.id == track.id
-        ? activeSourcedTrack?.source
-        : await ref.read(
-            sourcedTrackProvider(spotubeMedia.track as SpotubeFullTrackObject)
-                .future,
-          );
-
+    final fullTrack = track as SpotubeFullTrackObject;
+    _critical(
+      "direct fetch sourced track uri=${request.requestedUri} track=${fullTrack.id}",
+    );
+    final sourcedTrack = await SourcedTrack.fetchFromTrack(
+      query: fullTrack,
+      ref: ref,
+    );
+    _critical(
+      "direct fetch sourced track done uri=${request.requestedUri} track=${fullTrack.id}",
+    );
     return sourcedTrack;
   }
 
@@ -156,37 +292,57 @@ class ServerPlaybackRoutes {
     Request request,
     SourcedTrack track,
   ) async {
-    AppLogger.log.i(
-      "HEAD request for track: ${track.query.name}\n"
-      "Headers: ${request.headers}",
+    final requestedUri = request.requestedUri.toString();
+    final requestCount =
+        (_streamRequestCounts[requestedUri] = (_streamRequestCounts[requestedUri] ?? 0) + 1);
+    _trace(
+      "HEAD uri=$requestedUri track=${track.query.id} count=$requestCount queueIndex=${playlist.currentIndex} queueSize=${playlist.tracks.length} activeSource=${audioPlayer.currentSource}",
     );
 
     final trackCacheFile = File(await _getTrackCacheFilePath(track));
 
     if (await trackCacheFile.exists() && userPreferences.cacheMusic) {
       final fileLength = await trackCacheFile.length();
+      final requestedRange = _getRequestedRange(request);
+      final resolvedRange = _resolveByteRange(fileLength, requestedRange);
+      final isPartial = requestedRange != null;
 
       return dio_lib.Response(
-        statusCode: 200,
-        headers: Headers.fromMap({
-          "content-type": ["audio/${track.qualityPreset!.name}"],
-          "content-length": ["$fileLength"],
-          "accept-ranges": ["bytes"],
-          "content-range": ["bytes 0-$fileLength/$fileLength"],
-        }),
+        statusCode: isPartial ? 206 : 200,
+        headers: Headers.fromMap(
+          _cachedTrackHeaders(
+            track: track,
+            totalLength: fileLength,
+            start: resolvedRange.start,
+            end: resolvedRange.end,
+            isPartial: isPartial,
+          ),
+        ),
         requestOptions: RequestOptions(path: request.requestedUri.toString()),
       );
     }
 
-    final requestedUri = request.requestedUri.toString();
     final resolvedTrack = await _resolvePlayableTrack(track, requestedUri);
     final url = resolvedTrack.url!;
+
+    if (_shouldBypassStreamingProxy(track)) {
+      return dio_lib.Response(
+        statusCode: 307,
+        statusMessage: "Temporary Redirect",
+        headers: Headers.fromMap({
+          "location": [url],
+          "connection": ["close"],
+        }),
+        requestOptions: RequestOptions(path: request.requestedUri.toString()),
+        isRedirect: true,
+      );
+    }
 
     final options = Options(
       headers: {
         "user-agent": _randomUserAgent,
         "Cache-Control": "max-age=3600",
-        "Connection": "keep-alive",
+        "Connection": "close",
         "host": Uri.parse(url).host,
       },
       validateStatus: (status) => status! < 400,
@@ -202,35 +358,64 @@ class ServerPlaybackRoutes {
     SourcedTrack track,
     Map<String, dynamic> headers,
   ) async {
-    AppLogger.log.i(
-      "GET request for track: ${track.query.name}\n"
-      "Headers: ${request.headers}",
-    );
-
     final requestedUri = request.requestedUri.toString();
+    final requestCount =
+        (_streamRequestCounts[requestedUri] = (_streamRequestCounts[requestedUri] ?? 0) + 1);
+    _trace(
+      "GET uri=$requestedUri track=${track.query.id} count=$requestCount queueIndex=${playlist.currentIndex} queueSize=${playlist.tracks.length} activeSource=${audioPlayer.currentSource} nextSource=${audioPlayer.nextSource}",
+    );
+    _critical(
+      "GET uri=$requestedUri track=${track.query.id} count=$requestCount queueIndex=${playlist.currentIndex} queueSize=${playlist.tracks.length}",
+    );
+    // #region agent log
+    AppLogger.agentDebug(
+      'playback.dart:streamTrack',
+      'stream request',
+      {
+        'uri': requestedUri,
+        'trackId': track.query.id,
+        'requestCount': requestCount,
+        'activeUpstream': _activeUpstreamRequests.length,
+        'rssMb': (ProcessInfo.currentRss / (1024 * 1024)).toStringAsFixed(1),
+      },
+      hypothesisId: 'D',
+    );
+    // #endregion
     final trackCacheFile = File(await _getTrackCacheFilePath(track));
 
     if (await trackCacheFile.exists() && userPreferences.cacheMusic) {
-      final bytes = await trackCacheFile.readAsBytes();
-      final cachedFileLength = bytes.length;
+      final cachedFileLength = await trackCacheFile.length();
+      final requestedRange = _getRequestedRange(request);
+      final resolvedRange = _resolveByteRange(
+        cachedFileLength,
+        requestedRange,
+      );
+      final isPartial = requestedRange != null;
 
-      return dio_lib.Response<Uint8List>(
-        statusCode: 200,
-        headers: Headers.fromMap({
-          "content-type": ["audio/${track.qualityPreset!.name}"],
-          "content-length": ["${cachedFileLength - 1}"],
-          "accept-ranges": ["bytes"],
-          "content-range": [
-            "bytes 0-${cachedFileLength - 1}/$cachedFileLength"
-          ],
-          "connection": ["close"],
-        }),
+      _trace(
+        "serve cached uri=$requestedUri track=${track.query.id} partial=$isPartial start=${resolvedRange.start} end=${resolvedRange.end} total=${resolvedRange.total}",
+      );
+      return dio_lib.Response<Stream<List<int>>>(
+        statusCode: isPartial ? 206 : 200,
+        headers: Headers.fromMap(
+          _cachedTrackHeaders(
+            track: track,
+            totalLength: cachedFileLength,
+            start: resolvedRange.start,
+            end: resolvedRange.end,
+            isPartial: isPartial,
+          ),
+        ),
         requestOptions: RequestOptions(path: request.requestedUri.toString()),
-        data: bytes,
+        data: trackCacheFile.openRead(
+          resolvedRange.start,
+          resolvedRange.total == 0 ? 0 : resolvedRange.end + 1,
+        ),
       );
     }
 
     if (_isInStreamFailureCooldown(track)) {
+      _trace("cooldown hit uri=$requestedUri track=${track.query.id}");
       throw StateError("Recent playback failure: ${track.query.id}");
     }
 
@@ -242,14 +427,44 @@ class ServerPlaybackRoutes {
       AppLogger.reportError(e, stack);
       rethrow;
     }
+    _critical(
+      "track resolved uri=$requestedUri track=${activeTrack.query.id} hasUrl=${activeTrack.url != null}",
+    );
+    _critical(
+      "about to read url uri=$requestedUri track=${activeTrack.query.id}",
+    );
     String url = activeTrack.url!;
+    _critical(
+      "url read uri=$requestedUri track=${activeTrack.query.id} host=${Uri.parse(url).host}",
+    );
+
+    if (_shouldBypassStreamingProxy(activeTrack)) {
+      _critical(
+        "redirect direct uri=$requestedUri track=${activeTrack.query.id} host=${Uri.parse(url).host}",
+      );
+      return dio_lib.Response(
+        statusCode: 307,
+        statusMessage: "Temporary Redirect",
+        headers: Headers.fromMap({
+          "location": [url],
+          "connection": ["close"],
+        }),
+        requestOptions: RequestOptions(path: request.requestedUri.toString()),
+        isRedirect: true,
+      );
+    }
+
+    final cancelToken = _replaceUpstreamRequest(requestedUri);
+    _critical(
+      "register upstream uri=$requestedUri track=${activeTrack.query.id} active=${_activeUpstreamRequests.length}",
+    );
 
     Options optionsFor(String sourceUrl) => Options(
           headers: {
             ...headers,
             "user-agent": _randomUserAgent,
             "Cache-Control": "max-age=3600",
-            "Connection": "keep-alive",
+            "Connection": "close",
             "host": Uri.parse(sourceUrl).host,
           },
           responseType: ResponseType.stream,
@@ -257,14 +472,28 @@ class ServerPlaybackRoutes {
         );
 
     Future<dio_lib.Response<ResponseBody>> fetchStream(String sourceUrl) {
-      return dio.get<ResponseBody>(sourceUrl, options: optionsFor(sourceUrl));
+      final attemptCount = (_upstreamAttemptCounts[requestedUri] =
+              (_upstreamAttemptCounts[requestedUri] ?? 0) + 1);
+      _trace(
+        "start upstream uri=$requestedUri track=${activeTrack.query.id} attempt=$attemptCount host=${Uri.parse(sourceUrl).host}",
+      );
+      _critical(
+        "start upstream uri=$requestedUri track=${activeTrack.query.id} attempt=$attemptCount host=${Uri.parse(sourceUrl).host}",
+      );
+      return dio.get<ResponseBody>(
+        sourceUrl,
+        options: optionsFor(sourceUrl),
+        cancelToken: cancelToken,
+      );
     }
 
     dio_lib.Response<ResponseBody> res;
     try {
       res = await fetchStream(url);
     } catch (e, stack) {
-      AppLogger.reportError(e, stack);
+      if (e is! DioException || !CancelToken.isCancel(e)) {
+        AppLogger.reportError(e, stack);
+      }
 
       final notifier =
           ref.read(sourcedTrackProvider(activeTrack.query).notifier);
@@ -283,16 +512,39 @@ class ServerPlaybackRoutes {
       try {
         res = await fetchStream(url);
       } catch (retryError, retryStack) {
-        _markStreamFailure(activeTrack);
-        AppLogger.reportError(retryError, retryStack);
+        if (retryError is! DioException || !CancelToken.isCancel(retryError)) {
+          _markStreamFailure(activeTrack);
+          AppLogger.reportError(retryError, retryStack);
+        }
         rethrow;
       }
     }
 
     _clearStreamFailure(activeTrack);
 
+    // #region agent log
+    AppLogger.agentDebug(
+      'playback.dart:streamTrack',
+      'upstream connected',
+      {
+        'trackId': activeTrack.query.id,
+        'status': res.statusCode,
+        'rssMb': (ProcessInfo.currentRss / (1024 * 1024)).toStringAsFixed(1),
+      },
+      hypothesisId: 'I',
+    );
+    // #endregion
+
+    _trace(
+      "upstream response uri=$requestedUri track=${activeTrack.query.id} status=${res.statusCode} contentType=${res.headers.value('content-type')}",
+    );
+    _critical(
+      "upstream response uri=$requestedUri track=${activeTrack.query.id} status=${res.statusCode} contentType=${res.headers.value('content-type')}",
+    );
+
     // Redirect to m3u8 link directly as it handles range requests internally
-    if (res.headers.value("content-type") == "application/vnd.apple.mpegurl") {
+    if (res.headers.value("content-type") ==
+        "application/vnd.apple.mpegurl") {
       return dio_lib.Response<Uint8List>(
         statusCode: 301,
         statusMessage: "M3U8 Redirect",
@@ -305,43 +557,48 @@ class ServerPlaybackRoutes {
       );
     }
 
-    AppLogger.log.i(
-      "Response for track: ${track.query.name}\n"
-      "Status Code: ${res.statusCode}\n"
-      "Headers: ${res.headers.map}",
-    );
-
-    if (!userPreferences.cacheMusic) {
+    if (!_shouldBypassStreamingProxy(activeTrack) && !userPreferences.cacheMusic) {
+      res.data?.stream = _attachUpstreamCleanup(
+        requestedUri,
+        cancelToken,
+        res.data!.stream,
+      );
+      _critical(
+        "proxy passthrough uri=$requestedUri track=${activeTrack.query.id}",
+      );
       return res;
     }
 
-    final resStream = res.data!.stream.asBroadcastStream();
+    final upstream = _attachUpstreamCleanup(
+      requestedUri,
+      cancelToken,
+      res.data!.stream,
+    );
 
     final trackPartialCacheFile = File("${trackCacheFile.path}.part");
     if (!await trackPartialCacheFile.exists()) {
       await trackPartialCacheFile.create(recursive: true);
     }
 
-    // Write the stream to the file based on the range
     final partialCacheFileSink =
         trackPartialCacheFile.openWrite(mode: FileMode.writeOnlyAppend);
     final contentRange = res.headers.value("content-range") != null
         ? ContentRangeHeader.parse(res.headers.value("content-range") ?? "")
         : ContentRangeHeader(0, 0, 0);
 
-    resStream.listen(
-      (data) {
-        partialCacheFileSink.add(data);
-      },
-      onError: (e, stack) {
-        partialCacheFileSink.close();
-      },
-      onDone: () async {
-        await partialCacheFileSink.close();
-
+    res.data?.stream = _streamWithCachePassthrough(
+      upstream,
+      partialCacheFileSink,
+      onComplete: () async {
         final fileLength = await trackPartialCacheFile.length();
-        if (fileLength != contentRange.total) return;
+        if (fileLength != contentRange.total) {
+          _trace(
+            "cache incomplete uri=$requestedUri track=${track.query.id} length=$fileLength expected=${contentRange.total}",
+          );
+          return;
+        }
 
+        _trace("cache finalize uri=$requestedUri track=${track.query.id}");
         await trackPartialCacheFile.rename(trackCacheFile.path);
 
         if (track.qualityPreset!.getFileExtension() == "weba") return;
@@ -363,12 +620,33 @@ class ServerPlaybackRoutes {
           AppLogger.reportError(e, stackTrace);
         });
       },
-      cancelOnError: true,
+      onError: (e) {
+        _trace(
+          "cache write error uri=$requestedUri track=${track.query.id} error=$e",
+        );
+      },
     );
-
-    res.data?.stream =
-        resStream; // To avoid Stream has been already listened to exception
     return res;
+  }
+
+  Stream<Uint8List> _streamWithCachePassthrough(
+    Stream<Uint8List> source,
+    IOSink cacheSink, {
+    required Future<void> Function() onComplete,
+    required void Function(Object error) onError,
+  }) async* {
+    try {
+      await for (final chunk in source) {
+        cacheSink.add(chunk);
+        yield chunk;
+      }
+      await cacheSink.close();
+      await onComplete();
+    } catch (error, stackTrace) {
+      onError(error);
+      await cacheSink.close();
+      Error.throwWithStackTrace(error, stackTrace);
+    }
   }
 
   /// @head('/stream/<trackId>')
@@ -408,22 +686,45 @@ class ServerPlaybackRoutes {
   /// @get('/stream/<trackId>')
   Future<Response> getStreamTrackId(Request request, String trackId) async {
     try {
+      _critical(
+        "route entered uri=${request.requestedUri} track=$trackId",
+      );
+      _critical(
+        "about to get sourced track uri=${request.requestedUri} track=$trackId",
+      );
       final sourcedTrack = await _getSourcedTrack(request, trackId);
+      _critical(
+        "got sourced track uri=${request.requestedUri} track=$trackId null=${sourcedTrack == null}",
+      );
 
       if (sourcedTrack == null) {
         return Response.notFound("Track not found in the current queue");
       }
 
+      _critical(
+        "about to stream track uri=${request.requestedUri} track=$trackId",
+      );
       final res = await streamTrack(
         request,
         sourcedTrack,
         request.headers,
+      );
+      _critical(
+        "stream track returned uri=${request.requestedUri} track=$trackId status=${res.statusCode}",
       );
 
       if (res.data is ResponseBody) {
         return Response(
           res.statusCode!,
           body: (res.data as ResponseBody).stream,
+          headers: res.headers.map,
+        );
+      }
+
+      if (res.data is Stream<List<int>>) {
+        return Response(
+          res.statusCode!,
+          body: res.data as Stream<List<int>>,
           headers: res.headers.map,
         );
       }

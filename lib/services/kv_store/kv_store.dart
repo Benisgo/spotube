@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:encrypt/encrypt.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:spotube/models/database/database.dart';
+import 'package:spotube/models/theme/app_custom_theme.dart';
 import 'package:spotube/services/wm_tools/wm_tools.dart';
 import 'package:spotube/services/youtube_engine/yt_dlp_auth_browser.dart';
 import 'package:uuid/uuid.dart';
@@ -123,5 +124,22 @@ abstract class KVStoreService {
 
   static Future<void> setYtDlpAuthBrowser(YtDlpAuthBrowser browser) async {
     await sharedPreferences.setString('ytDlpAuthBrowser', browser.name);
+  }
+
+  static AppCustomTheme get customTheme {
+    final raw = sharedPreferences.getString('customTheme');
+    if (raw == null || raw.isEmpty) {
+      return AppCustomTheme.defaults();
+    }
+
+    try {
+      return AppCustomTheme.fromJsonString(raw);
+    } catch (_) {
+      return AppCustomTheme.defaults();
+    }
+  }
+
+  static Future<void> setCustomTheme(AppCustomTheme theme) async {
+    await sharedPreferences.setString('customTheme', theme.toJsonString());
   }
 }

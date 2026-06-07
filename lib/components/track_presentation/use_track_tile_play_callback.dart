@@ -11,6 +11,7 @@ import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/provider/audio_player/audio_player.dart';
 import 'package:spotube/provider/connect/connect.dart';
 import 'package:spotube/provider/history/history.dart';
+import 'package:spotube/services/audio_player/audio_player.dart';
 
 Future<void> Function(SpotubeTrackObject track, int index)
     useTrackTilePlayCallback(
@@ -68,7 +69,12 @@ Future<void> Function(SpotubeTrackObject track, int index)
         );
       }
     } else {
-      if (isActive || playlist.tracks.containsBy(track, (a) => a.id)) {
+      final hasActiveLocalSource =
+          audioPlayer.hasSource && playlist.currentIndex >= 0;
+      final canJumpInCurrentQueue = hasActiveLocalSource &&
+          (isActive || playlist.tracks.containsBy(track, (a) => a.id));
+
+      if (canJumpInCurrentQueue) {
         await playlistNotifier.jumpToTrack(track);
       } else {
         final initialTracks = options.tracks;
@@ -88,10 +94,12 @@ Future<void> Function(SpotubeTrackObject track, int index)
               [options.collection as SpotubeSimplePlaylistObject]);
         }
 
-        final allTracks = await options.pagination.onFetchAll();
-        final remainingTracks = allTracks.skip(initialTracks.length).toList();
-        if (remainingTracks.isNotEmpty) {
-          await playlistNotifier.addTracks(remainingTracks);
+        if (!options.pagination.hasNextPage) {
+          final allTracks = await options.pagination.onFetchAll();
+          final remainingTracks = allTracks.skip(initialTracks.length).toList();
+          if (remainingTracks.isNotEmpty) {
+            await playlistNotifier.addTracks(remainingTracks);
+          }
         }
       }
     }

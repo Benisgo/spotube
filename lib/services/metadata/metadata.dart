@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/services.dart';
 import 'package:hetu_otp_util/hetu_otp_util.dart';
@@ -32,6 +30,10 @@ const defaultMetadataLimit = "20";
 
 class MetadataPlugin {
   static final pluginApiVersion = Version.parse("2.0.0");
+
+  final PluginConfiguration config;
+
+  String get slug => config.slug;
 
   static Future<MetadataPlugin> create(
     YouTubeEngine youtubeEngine,
@@ -156,7 +158,7 @@ class MetadataPlugin {
       var metadataPlugin = Plugin()
       """);
 
-    return MetadataPlugin._(hetu);
+    return MetadataPlugin._(hetu, config);
   }
 
   final Hetu hetu;
@@ -173,7 +175,7 @@ class MetadataPlugin {
   late final MetadataPluginUserEndpoint user;
   late final MetadataPluginCore core;
 
-  MetadataPlugin._(this.hetu) {
+  MetadataPlugin._(this.hetu, this.config) {
     auth = MetadataAuthEndpoint(hetu);
 
     audioSource = MetadataPluginAudioSourceEndpoint(hetu);

@@ -64,8 +64,14 @@ part 'typeconverters/subtitle.dart';
   ],
 )
 class AppDatabase extends _$AppDatabase {
-  AppDatabase() : super(_openConnection());
-  AppDatabase.withExecutor(super.e);
+  static AppDatabase? current;
+
+  AppDatabase() : super(_openConnection()) {
+    current = this;
+  }
+  AppDatabase.withExecutor(super.e) {
+    current = this;
+  }
 
   @override
   int get schemaVersion => 15;

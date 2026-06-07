@@ -27,9 +27,11 @@ import 'package:spotube/hooks/configurators/use_fix_window_stretching.dart';
 import 'package:spotube/hooks/configurators/use_get_storage_perms.dart';
 import 'package:spotube/hooks/configurators/use_has_touch.dart';
 import 'package:spotube/models/database/database.dart';
+import 'package:spotube/models/theme/app_custom_theme.dart';
 import 'package:spotube/modules/settings/color_scheme_picker_dialog.dart';
 import 'package:spotube/provider/audio_player/audio_player_streams.dart';
 import 'package:spotube/provider/database/database.dart';
+import 'package:spotube/provider/custom_theme/custom_theme_provider.dart';
 import 'package:spotube/provider/glance/glance.dart';
 import 'package:spotube/provider/metadata_plugin/metadata_plugin_provider.dart';
 import 'package:spotube/provider/metadata_plugin/updater/update_checker.dart';
@@ -54,6 +56,64 @@ import 'package:timezone/data/latest.dart' as tz;
 import 'package:window_manager/window_manager.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 import 'package:flutter_new_pipe_extractor/flutter_new_pipe_extractor.dart';
+
+ColorScheme _baseColorScheme(ThemeMode mode, SpotubeColor accentMaterialColor) {
+  return colorSchemeMap[accentMaterialColor.name]?.call(mode) ??
+      switch (mode) {
+        ThemeMode.dark => LegacyColorSchemes.darkSlate(),
+        _ => LegacyColorSchemes.lightSlate(),
+      };
+}
+
+ColorScheme _applyCustomColorScheme(
+  ColorScheme scheme,
+  AppCustomTheme customTheme,
+) {
+  if (!customTheme.enabled) return scheme;
+
+  final accentColor = customTheme.accentColor;
+  return scheme.copyWith(
+    background: () => customTheme.backgroundColor,
+    foreground: () => customTheme.foregroundColor,
+    card: () => customTheme.cardColor,
+    cardForeground: () => customTheme.cardForegroundColor,
+    popover: () => customTheme.cardColor,
+    popoverForeground: () => customTheme.cardForegroundColor,
+    primary: () => accentColor,
+    primaryForeground: () => customTheme.foregroundColor,
+    secondary: () => customTheme.secondaryColor,
+    secondaryForeground: () => customTheme.foregroundColor,
+    muted: () => customTheme.mutedColor,
+    mutedForeground: () => customTheme.mutedForegroundColor,
+    accent: () => accentColor,
+    accentForeground: () => customTheme.foregroundColor,
+    border: () => customTheme.borderColor,
+    input: () => customTheme.borderColor,
+    ring: () => accentColor.withValues(alpha: 0.55),
+    chart1: () => accentColor,
+    chart2: () => customTheme.secondaryColor,
+    chart3: () => customTheme.borderColor,
+    chart4: () => customTheme.mutedForegroundColor,
+    chart5: () => customTheme.cardForegroundColor,
+  );
+}
+
+ThemeData _buildAppTheme(
+  ThemeMode mode,
+  SpotubeColor accentMaterialColor,
+  AppCustomTheme customTheme,
+) {
+  return ThemeData(
+    radius: .5,
+    iconTheme: const IconThemeProperties(),
+    colorScheme: _applyCustomColorScheme(
+      _baseColorScheme(mode, accentMaterialColor),
+      customTheme,
+    ),
+    surfaceOpacity: customTheme.enabled ? customTheme.surfaceOpacity : .8,
+    surfaceBlur: customTheme.enabled ? customTheme.surfaceBlur : 10,
+  );
+}
 
 Future<void> _runStartupStep(
   String label,
@@ -200,6 +260,7 @@ class Spotube extends HookConsumerWidget {
     final locale = ref.watch(userPreferencesProvider.select((s) => s.locale));
     final accentMaterialColor =
         ref.watch(userPreferencesProvider.select((s) => s.accentColorScheme));
+    final customTheme = ref.watch(customThemeProvider);
     final router = useMemoized(() => AppRouter(ref), []);
     final hasTouchSupport = useHasTouch();
 
@@ -273,23 +334,15 @@ class Spotube extends HookConsumerWidget {
         return child;
       },
       scaling: const AdaptiveScaling(1),
-      theme: ThemeData(
-        radius: .5,
-        iconTheme: const IconThemeProperties(),
-        colorScheme:
-            colorSchemeMap[accentMaterialColor.name]?.call(ThemeMode.light) ??
-                LegacyColorSchemes.lightSlate(),
-        surfaceOpacity: .8,
-        surfaceBlur: 10,
+      theme: _buildAppTheme(
+        ThemeMode.light,
+        accentMaterialColor,
+        customTheme,
       ),
-      darkTheme: ThemeData(
-        radius: .5,
-        iconTheme: const IconThemeProperties(),
-        colorScheme:
-            colorSchemeMap[accentMaterialColor.name]?.call(ThemeMode.dark) ??
-                LegacyColorSchemes.darkSlate(),
-        surfaceOpacity: .8,
-        surfaceBlur: 10,
+      darkTheme: _buildAppTheme(
+        ThemeMode.dark,
+        accentMaterialColor,
+        customTheme,
       ),
       materialTheme: material.ThemeData(
         brightness: switch (themeMode) {
@@ -297,6 +350,16 @@ class Spotube extends HookConsumerWidget {
           ThemeMode.light => Brightness.light,
           ThemeMode.dark => Brightness.dark,
         },
+        scaffoldBackgroundColor: _applyCustomColorScheme(
+          _baseColorScheme(
+            switch (themeMode) {
+              ThemeMode.dark => ThemeMode.dark,
+              _ => ThemeMode.light,
+            },
+            accentMaterialColor,
+          ),
+          customTheme,
+        ).background,
         splashFactory: material.NoSplash.splashFactory,
         appBarTheme: const material.AppBarTheme(
           surfaceTintColor: Colors.transparent,

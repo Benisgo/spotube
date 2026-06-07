@@ -20,16 +20,23 @@ import 'package:spotube/utils/platform.dart';
 
 class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
   BlackListNotifier get _blacklist => ref.read(blacklistProvider.notifier);
+  String? _lastPersistedPlaylistSignature;
 
-  void _prefetchUpcomingSources([int aheadCount = 2]) {
-    final startIndex = state.currentIndex < 0 ? 0 : state.currentIndex;
-    final upcomingTracks = state.tracks
-        .skip(startIndex)
-        .whereType<SpotubeFullTrackObject>()
-        .take(aheadCount + 1);
+  void _prefetchAdjacentSources() {
+    if (state.tracks.isEmpty) return;
 
-    for (final track in upcomingTracks) {
-      ref.read(sourcedTrackProvider(track));
+    final centerIndex = state.currentIndex < 0 ? 0 : state.currentIndex;
+    final indexes = <int>{
+      centerIndex - 1,
+      centerIndex,
+      centerIndex + 1,
+    }.where((index) => index >= 0 && index < state.tracks.length);
+
+    for (final index in indexes) {
+      final track = state.tracks[index];
+      if (track is SpotubeFullTrackObject) {
+        ref.read(sourcedTrackProvider(track));
+      }
     }
   }
 
@@ -175,6 +182,11 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
       }),
       audioPlayer.playlistStream.listen((playlist) async {
         try {
+          final signature =
+              '${playlist.medias.length}:${playlist.index}:${playlist.medias.map((m) => m.uri).join("|")}';
+          if (_lastPersistedPlaylistSignature == signature) return;
+          _lastPersistedPlaylistSignature = signature;
+
           final tracks =
               playlist.medias.map((e) => SpotubeMedia.media(e).track).toList();
 
@@ -182,6 +194,7 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
             tracks: tracks,
             currentIndex: playlist.index,
           );
+          _prefetchAdjacentSources();
 
           await _updatePlayerState(
             AudioPlayerStateTableCompanion(
@@ -189,7 +202,6 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
               tracks: Value(state.tracks),
             ),
           );
-          _prefetchUpcomingSources();
         } catch (e, stack) {
           AppLogger.reportError(e, stack);
         }
@@ -270,10 +282,6 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
     bool allowDuplicates = false,
   }) async {
     _assertAllowedTracks(tracks);
-    if (state.tracks.length == 1) {
-      return addTracks(tracks);
-    }
-
     final addableTracks = _blacklist
         .filter(tracks)
         .where(
@@ -282,6 +290,29 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
               !state.tracks.any((element) => _compareTracks(element, track)),
         )
         .toList();
+    if (addableTracks.isEmpty) return;
+
+    if (state.tracks.isEmpty ||
+        state.currentIndex < 0 ||
+        !audioPlayer.hasSource) {
+      state = state.copyWith(
+        tracks: [...addableTracks, ...state.tracks],
+        currentIndex: -1,
+      );
+
+      await _updatePlayerState(
+        AudioPlayerStateTableCompanion(
+          tracks: Value(state.tracks),
+          currentIndex: const Value(-1),
+          positionMs: const Value(0),
+        ),
+      );
+      return;
+    }
+
+    if (state.tracks.length == 1) {
+      return addTracks(addableTracks, allowDuplicates: true);
+    }
 
     state = state.copyWith(
       tracks: [...addableTracks, ...state.tracks],
@@ -311,6 +342,22 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
     if (_blacklist.contains(track)) return;
     if (state.tracks.any((element) => _compareTracks(element, track))) return;
 
+    if (!audioPlayer.hasSource || state.currentIndex < 0) {
+      state = state.copyWith(
+        tracks: [...state.tracks, track],
+        currentIndex: -1,
+      );
+
+      await _updatePlayerState(
+        AudioPlayerStateTableCompanion(
+          tracks: Value(state.tracks),
+          currentIndex: const Value(-1),
+          positionMs: const Value(0),
+        ),
+      );
+      return;
+    }
+
     state = state.copyWith(
       tracks: [...state.tracks, track],
     );
@@ -326,10 +373,34 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
     );
   }
 
-  Future<void> addTracks(Iterable<SpotubeTrackObject> tracks) async {
+  Future<void> addTracks(
+    Iterable<SpotubeTrackObject> tracks, {
+    bool allowDuplicates = false,
+  }) async {
     _assertAllowedTracks(tracks);
 
-    tracks = _blacklist.filter(tracks).toList();
+    tracks = _blacklist.filter(tracks).where((track) {
+      return allowDuplicates ||
+          !state.tracks.any((element) => _compareTracks(element, track));
+    }).toList();
+    if (tracks.isEmpty) return;
+
+    if (!audioPlayer.hasSource || state.currentIndex < 0) {
+      state = state.copyWith(
+        tracks: [...state.tracks, ...tracks],
+        currentIndex: -1,
+      );
+
+      await _updatePlayerState(
+        AudioPlayerStateTableCompanion(
+          tracks: Value(state.tracks),
+          currentIndex: const Value(-1),
+          positionMs: const Value(0),
+        ),
+      );
+      return;
+    }
+
     state = state.copyWith(
       tracks: [...state.tracks, ...tracks],
     );
@@ -409,7 +480,6 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
     bool autoPlay = false,
   }) async {
     _assertAllowedTracks(tracks);
-
     await ref.read(serverProvider.future);
 
     final medias = _blacklist
@@ -422,25 +492,13 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
 
     final safeInitialIndex = initialIndex.clamp(0, medias.length - 1).toInt();
 
-    // Giving the initial track a boost so MediaKit won't skip
-    // because of timeout
-    final intendedActiveTrack = medias.elementAt(safeInitialIndex);
-    if (intendedActiveTrack.track is! SpotubeLocalTrackObject) {
-      ref.read(
-        sourcedTrackProvider(
-          intendedActiveTrack.track as SpotubeFullTrackObject,
-        ).future,
-      );
-    }
-
     state = state.copyWith(
       // These are filtered tracks as well
       tracks: medias.map((media) => media.track).toList(),
       currentIndex: safeInitialIndex,
       collections: [],
     );
-    _prefetchUpcomingSources();
-
+    _prefetchAdjacentSources();
     await audioPlayer.openPlaylist(
       medias,
       initialIndex: safeInitialIndex,
@@ -511,7 +569,7 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
   Future<void> stop() async {
     state = state.copyWith(
       tracks: [],
-      currentIndex: 0,
+      currentIndex: -1,
       collections: [],
       loopMode: PlaylistMode.none,
       playing: false,
@@ -521,7 +579,7 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
     await _updatePlayerState(
       AudioPlayerStateTableCompanion(
         tracks: Value(state.tracks),
-        currentIndex: const Value(0),
+        currentIndex: const Value(-1),
         collections: const Value(<String>[]),
         loopMode: const Value(PlaylistMode.none),
         playing: const Value(false),

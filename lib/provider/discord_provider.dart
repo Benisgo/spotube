@@ -10,6 +10,15 @@ import 'package:spotube/services/logger/logger.dart';
 import 'package:spotube/utils/platform.dart';
 
 class DiscordNotifier extends AsyncNotifier<void> {
+  Timer? _presenceDebounceTimer;
+
+  void _schedulePresenceUpdate(SpotubeTrackObject track) {
+    _presenceDebounceTimer?.cancel();
+    _presenceDebounceTimer = Timer(const Duration(milliseconds: 500), () {
+      unawaited(updatePresence(track));
+    });
+  }
+
   FlutterDiscordRPC? _rpcOrNull() {
     try {
       return FlutterDiscordRPC.instance;
@@ -28,8 +37,6 @@ class DiscordNotifier extends AsyncNotifier<void> {
     final enabled = ref.watch(
         userPreferencesProvider.select((s) => s.discordPresence && kIsDesktop));
 
-    var lastPosition = audioPlayer.position;
-
     final subscriptions = [
       rpc.isConnectedStream.listen((connected) async {
         try {
@@ -46,28 +53,15 @@ class DiscordNotifier extends AsyncNotifier<void> {
           final playback = ref.read(audioPlayerProvider);
           if (playback.activeTrack == null) return;
 
-          await updatePresence(ref.read(audioPlayerProvider).activeTrack!);
+          _schedulePresenceUpdate(playback.activeTrack!);
         } catch (e, stack) {
           AppLogger.reportError(e, stack);
         }
       }),
-      audioPlayer.positionStream.listen((position) async {
-        try {
-          final playback = ref.read(audioPlayerProvider);
-          if (playback.activeTrack != null) {
-            final diff = position.inMilliseconds - lastPosition.inMilliseconds;
-            if (diff > 500 || diff < -500) {
-              await updatePresence(ref.read(audioPlayerProvider).activeTrack!);
-            }
-          }
-          lastPosition = position;
-        } catch (e, stack) {
-          AppLogger.reportError(e, stack);
-        }
-      })
     ];
 
     ref.onDispose(() async {
+      _presenceDebounceTimer?.cancel();
       for (final subscription in subscriptions) {
         subscription.cancel();
       }
@@ -87,6 +81,10 @@ class DiscordNotifier extends AsyncNotifier<void> {
     }
   }
 
+  void schedulePresenceUpdate(SpotubeTrackObject track) {
+    _schedulePresenceUpdate(track);
+  }
+
   Future<void> updatePresence(SpotubeTrackObject track) async {
     if (!kIsDesktop) return;
     final rpc = _rpcOrNull();
@@ -100,8 +98,7 @@ class DiscordNotifier extends AsyncNotifier<void> {
         details: track.name,
         state: artistNames,
         assets: RPCAssets(
-          largeImage:
-              track.album.images.firstOrNull?.url ?? "spotube-logo-foreground",
+          largeImage: "spotube-logo-foreground",
           largeText: track.album.name,
           smallImage: "spotube-logo-foreground",
           smallText: "Spotube",

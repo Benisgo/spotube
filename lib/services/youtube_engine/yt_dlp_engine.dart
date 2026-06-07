@@ -40,6 +40,15 @@ class YtDlpEngine implements YouTubeEngine {
   ];
   static DateTime? _authCooldownUntil;
   static Future<_YtDlpAuthAction>? _authPromptFuture;
+  static final Map<String, Future<Object?>> _inFlightExtractions = {};
+
+  void _trace(String message) {
+    AppLogger.trace("[yt_dlp_engine] $message");
+  }
+
+  void _critical(String message) {
+    AppLogger.criticalTrace("[yt_dlp_engine] $message");
+  }
 
   YouTubeEngine _getFallbackEngine({bool preferAuthenticatedResilience = false}) {
     if (preferAuthenticatedResilience) {
@@ -350,6 +359,37 @@ class YtDlpEngine implements YouTubeEngine {
     required String formatSpecifiers,
     required Future<T> Function(List<String> extraArgs) extractor,
   }) async {
+    final inflightKey = "$target|$formatSpecifiers";
+    final active = _inFlightExtractions[inflightKey];
+    if (active != null) {
+      _trace("extract join target=$target");
+      return await active as T;
+    }
+
+    final future = _extractWithAuthRetryInternal<T>(
+      target: target,
+      formatSpecifiers: formatSpecifiers,
+      extractor: extractor,
+    );
+    _inFlightExtractions[inflightKey] = future;
+
+    try {
+      return await future;
+    } finally {
+      final current = _inFlightExtractions[inflightKey];
+      if (identical(current, future)) {
+        _inFlightExtractions.remove(inflightKey);
+      }
+    }
+  }
+
+  Future<T> _extractWithAuthRetryInternal<T>({
+    required String target,
+    required String formatSpecifiers,
+    required Future<T> Function(List<String> extraArgs) extractor,
+  }) async {
+    _trace("extract start target=$target");
+    _critical("extract start target=$target");
     if (_isInAuthCooldown) {
       throw const _YtDlpFallbackRequested();
     }
@@ -357,8 +397,12 @@ class YtDlpEngine implements YouTubeEngine {
     try {
       final result = await extractor(const []);
       _authCooldownUntil = null;
+      _trace("extract success target=$target");
+      _critical("extract success target=$target");
       return result;
     } catch (error) {
+      _trace("extract primary failed target=$target error=$error");
+      _critical("extract primary failed target=$target error=$error");
       if (!_requiresAuthentication(error)) rethrow;
     }
 
@@ -383,8 +427,12 @@ class YtDlpEngine implements YouTubeEngine {
         extractor: extractor,
       );
       _authCooldownUntil = null;
+      _trace("extract browser retry success target=$target");
+      _critical("extract browser retry success target=$target");
       return result;
     } catch (error) {
+      _trace("extract browser retry failed target=$target error=$error");
+      _critical("extract browser retry failed target=$target error=$error");
       _markAuthCooldown();
       rethrow;
     }
@@ -585,6 +633,8 @@ class YtDlpEngine implements YouTubeEngine {
 
   @override
   Future<List<Video>> searchVideos(String query) async {
+    _trace("searchVideos query=$query");
+    _critical("searchVideos query=$query");
     final stdout = await _runWithFallback(
       "search lookup",
       () => _extractWithAuthRetry<String>(

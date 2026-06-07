@@ -53,6 +53,7 @@ class UserPreferencesNotifier extends Notifier<PreferencesTableData> {
           }
 
           await audioPlayer.setAudioNormalization(state.normalizeAudio);
+          await audioPlayer.setCrossfadePreloadEnabled(state.crossfadeTracks);
         } catch (e, stack) {
           AppLogger.reportError(e, stack);
         }
@@ -229,6 +230,10 @@ class UserPreferencesNotifier extends Notifier<PreferencesTableData> {
         crossfadeTracks: Value(enable),
       ),
     );
+    audioPlayer.setCrossfadePreloadEnabled(enable);
+    if (!enable) {
+      audioPlayer.stopCrossfadeAndRestore();
+    }
   }
 
   void setCrossfadeDurationSeconds(int seconds) {

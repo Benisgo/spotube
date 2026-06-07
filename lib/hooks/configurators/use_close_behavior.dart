@@ -25,10 +25,16 @@ final closeNotification = !kIsDesktop
 
 void useCloseBehavior(WidgetRef ref) {
   Future<void> closeApp() async {
-    await Future.any([
+    unawaited(
       ref.read(multiSessionProvider.notifier).shutdownForAppClose(),
-      Future<void>.delayed(const Duration(milliseconds: 150)),
-    ]);
+    );
+
+    if (kIsDesktop) {
+      await windowManager.setPreventClose(false);
+      await windowManager.destroy();
+      return;
+    }
+
     exit(0);
   }
 
@@ -39,13 +45,13 @@ void useCloseBehavior(WidgetRef ref) {
   }
 
   useWindowListener(
-    onWindowClose: () async {
+    onWindowClose: () {
       final preferences = ref.read(userPreferencesProvider);
       if (preferences.closeBehavior == CloseBehavior.minimizeToTray) {
-        await windowManager.hide();
+        unawaited(windowManager.hide());
         closeNotification?.show();
       } else {
-        await closeApp();
+        unawaited(closeApp());
       }
     },
   );

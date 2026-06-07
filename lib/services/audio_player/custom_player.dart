@@ -22,10 +22,20 @@ class CustomPlayer extends Player {
   CustomPlayer({super.configuration})
       : _playerStateStream = StreamController.broadcast() {
     nativePlayer.setProperty("network-timeout", "120");
+    nativePlayer.setProperty(
+      "demuxer-max-bytes",
+      (4 * 1024 * 1024).toString(),
+    );
+    nativePlayer.setProperty(
+      "demuxer-max-back-bytes",
+      (1 * 1024 * 1024).toString(),
+    );
 
     _subscriptions = [
-      stream.buffering.listen((event) {
-        _playerStateStream.add(AudioPlaybackState.buffering);
+      stream.buffering.listen((buffering) {
+        if (buffering) {
+          _playerStateStream.add(AudioPlaybackState.buffering);
+        }
       }),
       stream.playing.listen((playing) {
         if (playing) {

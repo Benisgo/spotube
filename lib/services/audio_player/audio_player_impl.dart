@@ -5,6 +5,7 @@ final audioPlayer = SpotubeAudioPlayer();
 class SpotubeAudioPlayer extends AudioPlayerInterface
     with SpotubeAudioPlayersStreams {
   Future<void> pause() async {
+    _trace("pause");
     if (isCrossfading) {
       await _activePlayer.pause();
       await _inactivePlayer.pause();
@@ -17,6 +18,7 @@ class SpotubeAudioPlayer extends AudioPlayerInterface
   }
 
   Future<void> resume() async {
+    _trace("resume");
     if (isCrossfading) {
       await _activePlayer.play();
       await _inactivePlayer.play();
@@ -29,9 +31,10 @@ class SpotubeAudioPlayer extends AudioPlayerInterface
   }
 
   Future<void> stop() async {
+    _trace("stop");
     await _stopCrossfade(restoreActiveVolume: false);
     await _primaryPlayer.stop();
-    await _secondaryPlayer.stop();
+    await _mirrorSecondary((player) => player.stop());
     _playlist = const mk.Playlist([]);
     _currentIndex = -1;
     _isPlaying = false;
@@ -60,19 +63,16 @@ class SpotubeAudioPlayer extends AudioPlayerInterface
     }
 
     await _activePlayer.setVolume(volume * 100);
-    if (!_inactivePlayer.state.playing) {
-      await _inactivePlayer.setVolume(0);
-    }
   }
 
   Future<void> setSpeed(double speed) async {
     await _activePlayer.setRate(speed);
-    await _inactivePlayer.setRate(speed);
+    await _mirrorSecondary((player) => player.setRate(speed));
   }
 
   Future<void> setAudioDevice(mk.AudioDevice device) async {
     await _activePlayer.setAudioDevice(device);
-    await _inactivePlayer.setAudioDevice(device);
+    await _mirrorSecondary((player) => player.setAudioDevice(device));
   }
 
   Future<void> dispose() async {
@@ -82,7 +82,7 @@ class SpotubeAudioPlayer extends AudioPlayerInterface
     }
     await disposeControllers();
     await _primaryPlayer.dispose();
-    await _secondaryPlayer.dispose();
+    await _disposeSecondaryPlayer();
   }
 
   Future<void> openPlaylist(
@@ -93,6 +93,12 @@ class SpotubeAudioPlayer extends AudioPlayerInterface
     assert(tracks.isNotEmpty);
     assert(initialIndex <= tracks.length - 1);
 
+    _trace(
+      "openPlaylist tracks=${tracks.length} initialIndex=$initialIndex autoPlay=$autoPlay",
+    );
+    _critical(
+      "openPlaylist tracks=${tracks.length} initialIndex=$initialIndex autoPlay=$autoPlay",
+    );
     await _stopCrossfade(restoreActiveVolume: false);
 
     final safeInitialIndex = initialIndex.clamp(0, tracks.length - 1).toInt();
@@ -101,9 +107,11 @@ class SpotubeAudioPlayer extends AudioPlayerInterface
     _primaryPlayerActive = true;
 
     await _primaryPlayer.setPlaylistMode(_loopMode);
-    await _secondaryPlayer.setPlaylistMode(_loopMode);
     await _primaryPlayer.setShuffle(_isShuffled);
-    await _secondaryPlayer.setShuffle(_isShuffled);
+    await _mirrorSecondary((player) async {
+      await player.setPlaylistMode(_loopMode);
+      await player.setShuffle(_isShuffled);
+    });
 
     await _openPlayerWithPlaylist(
       _primaryPlayer,
@@ -121,38 +129,49 @@ class SpotubeAudioPlayer extends AudioPlayerInterface
   }
 
   Future<void> skipToNext() async {
+    _trace("skipToNext");
     await _stopCrossfade();
     await _activePlayer.next();
   }
 
   Future<void> skipToPrevious() async {
+    _trace("skipToPrevious");
     await _stopCrossfade();
     await _activePlayer.previous();
   }
 
   Future<void> jumpTo(int index) async {
+    _trace("jumpTo index=$index");
     await _stopCrossfade();
     await _activePlayer.jump(index);
   }
 
   Future<void> addTrack(mk.Media media) async {
+    _trace("addTrack uri=${media.uri}");
     await _primaryPlayer.add(media);
-    await _secondaryPlayer.add(media);
+    await _mirrorSecondary((player) => player.add(media));
     _syncPlaylistFromActive(_activePlayer.state.playlist);
     await _prepareInactivePlayer();
   }
 
   Future<void> addTrackAt(mk.Media media, int index) async {
+    _trace("addTrackAt uri=${media.uri} index=$index");
+    if (_playlist.medias.isEmpty || _currentIndex < 0) {
+      await addTrack(media);
+      return;
+    }
+
     await _primaryPlayer.insert(index, media);
-    await _secondaryPlayer.insert(index, media);
+    await _mirrorSecondary((player) => player.insert(index, media));
     _syncPlaylistFromActive(_activePlayer.state.playlist);
     await _prepareInactivePlayer();
   }
 
   Future<void> removeTrack(int index) async {
+    _trace("removeTrack index=$index");
     await _stopCrossfade();
     await _primaryPlayer.remove(index);
-    await _secondaryPlayer.remove(index);
+    await _mirrorSecondary((player) => player.remove(index));
 
     if (_primaryPlayer.state.playlist.medias.isEmpty) {
       _playlist = const mk.Playlist([]);
@@ -169,8 +188,9 @@ class SpotubeAudioPlayer extends AudioPlayerInterface
   }
 
   Future<void> moveTrack(int from, int to) async {
+    _trace("moveTrack from=$from to=$to");
     await _primaryPlayer.move(from, to);
-    await _secondaryPlayer.move(from, to);
+    await _mirrorSecondary((player) => player.move(from, to));
     _syncPlaylistFromActive(_activePlayer.state.playlist);
     _emitIndexSnapshot();
     await _prepareInactivePlayer();
@@ -181,29 +201,31 @@ class SpotubeAudioPlayer extends AudioPlayerInterface
   }
 
   Future<void> setShuffle(bool shuffle) async {
+    _trace("setShuffle shuffle=$shuffle");
     _isShuffled = shuffle;
     await _primaryPlayer.setShuffle(shuffle);
-    await _secondaryPlayer.setShuffle(shuffle);
+    await _mirrorSecondary((player) => player.setShuffle(shuffle));
     _shuffledStreamController.add(shuffle);
     _syncPlaylistFromActive(_activePlayer.state.playlist);
     await _prepareInactivePlayer();
   }
 
   Future<void> setLoopMode(PlaylistMode loop) async {
+    _trace("setLoopMode loop=$loop");
     _loopMode = loop;
     await _primaryPlayer.setPlaylistMode(loop);
-    await _secondaryPlayer.setPlaylistMode(loop);
+    await _mirrorSecondary((player) => player.setPlaylistMode(loop));
     _loopModeStreamController.add(loop);
     await _prepareInactivePlayer();
   }
 
   Future<void> setAudioNormalization(bool normalize) async {
     await _primaryPlayer.setAudioNormalization(normalize);
-    await _secondaryPlayer.setAudioNormalization(normalize);
+    await _mirrorSecondary((player) => player.setAudioNormalization(normalize));
   }
 
   Future<void> setDemuxerBufferSize(int sizeInBytes) async {
     await _primaryPlayer.setDemuxerBufferSize(sizeInBytes);
-    await _secondaryPlayer.setDemuxerBufferSize(sizeInBytes);
+    await _mirrorSecondary((player) => player.setDemuxerBufferSize(sizeInBytes));
   }
 }

@@ -13,6 +13,12 @@ class WindowsAudioService {
   final AudioPlayerNotifier audioPlayerNotifier;
 
   final subscriptions = <StreamSubscription>[];
+  Duration _lastReportedPosition = Duration.zero;
+  bool _updatingPosition = false;
+  Duration _lastReportedDuration = Duration.zero;
+  bool _updatingDuration = false;
+  AudioPlaybackState? _lastReportedPlaybackState;
+  bool _updatingPlaybackState = false;
 
   WindowsAudioService(this.ref, this.audioPlayerNotifier)
       : smtc = SMTCWindows(
@@ -51,30 +57,64 @@ class WindowsAudioService {
 
     final playerStateStream =
         audioPlayer.playerStateStream.listen((state) async {
-      switch (state) {
-        case AudioPlaybackState.playing:
-          await smtc.setPlaybackStatus(PlaybackStatus.playing);
-          break;
-        case AudioPlaybackState.paused:
-          await smtc.setPlaybackStatus(PlaybackStatus.paused);
-          break;
-        case AudioPlaybackState.stopped:
-          await smtc.setPlaybackStatus(PlaybackStatus.stopped);
-          break;
-        case AudioPlaybackState.completed:
-          await smtc.setPlaybackStatus(PlaybackStatus.changing);
-          break;
-        default:
-          break;
+      if (_updatingPlaybackState || _lastReportedPlaybackState == state) {
+        return;
+      }
+
+      _updatingPlaybackState = true;
+      try {
+        switch (state) {
+          case AudioPlaybackState.playing:
+            await smtc.setPlaybackStatus(PlaybackStatus.playing);
+            break;
+          case AudioPlaybackState.paused:
+            await smtc.setPlaybackStatus(PlaybackStatus.paused);
+            break;
+          case AudioPlaybackState.stopped:
+            await smtc.setPlaybackStatus(PlaybackStatus.stopped);
+            break;
+          case AudioPlaybackState.completed:
+            await smtc.setPlaybackStatus(PlaybackStatus.changing);
+            break;
+          default:
+            return;
+        }
+        _lastReportedPlaybackState = state;
+      } finally {
+        _updatingPlaybackState = false;
       }
     });
 
     final positionStream = audioPlayer.positionStream.listen((pos) async {
-      await smtc.setPosition(pos);
+      if (_updatingPosition ||
+          (pos - _lastReportedPosition).inMilliseconds.abs() < 1000) {
+        return;
+      }
+
+      _updatingPosition = true;
+      try {
+        await smtc.setPosition(pos);
+        _lastReportedPosition = pos;
+      } finally {
+        _updatingPosition = false;
+      }
     });
 
     final durationStream = audioPlayer.durationStream.listen((duration) async {
-      await smtc.setEndTime(duration);
+      if (_updatingDuration || duration == Duration.zero) {
+        return;
+      }
+      if ((duration - _lastReportedDuration).inMilliseconds.abs() < 1000) {
+        return;
+      }
+
+      _updatingDuration = true;
+      try {
+        await smtc.setEndTime(duration);
+        _lastReportedDuration = duration;
+      } finally {
+        _updatingDuration = false;
+      }
     });
 
     subscriptions.addAll([
@@ -91,10 +131,7 @@ class WindowsAudioService {
         title: track.name,
         albumArtist: track.artists.firstOrNull?.name ?? "Unknown",
         artist: track.artists.asString(),
-        album: track.album.name ?? "Unknown",
-        thumbnail: (track.album.images).asUrlString(
-          placeholder: ImagePlaceholder.albumArt,
-        ),
+        album: track.album.name,
       ),
     );
   }

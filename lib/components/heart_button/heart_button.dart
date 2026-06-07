@@ -16,6 +16,7 @@ class HeartButton extends HookConsumerWidget {
   final String? tooltip;
   final AbstractButtonStyle variance;
   final ButtonSize size;
+  final bool requireAuthentication;
   const HeartButton({
     required this.isLiked,
     required this.onPressed,
@@ -24,14 +25,17 @@ class HeartButton extends HookConsumerWidget {
     this.icon,
     this.variance = ButtonVariance.ghost,
     this.size = ButtonSize.normal,
+    this.requireAuthentication = true,
     super.key,
   });
 
   @override
   Widget build(BuildContext context, ref) {
-    final authenticated = ref.watch(metadataPluginAuthenticatedProvider);
+    if (requireAuthentication) {
+      final authenticated = ref.watch(metadataPluginAuthenticatedProvider);
 
-    if (authenticated.asData?.value != true) return const SizedBox.shrink();
+      if (authenticated.asData?.value != true) return const SizedBox.shrink();
+    }
 
     return Tooltip(
       tooltip: TooltipContainer(child: Text(tooltip ?? "")).call,
@@ -66,9 +70,11 @@ class HeartButton extends HookConsumerWidget {
 
 class TrackHeartButton extends HookConsumerWidget {
   final SpotubeTrackObject track;
+  final bool requireAuthentication;
   const TrackHeartButton({
     super.key,
     required this.track,
+    this.requireAuthentication = true,
   });
 
   @override
@@ -87,6 +93,7 @@ class TrackHeartButton extends HookConsumerWidget {
           ? context.l10n.remove_from_favorites
           : context.l10n.save_as_favorite,
       isLiked: isLiked,
+      requireAuthentication: requireAuthentication,
       onPressed: savedTracks.asData?.value == null || isLoading
           ? null
           : () {

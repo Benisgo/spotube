@@ -2,6 +2,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:dio/dio.dart';
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/provider/metadata_plugin/core/auth.dart';
+import 'package:spotube/provider/metadata_plugin/metadata_plugin_provider.dart';
 import 'package:spotube/provider/metadata_plugin/utils/common.dart';
 import 'package:spotube/provider/metadata_plugin/utils/paginated.dart';
 
@@ -112,12 +113,24 @@ final metadataPluginSavedTracksProvider = AutoDisposeAsyncNotifierProvider<
 final metadataPluginIsSavedTrackProvider =
     FutureProvider.autoDispose.family<bool, String>(
   (ref, trackId) async {
-    final savedTracks =
-        await ref.watch(metadataPluginSavedTracksProvider.future);
-    final allSavedTracks = savedTracks.hasMore
-        ? await ref.read(metadataPluginSavedTracksProvider.notifier).fetchAll()
-        : savedTracks.items;
+    final savedTracksState = ref.watch(metadataPluginSavedTracksProvider);
+    final cachedTracks = savedTracksState.asData?.value.items;
+    final cachedMatch = cachedTracks?.any((track) => track.id == trackId);
+    if (cachedMatch == true) {
+      return true;
+    }
 
-    return allSavedTracks.any((track) => track.id == trackId);
+    final savedTracks = await ref.watch(metadataPluginSavedTracksProvider.future);
+    if (!savedTracks.hasMore) {
+      return savedTracks.items.any((track) => track.id == trackId);
+    }
+
+    final metadataPlugin = await ref.watch(metadataPluginProvider.future);
+    if (metadataPlugin == null) {
+      return false;
+    }
+
+    final result = await metadataPlugin.user.isSavedTracks([trackId]);
+    return result.isNotEmpty && result.first;
   },
 );

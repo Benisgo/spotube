@@ -77,11 +77,13 @@ UseActionCallbacks useActionCallbacks(WidgetRef ref) {
               [options.collection as SpotubeSimplePlaylistObject]);
         }
 
-        final allTracks = await options.pagination.onFetchAll();
-
-        await playlistNotifier.addTracks(
-          allTracks.sublist(initialTracks.length),
-        );
+        if (!options.pagination.hasNextPage) {
+          final allTracks = await options.pagination.onFetchAll();
+          final remainingTracks = allTracks.sublist(initialTracks.length);
+          if (remainingTracks.isNotEmpty) {
+            await playlistNotifier.addTracks(remainingTracks);
+          }
+        }
       }
     } catch (e, stack) {
       AppLogger.reportError(e, stack);
@@ -132,11 +134,13 @@ UseActionCallbacks useActionCallbacks(WidgetRef ref) {
           );
         }
 
-        final allTracks = await options.pagination.onFetchAll();
-
-        await playlistNotifier.addTracks(
-          allTracks.sublist(initialTracks.length),
-        );
+        if (!options.pagination.hasNextPage) {
+          final allTracks = await options.pagination.onFetchAll();
+          final remainingTracks = allTracks.sublist(initialTracks.length);
+          if (remainingTracks.isNotEmpty) {
+            await playlistNotifier.addTracks(remainingTracks);
+          }
+        }
       }
     } catch (e, stack) {
       AppLogger.reportError(e, stack);

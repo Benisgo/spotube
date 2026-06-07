@@ -5,6 +5,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:spotube/collections/spotube_icons.dart';
 import 'package:spotube/models/database/database.dart';
 import 'package:spotube/modules/settings/color_scheme_picker_dialog.dart';
+import 'package:spotube/modules/settings/custom_theme_dialog.dart';
 import 'package:spotube/modules/settings/section_card_with_heading.dart';
 import 'package:spotube/components/adaptive/adaptive_select_tile.dart';
 import 'package:spotube/extensions/context.dart';
@@ -27,6 +28,12 @@ class SettingsAppearanceSection extends HookConsumerWidget {
           builder: (context) {
             return const ColorSchemePickerDialog();
           });
+    }, []);
+    final openCustomThemeDialog = useCallback(() {
+      return () => showDialog(
+            context: context,
+            builder: (context) => const CustomThemeDialog(),
+          );
     }, []);
 
     final children = [
@@ -111,11 +118,21 @@ class SettingsAppearanceSection extends HookConsumerWidget {
           horizontal: 15,
           vertical: 5,
         ),
-        trailing: ColorChip(
-          color: preferences.accentColorScheme,
-          name: preferences.accentColorScheme.name,
-          onPressed: pickColorScheme(),
-          isActive: false,
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Button.outline(
+              onPressed: openCustomThemeDialog(),
+              child: const Text("Customize"),
+            ),
+            const Gap(8),
+            ColorChip(
+              color: preferences.accentColorScheme,
+              name: preferences.accentColorScheme.name,
+              onPressed: pickColorScheme(),
+              isActive: false,
+            ),
+          ],
         ),
         onTap: pickColorScheme(),
       ),

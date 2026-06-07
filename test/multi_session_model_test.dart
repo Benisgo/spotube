@@ -153,4 +153,56 @@ void main() {
 
     expect(ranked.first.id, 'audio');
   });
+
+  test('experimental scoring prefers matching artist over lyric reuploads', () {
+    final SpotubeFullTrackObject track = SpotubeTrackObject.full(
+      id: 'track-2',
+      name: "everything i'm not",
+      externalUri: 'spotify:track:2',
+      artists: [
+        SpotubeSimpleArtistObject(
+          id: 'artist-2',
+          name: 'Brooke Wheeler',
+          externalUri: 'spotify:artist:2',
+        ),
+      ],
+      album: SpotubeSimpleAlbumObject(
+        id: 'album-2',
+        name: "everything i'm not",
+        externalUri: 'spotify:album:2',
+        artists: [
+          SpotubeSimpleArtistObject(
+            id: 'artist-2',
+            name: 'Brooke Wheeler',
+            externalUri: 'spotify:artist:2',
+          ),
+        ],
+        images: const [],
+        albumType: SpotubeAlbumType.single,
+        releaseDate: '2024-01-01',
+      ),
+      durationMs: 195000,
+      isrc: 'US1234567891',
+      explicit: false,
+    ) as SpotubeFullTrackObject;
+
+    final ranked = SourcedTrack.rankResultsExperimental([
+      SpotubeAudioSourceMatchObject(
+        id: 'lyrics-reupload',
+        title: "Brooke Daye - Everything I'm not (Lyrics)",
+        artists: const ['Loku'],
+        duration: const Duration(minutes: 3, seconds: 15),
+        externalUri: 'https://youtube.com/watch?v=lyrics',
+      ),
+      SpotubeAudioSourceMatchObject(
+        id: 'official-track',
+        title: "everything i'm not",
+        artists: const ['Brooke Wheeler'],
+        duration: const Duration(minutes: 3, seconds: 15),
+        externalUri: 'https://youtube.com/watch?v=official',
+      ),
+    ], track);
+
+    expect(ranked.first.id, 'official-track');
+  });
 }

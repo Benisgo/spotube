@@ -181,7 +181,10 @@ class PlayerActions extends HookConsumerWidget {
         if (playlist.activeTrack != null &&
             !isLocalTrack &&
             authenticated.asData?.value == true)
-          TrackHeartButton(track: playlist.activeTrack!),
+          TrackHeartButton(
+            track: playlist.activeTrack!,
+            requireAuthentication: false,
+          ),
         AdaptivePopSheetList<Duration>(
           tooltip: context.l10n.sleep_timer,
           offset: Offset(0, -50 * (sleepTimerEntries.values.length + 2)),

@@ -18,6 +18,7 @@ import 'package:metadata_god/metadata_god.dart';
 import 'package:smtc_windows/smtc_windows.dart';
 import 'package:spotube/collections/env.dart';
 import 'package:spotube/collections/http-override.dart';
+import 'package:spotube/collections/initializers.dart';
 import 'package:spotube/collections/intents.dart';
 import 'package:spotube/collections/routes.dart';
 import 'package:spotube/hooks/configurators/use_close_behavior.dart';
@@ -26,6 +27,7 @@ import 'package:spotube/hooks/configurators/use_disable_battery_optimizations.da
 import 'package:spotube/hooks/configurators/use_fix_window_stretching.dart';
 import 'package:spotube/hooks/configurators/use_get_storage_perms.dart';
 import 'package:spotube/hooks/configurators/use_has_touch.dart';
+import 'package:spotube/hooks/configurators/use_mouse_buttons.dart';
 import 'package:spotube/models/database/database.dart';
 import 'package:spotube/models/theme/app_custom_theme.dart';
 import 'package:spotube/modules/settings/color_scheme_picker_dialog.dart';
@@ -181,7 +183,7 @@ Future<void> main(List<String> rawArgs) async {
 
     HttpOverrides.global = BadCertificateAllowlistOverrides();
 
-    // await registerWindowsScheme("spotify");
+    await registerWindowsScheme("spotify");
 
     tz.initializeTimeZones();
 
@@ -291,6 +293,7 @@ class Spotube extends HookConsumerWidget {
     useDeepLinking(ref, router);
     useCloseBehavior(ref);
     useGetStoragePermissions(ref);
+    useMouseNavigationButtons(router);
 
     useEffect(() {
       FlutterNativeSplash.remove();

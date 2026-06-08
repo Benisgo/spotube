@@ -234,6 +234,17 @@ class SettingsPlaybackSection extends HookConsumerWidget {
           ),
         ),
         ListTile(
+          leading: const Icon(SpotubeIcons.connect),
+          title: const Text("Handle Spotify links"),
+          subtitle: const Text(
+            "Open spotify: URIs and open.spotify.com URLs in Spotube",
+          ),
+          trailing: Switch(
+            value: preferences.handleSpotifyLinks,
+            onChanged: preferencesNotifier.setHandleSpotifyLinks,
+          ),
+        ),
+        ListTile(
           leading: const Icon(SpotubeIcons.magic),
           title: const Text("Experimental scoring"),
           subtitle: const Text(

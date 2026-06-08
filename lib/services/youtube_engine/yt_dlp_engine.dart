@@ -261,6 +261,7 @@ class YtDlpEngine implements YouTubeEngine {
 
   bool _shouldFallback(Object error) {
     if (error is _YtDlpFallbackRequested) return true;
+    if (error is FormatException) return true;
 
     final message = error.toString().toLowerCase();
     return message.contains("too many requests") ||

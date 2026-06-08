@@ -74,7 +74,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 15;
+  int get schemaVersion => 16;
 
   @override
   MigrationStrategy get migration {
@@ -323,6 +323,16 @@ class AppDatabase extends _$AppDatabase {
           await customStatement(
             "ALTER TABLE preferences_table "
             "ADD COLUMN experimental_scoring INTEGER NOT NULL DEFAULT 0",
+          ).catchError((error, stackTrace) {
+            if (!error.toString().contains('duplicate column name')) {
+              throw error;
+            }
+          });
+        }
+        if (from < 16 && to >= 16) {
+          await customStatement(
+            "ALTER TABLE preferences_table "
+            "ADD COLUMN handle_spotify_links INTEGER NOT NULL DEFAULT 1",
           ).catchError((error, stackTrace) {
             if (!error.toString().contains('duplicate column name')) {
               throw error;

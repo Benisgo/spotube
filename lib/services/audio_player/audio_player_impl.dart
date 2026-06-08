@@ -61,7 +61,8 @@ class SpotubeAudioPlayer extends AudioPlayerInterface
     _targetVolume = volume;
 
     if (isCrossfading) {
-      final activeRatio = (_activePlayer.state.volume / 100) / previousTargetVolume;
+      final activeRatio =
+          (_activePlayer.state.volume / 100) / previousTargetVolume;
       final inactiveRatio =
           (_inactivePlayer.state.volume / 100) / previousTargetVolume;
       await _activePlayer.setVolume(activeRatio.clamp(0.0, 1.0) * volume * 100);
@@ -128,6 +129,7 @@ class SpotubeAudioPlayer extends AudioPlayerInterface
       play: autoPlay,
     );
     await _primaryPlayer.setVolume(_targetVolume * 100);
+    await _primaryPlayer.reapplyNormalizationIfNeeded();
     await _prepareInactivePlayer();
     _isPlaying = autoPlay;
     _emitPlaybackSnapshot(includePlaylist: true);
@@ -143,6 +145,7 @@ class SpotubeAudioPlayer extends AudioPlayerInterface
     await _stopCrossfade();
     try {
       await _withPlayerTimeout(_activePlayer.next(), 'active.next');
+      await _activePlayer.reapplyNormalizationIfNeeded();
     } catch (_) {
       if (nextIndex != null) {
         await _forceActivateIndex(nextIndex);
@@ -158,6 +161,7 @@ class SpotubeAudioPlayer extends AudioPlayerInterface
     await _stopCrossfade();
     try {
       await _withPlayerTimeout(_activePlayer.previous(), 'active.previous');
+      await _activePlayer.reapplyNormalizationIfNeeded();
     } catch (_) {
       if (previousIndex != null) {
         await _forceActivateIndex(previousIndex);
@@ -171,7 +175,9 @@ class SpotubeAudioPlayer extends AudioPlayerInterface
     _trace("jumpTo index=$index");
     await _stopCrossfade();
     try {
-      await _withPlayerTimeout(_activePlayer.jump(index), 'active.jump($index)');
+      await _withPlayerTimeout(
+          _activePlayer.jump(index), 'active.jump($index)');
+      await _activePlayer.reapplyNormalizationIfNeeded();
     } catch (_) {
       await _forceActivateIndex(index);
     }
@@ -257,6 +263,7 @@ class SpotubeAudioPlayer extends AudioPlayerInterface
 
   Future<void> setDemuxerBufferSize(int sizeInBytes) async {
     await _primaryPlayer.setDemuxerBufferSize(sizeInBytes);
-    await _mirrorSecondary((player) => player.setDemuxerBufferSize(sizeInBytes));
+    await _mirrorSecondary(
+        (player) => player.setDemuxerBufferSize(sizeInBytes));
   }
 }

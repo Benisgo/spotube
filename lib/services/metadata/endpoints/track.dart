@@ -1,6 +1,7 @@
 import 'package:hetu_script/hetu_script.dart';
 import 'package:hetu_script/values.dart';
 import 'package:spotube/models/metadata/metadata.dart';
+import 'package:spotube/services/logger/logger.dart';
 
 class MetadataPluginTrackEndpoint {
   final Hetu hetu;
@@ -28,17 +29,22 @@ class MetadataPluginTrackEndpoint {
   }
 
   Future<List<SpotubeFullTrackObject>> radio(String id) async {
-    final result = await hetuMetadataTrack.invoke(
-      "radio",
-      positionalArgs: [id],
-    );
+    try {
+      final result = await hetuMetadataTrack.invoke(
+        "radio",
+        positionalArgs: [id],
+      );
 
-    return (result as List)
-        .map(
-          (e) => SpotubeFullTrackObject.fromJson(
-            (e as Map).cast<String, dynamic>(),
-          ),
-        )
-        .toList();
+      return (result as List)
+          .map(
+            (e) => SpotubeFullTrackObject.fromJson(
+              (e as Map).cast<String, dynamic>(),
+            ),
+          )
+          .toList();
+    } catch (e, stack) {
+      AppLogger.reportError(e, stack, 'track.radio failed');
+      return [];
+    }
   }
 }

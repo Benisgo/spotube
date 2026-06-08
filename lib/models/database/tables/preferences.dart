@@ -116,6 +116,8 @@ class PreferencesTable extends Table {
       .withDefault(Constant(LyricsCharacterEdge.none.name))();
   TextColumn get multiSessionRelayUrl =>
       text().withDefault(const Constant(""))();
+  BoolColumn get handleSpotifyLinks =>
+      boolean().withDefault(const Constant(true))();
 
   // Default values as PreferencesTableData
   static PreferencesTableData defaults() {
@@ -153,6 +155,7 @@ class PreferencesTable extends Table {
       connectPort: -1,
       lyricsCharacterEdge: LyricsCharacterEdge.none,
       multiSessionRelayUrl: "",
+      handleSpotifyLinks: true,
     );
   }
 }

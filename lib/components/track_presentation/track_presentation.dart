@@ -3,6 +3,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 import 'package:shadcn_flutter/shadcn_flutter_extension.dart';
 import 'package:spotube/components/titlebar/titlebar.dart';
+import 'package:flutter/material.dart' as material;
 import 'package:spotube/components/track_presentation/presentation_list.dart';
 import 'package:spotube/components/track_presentation/presentation_props.dart';
 import 'package:spotube/components/track_presentation/presentation_top.dart';
@@ -50,9 +51,16 @@ class TrackPresentation extends HookConsumerWidget {
         bottom: false,
         child: Scaffold(
           headers: const [TitleBar()],
-          child: CustomScrollView(
+          child: material.Scrollbar(
             controller: scrollController,
-            slivers: [
+            child: PrimaryScrollController(
+              controller: scrollController,
+              child: CustomScrollView(
+              controller: scrollController,
+              physics: const BouncingScrollPhysics(
+                parent: AlwaysScrollableScrollPhysics(),
+              ),
+              slivers: [
               const TrackPresentationTopSection(),
               const SliverGap(16),
               SliverList.list(
@@ -90,6 +98,8 @@ class TrackPresentation extends HookConsumerWidget {
             ],
           ),
         ),
+        ),
+      ),
       ),
     );
   }

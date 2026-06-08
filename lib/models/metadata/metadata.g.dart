@@ -83,17 +83,7 @@ _$SpotubeAudioSourceMatchObjectImpl
           artists: (json['artists'] as List<dynamic>)
               .map((e) => e as String)
               .toList(),
-          duration: () {
-            final raw = (json['duration'] as num).toInt();
-            if (raw <= 0) return Duration.zero;
-            if (raw < 60 * 60 * 24) {
-              return Duration(seconds: raw);
-            }
-            if (raw < 60 * 60 * 24 * 1000) {
-              return Duration(milliseconds: raw);
-            }
-            return Duration(microseconds: raw);
-          }(),
+          duration: Duration(microseconds: (json['duration'] as num).toInt()),
           thumbnail: json['thumbnail'] as String?,
           externalUri: json['externalUri'] as String,
         );

@@ -6,6 +6,7 @@ import 'package:spotube/models/metadata/metadata.dart';
 class PaginationProps {
   final bool hasNextPage;
   final bool isLoading;
+  final int? total;
   final VoidCallback onFetchMore;
   final Future<void> Function() onRefresh;
   final Future<List<SpotubeFullTrackObject>> Function() onFetchAll;
@@ -13,6 +14,7 @@ class PaginationProps {
   const PaginationProps({
     required this.hasNextPage,
     required this.isLoading,
+    this.total,
     required this.onFetchMore,
     required this.onFetchAll,
     required this.onRefresh,
@@ -23,6 +25,7 @@ class PaginationProps {
     return other is PaginationProps &&
         other.hasNextPage == hasNextPage &&
         other.isLoading == isLoading &&
+        other.total == total &&
         other.onFetchMore == onFetchMore &&
         other.onFetchAll == onFetchAll &&
         other.onRefresh == onRefresh;
@@ -33,6 +36,7 @@ class PaginationProps {
       super.hashCode ^
       hasNextPage.hashCode ^
       isLoading.hashCode ^
+      total.hashCode ^
       onFetchMore.hashCode ^
       onFetchAll.hashCode ^
       onRefresh.hashCode;
@@ -51,6 +55,7 @@ class TrackPresentationOptions {
   final bool isLiked;
   final String? shareUrl;
   final Object? error;
+  int get total => pagination.total ?? tracks.length;
 
   // events
   final FutureOr<bool?> Function()? onHeart; // if null heart button will hidden

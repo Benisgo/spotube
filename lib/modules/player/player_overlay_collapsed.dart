@@ -88,6 +88,11 @@ class PlayerOverlayCollapsedSection extends HookConsumerWidget {
                                 onPressed: isFetchingActiveTrack
                                     ? null
                                     : () {
+                                        if (audioPlayer.position.inSeconds >
+                                            10) {
+                                          audioPlayer.seek(Duration.zero);
+                                          return;
+                                        }
                                         if (!audioPlayer.canSkipToPrevious) {
                                           showNoPreviousTrackToast();
                                           return;

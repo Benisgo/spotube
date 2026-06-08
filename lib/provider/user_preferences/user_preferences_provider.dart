@@ -277,6 +277,12 @@ class UserPreferencesNotifier extends Notifier<PreferencesTableData> {
       PreferencesTableCompanion(multiSessionRelayUrl: Value(url.trim())),
     );
   }
+
+  void setHandleSpotifyLinks(bool enabled) {
+    setData(
+      PreferencesTableCompanion(handleSpotifyLinks: Value(enabled)),
+    );
+  }
 }
 
 final userPreferencesProvider =

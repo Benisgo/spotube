@@ -94,6 +94,16 @@ class $AssetsPluginsGen {
       const $AssetsPluginsSpotubePluginYoutubeAudioGen();
 }
 
+class $AssetsYtDlpWorkerGen {
+  const $AssetsYtDlpWorkerGen();
+
+  /// File path: assets/yt_dlp_worker/worker.py
+  String get worker => 'assets/yt_dlp_worker/worker.py';
+
+  /// List of all assets
+  List<String> get values => [worker];
+}
+
 class $AssetsImagesLogosGen {
   const $AssetsImagesLogosGen();
 
@@ -153,6 +163,7 @@ class Assets {
   static const $AssetsBytecodeGen bytecode = $AssetsBytecodeGen();
   static const $AssetsImagesGen images = $AssetsImagesGen();
   static const $AssetsPluginsGen plugins = $AssetsPluginsGen();
+  static const $AssetsYtDlpWorkerGen ytDlpWorker = $AssetsYtDlpWorkerGen();
 
   /// List of all assets
   static List<String> get values => [license];

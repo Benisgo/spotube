@@ -150,11 +150,28 @@ class CustomPlayer extends Player {
     }
   }
 
+  bool _normalizationEnabled = false;
+
   Future<void> setAudioNormalization(bool normalize) async {
-    if (normalize) {
+    _normalizationEnabled = normalize;
+    try {
+      if (normalize) {
+        await nativePlayer.setProperty(
+            'af', 'dynaudnorm=g=5:f=250:r=0.9:p=0.5');
+      } else {
+        await nativePlayer.setProperty('af', '');
+      }
+    } catch (e, stack) {
+      AppLogger.reportError(e, stack, 'setAudioNormalization failed');
+    }
+  }
+
+  Future<void> reapplyNormalizationIfNeeded() async {
+    if (!_normalizationEnabled) return;
+    try {
       await nativePlayer.setProperty('af', 'dynaudnorm=g=5:f=250:r=0.9:p=0.5');
-    } else {
-      await nativePlayer.setProperty('af', '');
+    } catch (e, stack) {
+      AppLogger.reportError(e, stack, 'reapplyNormalizationIfNeeded failed');
     }
   }
 

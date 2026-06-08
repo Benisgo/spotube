@@ -51,6 +51,7 @@ class LikedPlaylistPage extends HookConsumerWidget {
           pagination: PaginationProps(
             hasNextPage: likedTracks.asData?.value.hasMore ?? false,
             isLoading: likedTracks.isLoadingNextPage && !likedTracks.isLoading,
+            total: likedTracks.asData?.value.total,
             onFetchMore: () async {
               await likedTracksNotifier.fetchMore();
             },

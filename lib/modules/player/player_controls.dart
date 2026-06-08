@@ -115,16 +115,13 @@ class PlayerControls extends HookConsumerWidget {
                               hintValue: SliderValue.single(bufferProgress),
                               value:
                                   SliderValue.single(progress.value.toDouble()),
-                              onChanged: isFetchingActiveTrack
-                                  ? null
-                                  : (v) {
-                                      progress.value = v.value;
-                                    },
+                              onChanged: null,
                               onChangeEnd: (value) async {
+                                final clamped = value.value.clamp(0.0, 1.0);
                                 await audioPlayer.seek(
                                   Duration(
-                                    seconds: (value.value * duration.inSeconds)
-                                        .toInt(),
+                                    seconds:
+                                        (clamped * duration.inSeconds).toInt(),
                                   ),
                                 );
                               },
@@ -198,6 +195,10 @@ class PlayerControls extends HookConsumerWidget {
                       enabled: !isFetchingActiveTrack,
                       icon: const Icon(SpotubeIcons.skipBack),
                       onPressed: () {
+                        if (audioPlayer.position.inSeconds > 10) {
+                          audioPlayer.seek(Duration.zero);
+                          return;
+                        }
                         if (!audioPlayer.canSkipToPrevious) {
                           showNoPreviousTrackToast();
                           return;

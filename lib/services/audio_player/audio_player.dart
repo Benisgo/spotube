@@ -212,6 +212,10 @@ abstract class AudioPlayerInterface {
       _activePlayer.setVolume(_targetVolume * 100),
       'forceActivateIndex.setVolume($safeIndex)',
     );
+    await _bestEffortPlayerCommand(
+      _activePlayer.reapplyNormalizationIfNeeded(),
+      'forceActivateIndex.reapplyNormalization',
+    );
     _syncIndexFromActive(safeIndex);
     _emitPlaybackSnapshot(includePlaylist: true);
   }
@@ -404,24 +408,25 @@ abstract class AudioPlayerInterface {
     int index, {
     required bool play,
   }) async {
-    if (_playlist.medias.isEmpty) {
+    final medias = _playlist.medias;
+    if (medias.isEmpty) {
       await player.stop();
       return;
     }
 
-    final safeIndex = index.clamp(0, _playlist.medias.length - 1).toInt();
+    final safeIndex = index.clamp(0, medias.length - 1).toInt();
     _critical(
-      "openPlayerWithPlaylist index=$safeIndex play=$play uri=${_playlist.medias[safeIndex].uri}",
+      "openPlayerWithPlaylist index=$safeIndex play=$play uri=${medias[safeIndex].uri}",
     );
     await _withPlayerTimeout(
       player.open(
-        mk.Playlist(_playlist.medias, index: safeIndex),
+        mk.Playlist(medias, index: safeIndex),
         play: play,
       ),
       'player.open(index=$safeIndex, play=$play)',
     );
     _critical(
-      "openPlayerWithPlaylist complete index=$safeIndex play=$play uri=${_playlist.medias[safeIndex].uri}",
+      "openPlayerWithPlaylist complete index=$safeIndex play=$play uri=${medias[safeIndex].uri}",
     );
   }
 

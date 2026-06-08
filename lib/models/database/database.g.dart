@@ -827,6 +827,16 @@ class $PreferencesTableTable extends PreferencesTable
           type: DriftSqlType.string,
           requiredDuringInsert: false,
           defaultValue: const Constant(""));
+  static const VerificationMeta _handleSpotifyLinksMeta =
+      const VerificationMeta('handleSpotifyLinks');
+  @override
+  late final GeneratedColumn<bool> handleSpotifyLinks = GeneratedColumn<bool>(
+      'handle_spotify_links', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("handle_spotify_links" IN (0, 1))'),
+      defaultValue: const Constant(true));
   @override
   List<GeneratedColumn> get $columns => [
         id,
@@ -859,7 +869,8 @@ class $PreferencesTableTable extends PreferencesTable
         experimentalScoring,
         miniPlayerTransparency,
         lyricsCharacterEdge,
-        multiSessionRelayUrl
+        multiSessionRelayUrl,
+        handleSpotifyLinks
       ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -996,6 +1007,12 @@ class $PreferencesTableTable extends PreferencesTable
           multiSessionRelayUrl.isAcceptableOrUnknown(
               data['multi_session_relay_url']!, _multiSessionRelayUrlMeta));
     }
+    if (data.containsKey('handle_spotify_links')) {
+      context.handle(
+          _handleSpotifyLinksMeta,
+          handleSpotifyLinks.isAcceptableOrUnknown(
+              data['handle_spotify_links']!, _handleSpotifyLinksMeta));
+    }
     return context;
   }
 
@@ -1082,6 +1099,8 @@ class $PreferencesTableTable extends PreferencesTable
       multiSessionRelayUrl: attachedDatabase.typeMapping.read(
           DriftSqlType.string,
           data['${effectivePrefix}multi_session_relay_url'])!,
+      handleSpotifyLinks: attachedDatabase.typeMapping.read(
+          DriftSqlType.bool, data['${effectivePrefix}handle_spotify_links'])!,
     );
   }
 
@@ -1148,6 +1167,7 @@ class PreferencesTableData extends DataClass
   final double miniPlayerTransparency;
   final LyricsCharacterEdge lyricsCharacterEdge;
   final String multiSessionRelayUrl;
+  final bool handleSpotifyLinks;
   const PreferencesTableData(
       {required this.id,
       required this.albumColorSync,
@@ -1179,7 +1199,8 @@ class PreferencesTableData extends DataClass
       required this.experimentalScoring,
       required this.miniPlayerTransparency,
       required this.lyricsCharacterEdge,
-      required this.multiSessionRelayUrl});
+      required this.multiSessionRelayUrl,
+      required this.handleSpotifyLinks});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -1250,6 +1271,7 @@ class PreferencesTableData extends DataClass
           .toSql(lyricsCharacterEdge));
     }
     map['multi_session_relay_url'] = Variable<String>(multiSessionRelayUrl);
+    map['handle_spotify_links'] = Variable<bool>(handleSpotifyLinks);
     return map;
   }
 
@@ -1288,6 +1310,7 @@ class PreferencesTableData extends DataClass
       miniPlayerTransparency: Value(miniPlayerTransparency),
       lyricsCharacterEdge: Value(lyricsCharacterEdge),
       multiSessionRelayUrl: Value(multiSessionRelayUrl),
+      handleSpotifyLinks: Value(handleSpotifyLinks),
     );
   }
 
@@ -1340,6 +1363,7 @@ class PreferencesTableData extends DataClass
           .fromJson(serializer.fromJson<String>(json['lyricsCharacterEdge'])),
       multiSessionRelayUrl:
           serializer.fromJson<String>(json['multiSessionRelayUrl']),
+      handleSpotifyLinks: serializer.fromJson<bool>(json['handleSpotifyLinks']),
     );
   }
   @override
@@ -1389,6 +1413,7 @@ class PreferencesTableData extends DataClass
           .$converterlyricsCharacterEdge
           .toJson(lyricsCharacterEdge)),
       'multiSessionRelayUrl': serializer.toJson<String>(multiSessionRelayUrl),
+      'handleSpotifyLinks': serializer.toJson<bool>(handleSpotifyLinks),
     };
   }
 
@@ -1423,7 +1448,8 @@ class PreferencesTableData extends DataClass
           bool? experimentalScoring,
           double? miniPlayerTransparency,
           LyricsCharacterEdge? lyricsCharacterEdge,
-          String? multiSessionRelayUrl}) =>
+          String? multiSessionRelayUrl,
+          bool? handleSpotifyLinks}) =>
       PreferencesTableData(
         id: id ?? this.id,
         albumColorSync: albumColorSync ?? this.albumColorSync,
@@ -1460,6 +1486,7 @@ class PreferencesTableData extends DataClass
             miniPlayerTransparency ?? this.miniPlayerTransparency,
         lyricsCharacterEdge: lyricsCharacterEdge ?? this.lyricsCharacterEdge,
         multiSessionRelayUrl: multiSessionRelayUrl ?? this.multiSessionRelayUrl,
+        handleSpotifyLinks: handleSpotifyLinks ?? this.handleSpotifyLinks,
       );
   PreferencesTableData copyWithCompanion(PreferencesTableCompanion data) {
     return PreferencesTableData(
@@ -1543,6 +1570,9 @@ class PreferencesTableData extends DataClass
       multiSessionRelayUrl: data.multiSessionRelayUrl.present
           ? data.multiSessionRelayUrl.value
           : this.multiSessionRelayUrl,
+      handleSpotifyLinks: data.handleSpotifyLinks.present
+          ? data.handleSpotifyLinks.value
+          : this.handleSpotifyLinks,
     );
   }
 
@@ -1579,7 +1609,8 @@ class PreferencesTableData extends DataClass
           ..write('experimentalScoring: $experimentalScoring, ')
           ..write('miniPlayerTransparency: $miniPlayerTransparency, ')
           ..write('lyricsCharacterEdge: $lyricsCharacterEdge, ')
-          ..write('multiSessionRelayUrl: $multiSessionRelayUrl')
+          ..write('multiSessionRelayUrl: $multiSessionRelayUrl, ')
+          ..write('handleSpotifyLinks: $handleSpotifyLinks')
           ..write(')'))
         .toString();
   }
@@ -1616,7 +1647,8 @@ class PreferencesTableData extends DataClass
         experimentalScoring,
         miniPlayerTransparency,
         lyricsCharacterEdge,
-        multiSessionRelayUrl
+        multiSessionRelayUrl,
+        handleSpotifyLinks
       ]);
   @override
   bool operator ==(Object other) =>
@@ -1652,7 +1684,8 @@ class PreferencesTableData extends DataClass
           other.experimentalScoring == this.experimentalScoring &&
           other.miniPlayerTransparency == this.miniPlayerTransparency &&
           other.lyricsCharacterEdge == this.lyricsCharacterEdge &&
-          other.multiSessionRelayUrl == this.multiSessionRelayUrl);
+          other.multiSessionRelayUrl == this.multiSessionRelayUrl &&
+          other.handleSpotifyLinks == this.handleSpotifyLinks);
 }
 
 class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
@@ -1687,6 +1720,7 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
   final Value<double> miniPlayerTransparency;
   final Value<LyricsCharacterEdge> lyricsCharacterEdge;
   final Value<String> multiSessionRelayUrl;
+  final Value<bool> handleSpotifyLinks;
   const PreferencesTableCompanion({
     this.id = const Value.absent(),
     this.albumColorSync = const Value.absent(),
@@ -1719,6 +1753,7 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
     this.miniPlayerTransparency = const Value.absent(),
     this.lyricsCharacterEdge = const Value.absent(),
     this.multiSessionRelayUrl = const Value.absent(),
+    this.handleSpotifyLinks = const Value.absent(),
   });
   PreferencesTableCompanion.insert({
     this.id = const Value.absent(),
@@ -1752,6 +1787,7 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
     this.miniPlayerTransparency = const Value.absent(),
     this.lyricsCharacterEdge = const Value.absent(),
     this.multiSessionRelayUrl = const Value.absent(),
+    this.handleSpotifyLinks = const Value.absent(),
   });
   static Insertable<PreferencesTableData> custom({
     Expression<int>? id,
@@ -1785,6 +1821,7 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
     Expression<double>? miniPlayerTransparency,
     Expression<String>? lyricsCharacterEdge,
     Expression<String>? multiSessionRelayUrl,
+    Expression<bool>? handleSpotifyLinks,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -1827,6 +1864,8 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
         'lyrics_character_edge': lyricsCharacterEdge,
       if (multiSessionRelayUrl != null)
         'multi_session_relay_url': multiSessionRelayUrl,
+      if (handleSpotifyLinks != null)
+        'handle_spotify_links': handleSpotifyLinks,
     });
   }
 
@@ -1861,7 +1900,8 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
       Value<bool>? experimentalScoring,
       Value<double>? miniPlayerTransparency,
       Value<LyricsCharacterEdge>? lyricsCharacterEdge,
-      Value<String>? multiSessionRelayUrl}) {
+      Value<String>? multiSessionRelayUrl,
+      Value<bool>? handleSpotifyLinks}) {
     return PreferencesTableCompanion(
       id: id ?? this.id,
       albumColorSync: albumColorSync ?? this.albumColorSync,
@@ -1897,6 +1937,7 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
           miniPlayerTransparency ?? this.miniPlayerTransparency,
       lyricsCharacterEdge: lyricsCharacterEdge ?? this.lyricsCharacterEdge,
       multiSessionRelayUrl: multiSessionRelayUrl ?? this.multiSessionRelayUrl,
+      handleSpotifyLinks: handleSpotifyLinks ?? this.handleSpotifyLinks,
     );
   }
 
@@ -2015,6 +2056,9 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
       map['multi_session_relay_url'] =
           Variable<String>(multiSessionRelayUrl.value);
     }
+    if (handleSpotifyLinks.present) {
+      map['handle_spotify_links'] = Variable<bool>(handleSpotifyLinks.value);
+    }
     return map;
   }
 
@@ -2051,7 +2095,8 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
           ..write('experimentalScoring: $experimentalScoring, ')
           ..write('miniPlayerTransparency: $miniPlayerTransparency, ')
           ..write('lyricsCharacterEdge: $lyricsCharacterEdge, ')
-          ..write('multiSessionRelayUrl: $multiSessionRelayUrl')
+          ..write('multiSessionRelayUrl: $multiSessionRelayUrl, ')
+          ..write('handleSpotifyLinks: $handleSpotifyLinks')
           ..write(')'))
         .toString();
   }
@@ -4896,6 +4941,7 @@ typedef $$PreferencesTableTableCreateCompanionBuilder
   Value<double> miniPlayerTransparency,
   Value<LyricsCharacterEdge> lyricsCharacterEdge,
   Value<String> multiSessionRelayUrl,
+  Value<bool> handleSpotifyLinks,
 });
 typedef $$PreferencesTableTableUpdateCompanionBuilder
     = PreferencesTableCompanion Function({
@@ -4930,6 +4976,7 @@ typedef $$PreferencesTableTableUpdateCompanionBuilder
   Value<double> miniPlayerTransparency,
   Value<LyricsCharacterEdge> lyricsCharacterEdge,
   Value<String> multiSessionRelayUrl,
+  Value<bool> handleSpotifyLinks,
 });
 
 class $$PreferencesTableTableFilterComposer
@@ -5069,6 +5116,10 @@ class $$PreferencesTableTableFilterComposer
   ColumnFilters<String> get multiSessionRelayUrl => $composableBuilder(
       column: $table.multiSessionRelayUrl,
       builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get handleSpotifyLinks => $composableBuilder(
+      column: $table.handleSpotifyLinks,
+      builder: (column) => ColumnFilters(column));
 }
 
 class $$PreferencesTableTableOrderingComposer
@@ -5194,6 +5245,10 @@ class $$PreferencesTableTableOrderingComposer
   ColumnOrderings<String> get multiSessionRelayUrl => $composableBuilder(
       column: $table.multiSessionRelayUrl,
       builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<bool> get handleSpotifyLinks => $composableBuilder(
+      column: $table.handleSpotifyLinks,
+      builder: (column) => ColumnOrderings(column));
 }
 
 class $$PreferencesTableTableAnnotationComposer
@@ -5304,6 +5359,9 @@ class $$PreferencesTableTableAnnotationComposer
 
   GeneratedColumn<String> get multiSessionRelayUrl => $composableBuilder(
       column: $table.multiSessionRelayUrl, builder: (column) => column);
+
+  GeneratedColumn<bool> get handleSpotifyLinks => $composableBuilder(
+      column: $table.handleSpotifyLinks, builder: (column) => column);
 }
 
 class $$PreferencesTableTableTableManager extends RootTableManager<
@@ -5367,6 +5425,7 @@ class $$PreferencesTableTableTableManager extends RootTableManager<
             Value<LyricsCharacterEdge> lyricsCharacterEdge =
                 const Value.absent(),
             Value<String> multiSessionRelayUrl = const Value.absent(),
+            Value<bool> handleSpotifyLinks = const Value.absent(),
           }) =>
               PreferencesTableCompanion(
             id: id,
@@ -5400,6 +5459,7 @@ class $$PreferencesTableTableTableManager extends RootTableManager<
             miniPlayerTransparency: miniPlayerTransparency,
             lyricsCharacterEdge: lyricsCharacterEdge,
             multiSessionRelayUrl: multiSessionRelayUrl,
+            handleSpotifyLinks: handleSpotifyLinks,
           ),
           createCompanionCallback: ({
             Value<int> id = const Value.absent(),
@@ -5435,6 +5495,7 @@ class $$PreferencesTableTableTableManager extends RootTableManager<
             Value<LyricsCharacterEdge> lyricsCharacterEdge =
                 const Value.absent(),
             Value<String> multiSessionRelayUrl = const Value.absent(),
+            Value<bool> handleSpotifyLinks = const Value.absent(),
           }) =>
               PreferencesTableCompanion.insert(
             id: id,
@@ -5468,6 +5529,7 @@ class $$PreferencesTableTableTableManager extends RootTableManager<
             miniPlayerTransparency: miniPlayerTransparency,
             lyricsCharacterEdge: lyricsCharacterEdge,
             multiSessionRelayUrl: multiSessionRelayUrl,
+            handleSpotifyLinks: handleSpotifyLinks,
           ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))

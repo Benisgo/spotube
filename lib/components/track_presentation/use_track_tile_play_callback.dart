@@ -60,17 +60,19 @@ Future<void> Function(SpotubeTrackObject track, int index)
         await playlistNotifier.jumpToTrack(track);
       } else {
         final tracks = await options.pagination.onFetchAll();
+        final actualIndex = tracks.indexWhere((t) => t.id == track.id);
+        final safeIndex = actualIndex >= 0 ? actualIndex : index;
         await remotePlayback.load(
           options.collection is SpotubeSimpleAlbumObject
               ? WebSocketLoadEventData.album(
                   tracks: tracks,
                   collection: options.collection as SpotubeSimpleAlbumObject,
-                  initialIndex: index,
+                  initialIndex: safeIndex,
                 )
               : WebSocketLoadEventData.playlist(
                   tracks: tracks,
                   collection: options.collection as SpotubeSimplePlaylistObject,
-                  initialIndex: index,
+                  initialIndex: safeIndex,
                 ),
         );
       }
@@ -134,6 +136,9 @@ Future<void> Function(SpotubeTrackObject track, int index)
             return;
           }
 
+          final actualIndex = initialTracks.indexWhere((t) => t.id == track.id);
+          final safeIndex = actualIndex >= 0 ? actualIndex : index;
+
           PlaybackStartTrace.markTrack(
             track.id,
             'load_playlist.start',
@@ -141,7 +146,7 @@ Future<void> Function(SpotubeTrackObject track, int index)
           );
           await playlistNotifier.load(
             initialTracks,
-            initialIndex: index,
+            initialIndex: safeIndex,
             autoPlay: true,
           );
           PlaybackStartTrace.markTrack(track.id, 'load_playlist.done');

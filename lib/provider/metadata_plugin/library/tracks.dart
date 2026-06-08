@@ -111,6 +111,9 @@ class MetadataPluginSavedTracksNotifier
 
     try {
       await (await metadataPlugin).track.save(tracks.map((e) => e.id).toList());
+      for (final track in tracks) {
+        ref.invalidate(metadataPluginIsSavedTrackProvider(track.id));
+      }
     } catch (e) {
       for (final track in tracks) {
         _savedTrackMembershipCache.remove(track.id);
@@ -143,6 +146,9 @@ class MetadataPluginSavedTracksNotifier
       await (await metadataPlugin)
           .track
           .unsave(tracks.map((e) => e.id).toList());
+      for (final track in tracks) {
+        ref.invalidate(metadataPluginIsSavedTrackProvider(track.id));
+      }
     } catch (e) {
       for (final track in tracks) {
         _savedTrackMembershipCache.remove(track.id);

@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 import 'package:shadcn_flutter/shadcn_flutter_extension.dart';
@@ -28,7 +31,9 @@ class TrackPresentationModifiersSection extends HookConsumerWidget {
     final savedTracksFetchProgress =
         ref.watch(metadataPluginSavedTracksFetchProgressProvider);
 
-    final controller = useShadcnTextEditingController();
+    final controller = useShadcnTextEditingController(text: state.searchQuery);
+    final debounceTimer = useRef<Timer?>(null);
+    useEffect(() => () => debounceTimer.value?.cancel(), []);
     final scale = context.theme.scaling;
     final searchProgress = state.searchQuery.isEmpty
         ? null
@@ -92,10 +97,14 @@ class TrackPresentationModifiersSection extends HookConsumerWidget {
                             focusNode: focusNode,
                             placeholder: Text(context.l10n.search_tracks),
                             onChanged: (value) {
+                              debounceTimer.value?.cancel();
                               if (value.isEmpty) {
                                 notifier.clearFilter();
                               } else {
-                                notifier.filterTracks(value);
+                                debounceTimer.value = Timer(
+                                  const Duration(milliseconds: 300),
+                                  () => notifier.filterTracks(value),
+                                );
                               }
                             },
                             features: [

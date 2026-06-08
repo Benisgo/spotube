@@ -75,7 +75,12 @@ class PreviousTrackIntent extends Intent {
 class PreviousTrackAction extends Action<PreviousTrackIntent> {
   @override
   invoke(intent) async {
-    await audioPlayer.skipToPrevious();
+    final position = audioPlayer.position;
+    if (position.inSeconds > 10) {
+      await audioPlayer.seek(Duration.zero);
+    } else {
+      await audioPlayer.skipToPrevious();
+    }
     return null;
   }
 }

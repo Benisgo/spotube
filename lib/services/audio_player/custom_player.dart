@@ -54,8 +54,8 @@ class CustomPlayer extends Player {
         }
       }),
       stream.error.listen((event) {
-        AppLogger.reportError('[MediaKitError] \n$event', StackTrace.current);
-      }),
+        AppLogger.trace('[MediaKitError] $event');
+      })
     ];
     PackageInfo.fromPlatform().then((packageInfo) {
       _packageName = packageInfo.packageName;

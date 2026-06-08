@@ -73,7 +73,8 @@ class AudioPlayerStreamListeners {
     final message = error.toString().toLowerCase();
     return message.contains('yt-dlp worker unavailable') ||
         message.contains('background worker deferred') ||
-        message.contains('worker cancelled');
+        message.contains('worker cancelled') ||
+        message.contains('yt-dlp fallback requested');
   }
 
   Future<void> _stopCrossfadeAndRestoreVolume() async {
@@ -226,6 +227,13 @@ class AudioPlayerStreamListeners {
 
         try {
           final fullTrack = nextTrack as SpotubeFullTrackObject;
+          if (YtDlpWorkerClient.shouldDeferBackgroundWork) {
+            lastTrack = fullTrack.id;
+            return;
+          }
+          // Mark before awaiting so repeated near-end position events don't
+          // enqueue the same background warmup over and over.
+          lastTrack = fullTrack.id;
           await YtDlpExecutionContext.runBackground(() async {
             final sourcedTrack =
                 await ref.read(sourcedTrackProvider(fullTrack).future);
@@ -235,9 +243,7 @@ class AudioPlayerStreamListeners {
                   .refreshStreamingUrl();
             }
           }, cancelGroup: 'position-prefetch:${fullTrack.id}');
-        } finally {
-          lastTrack = nextTrack.id;
-        }
+        } finally {}
       } catch (e, stack) {
         if (_isExpectedBackgroundPrefetchSkip(e)) {
           return;
@@ -248,7 +254,8 @@ class AudioPlayerStreamListeners {
   }
 
   StreamSubscription subscribeToBufferingAndState() {
-    final bufferingSubscription = audioPlayer.bufferingStream.listen((buffering) {
+    final bufferingSubscription =
+        audioPlayer.bufferingStream.listen((buffering) {
       final activeTrackId = audioPlayerState.activeTrack?.id;
       if (activeTrackId == null) return;
       PlaybackStartTrace.markTrack(
@@ -257,7 +264,8 @@ class AudioPlayerStreamListeners {
       );
     });
 
-    final playerStateSubscription = audioPlayer.playerStateStream.listen((state) {
+    final playerStateSubscription =
+        audioPlayer.playerStateStream.listen((state) {
       final activeTrackId = audioPlayerState.activeTrack?.id;
       if (activeTrackId == null) return;
       PlaybackStartTrace.markTrack(

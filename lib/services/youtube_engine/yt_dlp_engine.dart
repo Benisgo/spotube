@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:collection/collection.dart';
@@ -28,6 +29,9 @@ enum _YtDlpAuthAction {
 
 final class _YtDlpFallbackRequested implements Exception {
   const _YtDlpFallbackRequested();
+
+  @override
+  String toString() => 'yt-dlp fallback requested';
 }
 
 class _YtDlpExtracted<T> {
@@ -57,6 +61,13 @@ class YtDlpEngine implements YouTubeEngine {
     YtDlpAuthBrowser.chromium,
     YtDlpAuthBrowser.brave,
   ];
+
+  /// Maps videoId -> generation number. Used to detect stale extractions
+  /// when the user rapidly skips songs. When a new extraction starts for a
+  /// videoId, it increments the global counter and records it. If a stale
+  /// extraction completes after a newer one has started, we short-circuit
+  /// the expensive fallback/auth flow.
+  static final Map<String, int> _extractionGenerations = {};
   static DateTime? _authCooldownUntil;
   static Future<_YtDlpAuthAction>? _authPromptFuture;
   static final Map<String, Future<Object?>> _inFlightExtractions = {};
@@ -66,6 +77,17 @@ class YtDlpEngine implements YouTubeEngine {
   static final Map<String, Future<List<dynamic>>> _inFlightFormats = {};
   static final Map<String, _TimedCacheEntry<List<dynamic>>> _resolvedFormats =
       {};
+  static const _resolvedVideoInfoCacheLimit = 100;
+  static const _extractionTimeout = Duration(seconds: 45);
+  static int _nextExtractionGeneration = 0;
+
+  /// Tracks the latest videoId requested for format extraction.
+  /// Used to short-circuit stale fallback/auth flows when the user
+  /// rapidly skips songs. If a format extraction completes for a videoId
+  /// that is no longer current, we skip the expensive fallback logic.
+  static int _latestFormatGeneration = 0;
+  static int _latestInfoGeneration = 0;
+
   static final Map<String, Future<List<Video>>> _inFlightSearches = {};
   static final Map<String, List<Video>> _resolvedSearches = {};
 
@@ -75,6 +97,15 @@ class YtDlpEngine implements YouTubeEngine {
 
   void _critical(String message) {
     AppLogger.criticalTrace("[yt_dlp_engine] $message");
+  }
+
+  /// Prefixes a dedup key with the current execution context (fg/bg) so that
+  /// foreground and background inflight extractions never share each other's
+  /// futures.  Without this, foreground callers can accidentally join a
+  /// background inflight request and inherit its "background worker deferred"
+  /// error, which then escapes through the fallback logic and blocks the UI.
+  String _contextInflightKey(String baseKey) {
+    return YtDlpExecutionContext.isBackground ? 'bg:$baseKey' : 'fg:$baseKey';
   }
 
   void _logWorkerFallback(String operation, Object error) {
@@ -96,9 +127,11 @@ class YtDlpEngine implements YouTubeEngine {
         : YtDlpWorkerClient.foreground;
   }
 
-  bool get _allowFallbackForCurrentContext => !YtDlpExecutionContext.isBackground;
+  bool get _allowFallbackForCurrentContext =>
+      !YtDlpExecutionContext.isBackground;
 
-  String get _currentPriorityLabel => YtDlpExecutionContext.currentPriority.name;
+  String get _currentPriorityLabel =>
+      YtDlpExecutionContext.currentPriority.name;
 
   String get _currentWorkerLabel =>
       YtDlpExecutionContext.isBackground ? 'background' : 'foreground';
@@ -204,7 +237,8 @@ class YtDlpEngine implements YouTubeEngine {
         'resultCount': videos.length,
         'backend': stdout.backend,
         'priority': _currentPriorityLabel,
-        'worker': stdout.backend == 'worker' ? _currentWorkerLabel : 'cli_fallback',
+        'worker':
+            stdout.backend == 'worker' ? _currentWorkerLabel : 'cli_fallback',
       },
       hypothesisId: 'PLAYBACK_START',
       runId: 'startup-trace',
@@ -235,7 +269,9 @@ class YtDlpEngine implements YouTubeEngine {
         message.contains("unable to download webpage") ||
         message.contains("sign in to confirm you're not a bot") ||
         message.contains("no supported javascript runtime") ||
-        message.contains("command failed with exit code 1");
+        message.contains("command failed with exit code 1") ||
+        message.contains("yt-dlp worker") ||
+        message.contains("yt-dlp fallback requested");
   }
 
   bool _requiresAuthentication(Object error) {
@@ -287,10 +323,25 @@ class YtDlpEngine implements YouTubeEngine {
         );
   }
 
-  Future<_YtDlpAuthAction> _promptForAuthAction(YouTubeEngine fallback) async {
+  Future<_YtDlpAuthAction> _promptForAuthAction(
+    YouTubeEngine fallback, {
+    required String target,
+    required String formatSpecifiers,
+  }) async {
     final existingPrompt = _authPromptFuture;
     if (existingPrompt != null) {
+      // Even while waiting for an existing prompt, check if we've gone stale
+      if (_isStaleForTarget(target, formatSpecifiers)) {
+        _trace("stale while waiting for auth prompt target=$target");
+        throw const _YtDlpFallbackRequested();
+      }
       return existingPrompt;
+    }
+
+    // Check stale before showing the dialog
+    if (_isStaleForTarget(target, formatSpecifiers)) {
+      _trace("stale before showing auth prompt target=$target");
+      throw const _YtDlpFallbackRequested();
     }
 
     final future = _showAuthPrompt(fallback);
@@ -524,7 +575,7 @@ class YtDlpEngine implements YouTubeEngine {
     required Future<_YtDlpExtracted<T>> Function(List<String> extraArgs)
         extractor,
   }) async {
-    final inflightKey = "$target|$formatSpecifiers";
+    final inflightKey = _contextInflightKey("$target|$formatSpecifiers");
     final active = _inFlightExtractions[inflightKey];
     if (active != null) {
       _trace("extract join target=$target");
@@ -556,7 +607,6 @@ class YtDlpEngine implements YouTubeEngine {
   }) async {
     final stopwatch = Stopwatch()..start();
     _trace("extract start target=$target");
-    _critical("extract start target=$target");
     if (_isInAuthCooldown) {
       throw const _YtDlpFallbackRequested();
     }
@@ -585,12 +635,34 @@ class YtDlpEngine implements YouTubeEngine {
       return result;
     } catch (error) {
       _trace("extract primary failed target=$target error=$error");
-      _critical("extract primary failed target=$target error=$error");
+      if (error is _YtDlpFallbackRequested ||
+          error.toString().toLowerCase().contains("yt-dlp worker")) {
+        throw const _YtDlpFallbackRequested();
+      }
+      if (_allowFallbackForCurrentContext) {
+        _critical("extract primary failed target=$target error=$error");
+      }
       if (!_requiresAuthentication(error)) rethrow;
     }
 
+    // Check if this extraction is stale (user has moved on to another song).
+    // If stale, skip the expensive auth flow and just request fallback.
+    if (_isStaleForTarget(target, formatSpecifiers)) {
+      _trace("extract stale target=$target, skipping auth flow");
+      throw const _YtDlpFallbackRequested();
+    }
+
     final fallback = _getFallbackEngine(preferAuthenticatedResilience: true);
-    final authAction = await _promptForAuthAction(fallback);
+    final authAction = await _promptForAuthAction(
+      fallback,
+      target: target,
+      formatSpecifiers: formatSpecifiers,
+    );
+    // Check stale again - user could have skipped songs during the dialog
+    if (_isStaleForTarget(target, formatSpecifiers)) {
+      _trace("extract stale target=$target after auth prompt");
+      throw const _YtDlpFallbackRequested();
+    }
     if (authAction == _YtDlpAuthAction.useDifferentEngine) {
       _markAuthCooldown();
       await _switchPreferredEngine(fallback);
@@ -598,8 +670,19 @@ class YtDlpEngine implements YouTubeEngine {
     }
 
     if (!await _ensureDenoForRetry(fallback)) {
+      // Check stale again - user could have skipped during the Deno dialog
+      if (_isStaleForTarget(target, formatSpecifiers)) {
+        _trace("extract stale target=$target after Deno prompt");
+        throw const _YtDlpFallbackRequested();
+      }
       _markAuthCooldown();
       await _switchPreferredEngine(fallback);
+      throw const _YtDlpFallbackRequested();
+    }
+
+    // Check stale again before browser retry - user could have skipped
+    if (_isStaleForTarget(target, formatSpecifiers)) {
+      _trace("extract stale target=$target before browser retry");
       throw const _YtDlpFallbackRequested();
     }
 
@@ -748,9 +831,7 @@ class YtDlpEngine implements YouTubeEngine {
     return Video(
       VideoId(info["id"]),
       info["title"]?.toString() ?? "",
-      info["channel"]?.toString() ??
-          info["uploader"]?.toString() ??
-          "",
+      info["channel"]?.toString() ?? info["uploader"]?.toString() ?? "",
       _parseChannelId(info),
       publishDate,
       uploadDate.isNotEmpty ? uploadDate : publishDate.toIso8601String(),
@@ -776,10 +857,16 @@ class YtDlpEngine implements YouTubeEngine {
       return cached;
     }
 
-    final active = _inFlightVideoInfo[videoId];
+    final inflightKey = _contextInflightKey(videoId);
+    final active = _inFlightVideoInfo[inflightKey];
     if (active != null) {
       return active;
     }
+
+    // Record this extraction as the latest for staleness tracking
+    _latestInfoGeneration = ++_nextExtractionGeneration;
+    _extractionGenerations[videoId] = _latestInfoGeneration;
+    _pruneCache(_extractionGenerations, _searchCacheLimit);
 
     final rawFuture = _extractWithAuthRetry<Map<String, dynamic>>(
       target: "https://www.youtube.com/watch?v=$videoId",
@@ -814,17 +901,22 @@ class YtDlpEngine implements YouTubeEngine {
         );
       },
     );
-    final future = rawFuture.then((value) => value.data);
+    final future =
+        rawFuture.then((value) => value.data).timeout(_extractionTimeout,
+            onTimeout: () => throw TimeoutException(
+                  'Video info extraction timed out for $videoId',
+                ));
 
-    _inFlightVideoInfo[videoId] = future;
+    _inFlightVideoInfo[inflightKey] = future;
     try {
       final resolved = await future;
       _resolvedVideoInfo[videoId] = resolved;
+      _pruneCache(_resolvedVideoInfo, _resolvedVideoInfoCacheLimit);
       return resolved;
     } finally {
-      final current = _inFlightVideoInfo[videoId];
+      final current = _inFlightVideoInfo[inflightKey];
       if (identical(current, future)) {
-        _inFlightVideoInfo.remove(videoId);
+        _inFlightVideoInfo.remove(inflightKey);
       }
     }
   }
@@ -851,10 +943,16 @@ class YtDlpEngine implements YouTubeEngine {
       _resolvedFormats.remove(cacheKey);
     }
 
-    final active = _inFlightFormats[cacheKey];
+    final inflightKey = _contextInflightKey(cacheKey);
+    final active = _inFlightFormats[inflightKey];
     if (active != null) {
       return active;
     }
+
+    // Record this extraction as the latest for staleness tracking
+    _latestFormatGeneration = ++_nextExtractionGeneration;
+    _extractionGenerations[videoId] = _latestFormatGeneration;
+    _pruneCache(_extractionGenerations, _searchCacheLimit);
 
     final rawFuture = _extractWithAuthRetry<List<dynamic>>(
       target: "https://www.youtube.com/watch?v=$videoId",
@@ -890,20 +988,58 @@ class YtDlpEngine implements YouTubeEngine {
         );
       },
     );
-    final future = rawFuture.then((value) => value.data);
+    final future =
+        rawFuture.then((value) => value.data).timeout(_extractionTimeout,
+            onTimeout: () => throw TimeoutException(
+                  'Format extraction timed out for $videoId',
+                ));
 
-    _inFlightFormats[cacheKey] = future;
+    _inFlightFormats[inflightKey] = future;
     try {
       final resolved = await future;
       _resolvedFormats[cacheKey] = _TimedCacheEntry(resolved, DateTime.now());
       _pruneCache(_resolvedFormats, _searchCacheLimit);
       return resolved;
     } finally {
-      final current = _inFlightFormats[cacheKey];
+      final current = _inFlightFormats[inflightKey];
       if (identical(current, future)) {
-        _inFlightFormats.remove(cacheKey);
+        _inFlightFormats.remove(inflightKey);
       }
     }
+  }
+
+  /// Checks whether a format extraction for [videoId] is stale because
+  /// the user has already moved on to a newer video. This prevents
+  /// unnecessary fallback/auth flows for songs that are no longer relevant.
+  bool _isStaleFormatExtraction(String videoId) {
+    final latestGeneration = _latestFormatGeneration;
+    final currentGeneration = _extractionGenerations[videoId];
+    return currentGeneration != null && currentGeneration < latestGeneration;
+  }
+
+  /// Extracts video ID from a YouTube watch URL
+  String? _extractVideoIdFromTarget(String target) {
+    final uri = Uri.tryParse(target);
+    if (uri == null) return null;
+    return uri.queryParameters['v'];
+  }
+
+  /// Consolidated stale check using target URL and format specifiers.
+  /// Returns true if the user has already moved on from this extraction.
+  bool _isStaleForTarget(String target, String formatSpecifiers) {
+    final videoId = _extractVideoIdFromTarget(target);
+    if (videoId == null) return false;
+    final isFormatExtraction = formatSpecifiers == "%(formats)j";
+    return isFormatExtraction
+        ? _isStaleFormatExtraction(videoId)
+        : _isStaleInfoExtraction(videoId);
+  }
+
+  /// Checks whether a video info extraction for [videoId] is stale.
+  bool _isStaleInfoExtraction(String videoId) {
+    final latestGeneration = _latestInfoGeneration;
+    final currentGeneration = _extractionGenerations[videoId];
+    return currentGeneration != null && currentGeneration < latestGeneration;
   }
 
   static Future<bool> isInstalled() async {
@@ -947,7 +1083,8 @@ class YtDlpEngine implements YouTubeEngine {
       () async {
         if (!_isInAuthCooldown) {
           try {
-            final combined = await _preferredWorker.getVideoWithStreamInfo(videoId);
+            final combined =
+                await _preferredWorker.getVideoWithStreamInfo(videoId);
             final manifest = _parseFormats(combined.$2, videoId);
             if (manifest.audioOnly.isEmpty) {
               throw Exception("yt-dlp returned no playable audio streams");

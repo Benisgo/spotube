@@ -32,7 +32,8 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
     final message = error.toString().toLowerCase();
     return message.contains('yt-dlp worker unavailable') ||
         message.contains('background worker deferred') ||
-        message.contains('worker cancelled');
+        message.contains('worker cancelled') ||
+        message.contains('yt-dlp fallback requested');
   }
 
   Future<bool> _hasCachedSourceMatch(SpotubeFullTrackObject track) async {

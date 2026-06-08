@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import 'package:flutter_hooks/flutter_hooks.dart';
@@ -11,12 +13,16 @@ import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/provider/audio_player/audio_player.dart';
 import 'package:spotube/provider/connect/connect.dart';
 import 'package:spotube/provider/history/history.dart';
+import 'package:spotube/services/logger/logger.dart';
+import 'package:spotube/services/logger/playback_start_trace.dart';
 import 'package:spotube/services/audio_player/audio_player.dart';
+import 'package:spotube/services/youtube_engine/yt_dlp_worker.dart';
 
 Future<void> Function(SpotubeTrackObject track, int index)
     useTrackTilePlayCallback(
   WidgetRef ref,
 ) {
+  const primeAwaitBudget = Duration(seconds: 7);
   final context = useContext();
   final options = TrackPresentationOptions.of(context);
   final playlist = ref.watch(audioPlayerProvider);
@@ -69,38 +75,134 @@ Future<void> Function(SpotubeTrackObject track, int index)
         );
       }
     } else {
+      PlaybackStartTrace.begin(
+        track.id,
+        trigger: 'track_tile_tap',
+        data: {
+          'index': index,
+          'collectionId': options.collectionId,
+          'isActiveCollection': isActive,
+        },
+      );
+      YtDlpWorkerClient.notifyForegroundPlaybackStart();
+      playlistNotifier.setPendingPlaybackTrackId(track.id);
+      PlaybackStartTrace.markTrack(track.id, 'pending_track_set');
+      Future<void>? primeFuture;
+      if (track is SpotubeFullTrackObject) {
+        PlaybackStartTrace.markTrack(track.id, 'prime_requested');
+        primeFuture = playlistNotifier.primeTrackPlayback(track);
+      }
+
       final hasActiveLocalSource =
           audioPlayer.hasSource && playlist.currentIndex >= 0;
-      final canJumpInCurrentQueue = hasActiveLocalSource &&
-          (isActive || playlist.tracks.containsBy(track, (a) => a.id));
+      final isTrackQueued =
+          playlist.tracks.containsBy(track, (a) => a.id);
+      final canJumpInCurrentQueue = hasActiveLocalSource && isTrackQueued;
 
-      if (canJumpInCurrentQueue) {
-        await playlistNotifier.jumpToTrack(track);
-      } else {
-        final initialTracks = options.tracks;
-        if (initialTracks.isEmpty) return;
-
-        await playlistNotifier.load(
-          initialTracks,
-          initialIndex: index,
-          autoPlay: true,
-        );
-        playlistNotifier.addCollection(options.collectionId);
-        if (options.collection is SpotubeSimpleAlbumObject) {
-          historyNotifier
-              .addAlbums([options.collection as SpotubeSimpleAlbumObject]);
-        } else {
-          historyNotifier.addPlaylists(
-              [options.collection as SpotubeSimplePlaylistObject]);
+      try {
+        if (primeFuture != null && canJumpInCurrentQueue) {
+          PlaybackStartTrace.markTrack(
+            track.id,
+            'prime_await.start',
+            data: {'budgetMs': primeAwaitBudget.inMilliseconds},
+          );
+          try {
+            await primeFuture.timeout(primeAwaitBudget);
+            PlaybackStartTrace.markTrack(track.id, 'prime_await.done');
+          } on TimeoutException {
+            PlaybackStartTrace.markTrack(track.id, 'prime_await.timeout');
+          }
+        } else if (primeFuture != null) {
+          PlaybackStartTrace.markTrack(track.id, 'prime_await.skipped');
         }
 
-        if (!options.pagination.hasNextPage) {
-          final allTracks = await options.pagination.onFetchAll();
-          final remainingTracks = allTracks.skip(initialTracks.length).toList();
-          if (remainingTracks.isNotEmpty) {
-            await playlistNotifier.addTracks(remainingTracks);
+        if (canJumpInCurrentQueue) {
+          PlaybackStartTrace.markTrack(
+            track.id,
+            'jump_to_existing_queue.start',
+          );
+          await playlistNotifier.jumpToTrack(track);
+          PlaybackStartTrace.markTrack(track.id, 'jump_to_existing_queue.done');
+        } else {
+          final initialTracks = options.tracks;
+          if (initialTracks.isEmpty) {
+            PlaybackStartTrace.failTrack(
+              track.id,
+              'load.aborted_empty_initial_tracks',
+            );
+            playlistNotifier.clearPendingPlaybackTrackId(track.id);
+            return;
+          }
+
+          PlaybackStartTrace.markTrack(
+            track.id,
+            'load_playlist.start',
+            data: {'initialTrackCount': initialTracks.length},
+          );
+          await playlistNotifier.load(
+            initialTracks,
+            initialIndex: index,
+            autoPlay: true,
+          );
+          PlaybackStartTrace.markTrack(track.id, 'load_playlist.done');
+          playlistNotifier.addCollection(options.collectionId);
+          if (options.collection is SpotubeSimpleAlbumObject) {
+            historyNotifier
+                .addAlbums([options.collection as SpotubeSimpleAlbumObject]);
+          } else {
+            historyNotifier.addPlaylists(
+                [options.collection as SpotubeSimplePlaylistObject]);
+          }
+
+          if (options.pagination.hasNextPage) {
+            unawaited(
+              () async {
+                try {
+                  PlaybackStartTrace.markTrack(
+                    track.id,
+                    'load_remaining_tracks.start',
+                  );
+                  final allTracks = await options.pagination.onFetchAll();
+                  final remainingTracks =
+                      allTracks.skip(initialTracks.length).toList();
+                  if (remainingTracks.isNotEmpty) {
+                    await playlistNotifier.addTracks(remainingTracks);
+                  }
+                  PlaybackStartTrace.markTrack(
+                    track.id,
+                    'load_remaining_tracks.done',
+                    data: {'remainingTrackCount': remainingTracks.length},
+                  );
+                } catch (error, stack) {
+                  PlaybackStartTrace.markTrack(
+                    track.id,
+                    'load_remaining_tracks.failed',
+                    data: {'error': error.toString()},
+                  );
+                  await AppLogger.reportError(
+                    error,
+                    stack,
+                    "Failed to fetch remaining tracks for ${options.collectionId}",
+                  );
+                }
+              }(),
+            );
           }
         }
+      } catch (error) {
+        PlaybackStartTrace.failTrack(
+          track.id,
+          'playback_request.failed',
+          data: {'error': error.toString()},
+        );
+        playlistNotifier.clearPendingPlaybackTrackId(track.id);
+        rethrow;
+      }
+
+      final activeTrackId = ref.read(audioPlayerProvider).activeTrack?.id;
+      if (activeTrackId == track.id) {
+        PlaybackStartTrace.markTrack(track.id, 'active_track_matched');
+        playlistNotifier.clearPendingPlaybackTrackId(track.id);
       }
     }
   }, [isActive, playlist, options, playlistNotifier, historyNotifier]);

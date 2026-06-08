@@ -72,7 +72,6 @@ class AndroidYtDlpEngine implements YouTubeEngine {
         "url": url,
         "extraArgs": [
           "--no-check-certificate",
-          "--geo-bypass",
           "--quiet",
           "--ignore-errors",
           "--no-playlist",
@@ -121,7 +120,6 @@ class AndroidYtDlpEngine implements YouTubeEngine {
         "url": "ytsearch10:$query",
         "extraArgs": [
           "--no-check-certificate",
-          "--geo-bypass",
           "--quiet",
           "--ignore-errors",
           "--flat-playlist",

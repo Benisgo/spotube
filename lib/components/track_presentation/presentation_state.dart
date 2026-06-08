@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:collection/collection.dart';
 import 'package:fuzzywuzzy/fuzzywuzzy.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -12,28 +15,93 @@ class PresentationState {
   final List<SpotubeTrackObject> selectedTracks;
   final List<SpotubeTrackObject> presentationTracks;
   final SortBy sortBy;
+  final String searchQuery;
+  final bool isSearchLoading;
 
   const PresentationState({
     required this.selectedTracks,
     required this.presentationTracks,
     required this.sortBy,
+    required this.searchQuery,
+    required this.isSearchLoading,
   });
 
   PresentationState copyWith({
     List<SpotubeTrackObject>? selectedTracks,
     List<SpotubeTrackObject>? presentationTracks,
     SortBy? sortBy,
+    String? searchQuery,
+    bool? isSearchLoading,
   }) {
     return PresentationState(
       selectedTracks: selectedTracks ?? this.selectedTracks,
       presentationTracks: presentationTracks ?? this.presentationTracks,
       sortBy: sortBy ?? this.sortBy,
+      searchQuery: searchQuery ?? this.searchQuery,
+      isSearchLoading: isSearchLoading ?? this.isSearchLoading,
     );
   }
 }
 
+int _scorePresentationTrack(
+  String query,
+  String title,
+  String album,
+  String artists,
+) {
+  final normalizedQuery = query.toLowerCase();
+  final normalizedTitle = title.toLowerCase();
+  final normalizedAlbum = album.toLowerCase();
+  final normalizedArtists = artists.toLowerCase();
+  final combined = [normalizedTitle, normalizedAlbum, normalizedArtists].join(" ");
+
+  if (normalizedTitle == normalizedQuery) return 300;
+  if (normalizedTitle.startsWith(normalizedQuery)) return 240;
+  if (normalizedTitle.contains(normalizedQuery)) return 200;
+  if (normalizedArtists == normalizedQuery) return 180;
+  if (normalizedArtists.contains(normalizedQuery)) return 150;
+  if (normalizedAlbum == normalizedQuery) return 140;
+  if (normalizedAlbum.contains(normalizedQuery)) return 120;
+
+  return [
+    weightedRatio(normalizedTitle, normalizedQuery),
+    weightedRatio(normalizedArtists, normalizedQuery),
+    weightedRatio(normalizedAlbum, normalizedQuery),
+    weightedRatio(combined, normalizedQuery),
+  ].reduce((a, b) => a > b ? a : b);
+}
+
+List<int> _rankPresentationTrackIndices(Map<String, Object?> payload) {
+  final query = payload["query"]! as String;
+  final tracks = (payload["tracks"]! as List).cast<Map<String, Object?>>();
+
+  return tracks
+      .asMap()
+      .entries
+      .map((entry) => (
+            entry.key,
+            _scorePresentationTrack(
+              query,
+              entry.value["name"]! as String,
+              entry.value["album"]! as String,
+              entry.value["artists"]! as String,
+            ),
+          ))
+      .where((entry) => entry.$2 >= 35)
+      .sorted((a, b) {
+        final scoreComparison = b.$2.compareTo(a.$2);
+        if (scoreComparison != 0) return scoreComparison;
+        return a.$1.compareTo(b.$1);
+      })
+      .map((entry) => entry.$1)
+      .toList();
+}
+
 class PresentationStateNotifier
     extends AutoDisposeFamilyNotifier<PresentationState, Object> {
+  bool _didRequestSavedTracksSearchPrefetch = false;
+  int _searchGeneration = 0;
+
   @override
   PresentationState build(collection) {
     if (arg case SpotubeSimplePlaylistObject() || SpotubeSimpleAlbumObject()) {
@@ -42,11 +110,8 @@ class PresentationStateNotifier
           metadataPluginSavedTracksProvider,
           (previous, next) {
             next.whenData((value) {
-              state = state.copyWith(
-                presentationTracks: ServiceUtils.sortTracks(
-                  value.items,
-                  state.sortBy,
-                ),
+              unawaited(
+                _refreshPresentationTracks(sourceTracks: value.items),
               );
             });
           },
@@ -60,11 +125,8 @@ class PresentationStateNotifier
                   (arg as SpotubeSimpleAlbumObject).id),
           (previous, next) {
             next.whenData((value) {
-              state = state.copyWith(
-                presentationTracks: ServiceUtils.sortTracks(
-                  value.items,
-                  state.sortBy,
-                ),
+              unawaited(
+                _refreshPresentationTracks(sourceTracks: value.items),
               );
             });
           },
@@ -72,10 +134,16 @@ class PresentationStateNotifier
       }
     }
 
+    ref.onDispose(() {
+      _searchGeneration++;
+    });
+
     return PresentationState(
       selectedTracks: [],
       presentationTracks: tracks,
       sortBy: SortBy.none,
+      searchQuery: "",
+      isSearchLoading: false,
     );
   }
 
@@ -112,6 +180,90 @@ class PresentationStateNotifier
     return tracks;
   }
 
+  Future<List<SpotubeTrackObject>> _buildPresentationTracks(
+    List<SpotubeTrackObject> sourceTracks,
+    SortBy sortBy,
+    String query,
+  ) async {
+    if (query.isEmpty) {
+      return ServiceUtils.sortTracks(sourceTracks, sortBy);
+    }
+
+    final List<SpotubeTrackObject> filteredTracks;
+    if (sourceTracks.length < 150) {
+      filteredTracks = sourceTracks
+          .asMap()
+          .entries
+          .map((entry) => (
+                entry.key,
+                _scorePresentationTrack(
+                  query,
+                  entry.value.name,
+                  entry.value.album.name,
+                  entry.value.artists.asString(),
+                ),
+                entry.value,
+              ))
+          .where((entry) => entry.$2 >= 35)
+          .sorted((a, b) {
+            final scoreComparison = b.$2.compareTo(a.$2);
+            if (scoreComparison != 0) return scoreComparison;
+            return a.$1.compareTo(b.$1);
+          })
+          .map((entry) => entry.$3)
+          .toList();
+    } else {
+      final rankedIndexes = await compute(
+        _rankPresentationTrackIndices,
+        {
+          "query": query,
+          "tracks": sourceTracks
+              .map((track) => <String, Object?>{
+                    "name": track.name,
+                    "album": track.album.name,
+                    "artists": track.artists.asString(),
+                  })
+              .toList(),
+        },
+      );
+      filteredTracks = rankedIndexes.map((index) => sourceTracks[index]).toList();
+    }
+
+    return ServiceUtils.sortTracks(filteredTracks, sortBy);
+  }
+
+  Future<void> _refreshPresentationTracks({
+    List<SpotubeTrackObject>? sourceTracks,
+    String? query,
+    SortBy? sortBy,
+  }) async {
+    final effectiveQuery = query ?? state.searchQuery;
+    final effectiveSortBy = sortBy ?? state.sortBy;
+    final effectiveSourceTracks = sourceTracks ?? tracks;
+    final generation = ++_searchGeneration;
+    final shouldShowLoading =
+        effectiveQuery.isNotEmpty && effectiveSourceTracks.length >= 150;
+
+    if (shouldShowLoading) {
+      state = state.copyWith(isSearchLoading: true);
+    }
+
+    final presentationTracks = await _buildPresentationTracks(
+      effectiveSourceTracks,
+      effectiveSortBy,
+      effectiveQuery,
+    );
+
+    if (generation != _searchGeneration) return;
+
+    state = state.copyWith(
+      presentationTracks: presentationTracks,
+      sortBy: effectiveSortBy,
+      searchQuery: effectiveQuery,
+      isSearchLoading: false,
+    );
+  }
+
   void selectTrack(SpotubeTrackObject track) {
     if (state.selectedTracks.any((e) => e.id == track.id)) {
       return;
@@ -141,35 +293,45 @@ class PresentationStateNotifier
   }
 
   void filterTracks(String query) {
-    if (query.isEmpty) {
-      return;
+    final trimmedQuery = query.trim();
+
+    if (trimmedQuery.isNotEmpty &&
+        isSavedTrackPlaylist &&
+        !_didRequestSavedTracksSearchPrefetch &&
+        (ref.read(metadataPluginSavedTracksProvider).asData?.value.hasMore ??
+            false)) {
+      _didRequestSavedTracksSearchPrefetch = true;
+      unawaited(
+        ref.read(metadataPluginSavedTracksProvider.notifier).fetchAll(),
+      );
     }
 
-    state = state.copyWith(
-      presentationTracks: ServiceUtils.sortTracks(
-        tracks
-            .map((e) => (weightedRatio(e.name, query), e))
-            .sorted((a, b) => b.$1.compareTo(a.$1))
-            .where((e) => e.$1 > 50)
-            .map((e) => e.$2)
-            .toList(),
-        state.sortBy,
+    state = state.copyWith(searchQuery: trimmedQuery);
+    unawaited(
+      _refreshPresentationTracks(
+        sourceTracks: tracks,
+        query: trimmedQuery,
       ),
     );
   }
 
   void clearFilter() {
-    state = state.copyWith(
-      presentationTracks: ServiceUtils.sortTracks(tracks, state.sortBy),
+    state = state.copyWith(searchQuery: "");
+    unawaited(
+      _refreshPresentationTracks(
+        sourceTracks: tracks,
+        query: "",
+      ),
     );
   }
 
   void sortTracks(SortBy sortBy) {
-    state = state.copyWith(
-      presentationTracks: sortBy == SortBy.none
-          ? tracks
-          : ServiceUtils.sortTracks(state.presentationTracks, sortBy),
-      sortBy: sortBy,
+    state = state.copyWith(sortBy: sortBy);
+    unawaited(
+      _refreshPresentationTracks(
+        sourceTracks: tracks,
+        sortBy: sortBy,
+      ),
     );
   }
 }

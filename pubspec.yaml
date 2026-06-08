@@ -218,6 +218,7 @@ flutter:
     - assets/branding/spotube-logo.png
     - assets/branding/spotube-logo-light.png
     - assets/branding/spotube-logo.ico
+    - assets/yt_dlp_worker/
     - assets/bytecode/spotify_gql_api_client.out
     - assets/plugins/spotube-plugin-musicbrainz-listenbrainz/plugin.smplug
     - assets/plugins/spotube-plugin-spotify/plugin.smplug

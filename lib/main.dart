@@ -48,6 +48,7 @@ import 'package:spotube/services/kv_store/kv_store.dart';
 import 'package:spotube/services/logger/logger.dart';
 import 'package:spotube/services/wm_tools/wm_tools.dart';
 import 'package:spotube/services/youtube_engine/yt_dlp_binary.dart';
+import 'package:spotube/services/youtube_engine/yt_dlp_worker.dart';
 import 'package:spotube/utils/migrations/sandbox.dart';
 import 'package:spotube/utils/platform.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
@@ -141,6 +142,13 @@ Future<void> _initializeBackgroundDesktopServices() async {
   await _runStartupStep(
     'yt-dlp configure',
     () => YtDlpBinary.configureExistingBinary(),
+  );
+
+  await _runStartupStep(
+    'yt-dlp worker warmup',
+    () async {
+      unawaited(YtDlpWorkerClient.instance.prewarm());
+    },
   );
 
   if (kDebugMode) {

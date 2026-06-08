@@ -144,11 +144,6 @@ class TrackPresentationTopSection extends HookConsumerWidget {
             size: ButtonSize.small,
             onPressed: options.onHeart,
           ),
-        IconButton.outline(
-          size: ButtonSize.small,
-          icon: const Icon(SpotubeIcons.refresh),
-          onPressed: options.pagination.onRefresh,
-        ),
       ],
     );
 

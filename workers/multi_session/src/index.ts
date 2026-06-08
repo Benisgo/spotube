@@ -36,6 +36,7 @@ type RoomState = {
   hostToken: string;
   queue: Record<string, unknown>[];
   activeTrackId: string | null;
+  activeSource: Record<string, unknown> | null;
   positionMs: number;
   playing: boolean;
   members: Record<string, Member>;
@@ -208,6 +209,7 @@ export class SpotubeRoom {
         hostToken,
         queue: [],
         activeTrackId: null,
+        activeSource: null,
         positionMs: 0,
         playing: false,
         members: {
@@ -464,11 +466,16 @@ export class SpotubeRoom {
         playing?: boolean;
         positionMs?: number;
         activeTrackId?: string | null;
+        activeSource?: Record<string, unknown> | null;
       };
       this.stateValue.playing = data.playing ?? this.stateValue.playing;
       this.stateValue.positionMs = data.positionMs ?? this.stateValue.positionMs;
       this.stateValue.activeTrackId =
         data.activeTrackId ?? this.stateValue.activeTrackId;
+      this.stateValue.activeSource =
+        data.activeSource === undefined
+          ? this.stateValue.activeSource
+          : data.activeSource;
       this.reconcileCommunityQueue();
       await this.bump();
     }
@@ -482,12 +489,20 @@ export class SpotubeRoom {
       const data = message.data as {
         queue?: Record<string, unknown>[];
         activeTrackId?: string | null;
+        activeSource?: Record<string, unknown> | null;
       };
       this.stateValue.queue = Array.isArray(data.queue)
         ? data.queue
         : this.stateValue.queue;
+      const previousActiveTrackId = this.stateValue.activeTrackId;
       this.stateValue.activeTrackId =
         data.activeTrackId ?? this.stateValue.activeTrackId;
+      this.stateValue.activeSource =
+        data.activeSource !== undefined
+          ? data.activeSource
+          : previousActiveTrackId !== this.stateValue.activeTrackId
+            ? null
+            : this.stateValue.activeSource;
       this.reconcileCommunityQueue();
       await this.bump();
     }

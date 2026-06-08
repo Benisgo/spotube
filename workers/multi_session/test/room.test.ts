@@ -243,4 +243,37 @@ describe("multi-session room contract", () => {
 
     hostSocket.ws.close();
   });
+
+  it("persists and broadcasts the active source with playback updates", async () => {
+    const create = await SELF.fetch("https://spotube.test/rooms", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Host" }),
+    });
+    const room = await create.json<{ code: string; token: string }>();
+    const hostSocket = await openSocket(room.code, room.token);
+
+    hostSocket.ws.send(
+      JSON.stringify({
+        type: "queue",
+        data: {
+          queue: [demoTrack],
+          activeTrackId: demoTrack.id,
+          activeSource: {
+            id: "video-1",
+            title: "Demo Track",
+            artists: ["Demo Artist"],
+            duration: 120000000,
+            externalUri: "https://youtube.com/watch?v=video-1",
+          },
+        },
+      }),
+    );
+
+    const snapshot = await nextSnapshot(hostSocket.ws);
+    expect(snapshot.activeTrackId).toBe(demoTrack.id);
+    expect(snapshot.activeSource.id).toBe("video-1");
+
+    hostSocket.ws.close();
+  });
 });

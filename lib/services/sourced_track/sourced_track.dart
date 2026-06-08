@@ -11,7 +11,7 @@ import 'package:spotube/provider/database/database.dart';
 import 'package:spotube/provider/metadata_plugin/metadata_plugin_provider.dart';
 import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
 import 'package:spotube/services/dio/dio.dart';
-import 'package:spotube/services/logger/logger.dart';
+import 'package:spotube/services/logger/playback_start_trace.dart';
 import 'package:spotube/services/metadata/errors/exceptions.dart';
 
 import 'package:spotube/services/sourced_track/exceptions.dart';
@@ -46,6 +46,11 @@ final youtubeMusicRegex = RegExp(
   caseSensitive: false,
 );
 
+final featuredArtistRegex = RegExp(
+  r"\b(ft|feat|featuring)\.?\b",
+  caseSensitive: false,
+);
+
 String _normalizeSearchText(String value) {
   return value
       .toLowerCase()
@@ -58,14 +63,48 @@ String _stripDecorators(String value) {
   return value
       .replaceAll(RegExp(r'\([^)]*\)'), ' ')
       .replaceAll(RegExp(r'\[[^\]]*\]'), ' ')
-      .replaceAll(RegExp(r'\b(official|audio|video|lyrics?|lyric video|visualizer|topic|provided to youtube by|music video)\b', caseSensitive: false), ' ')
+      .replaceAll(
+          RegExp(
+              r'\b(official|audio|video|lyrics?|lyric video|visualizer|topic|provided to youtube by|music video)\b',
+              caseSensitive: false),
+          ' ')
       .replaceAll(RegExp(r'\s+'), ' ')
       .trim();
 }
 
+Set<String> _tokenizeSearchText(String value) {
+  return _normalizeSearchText(value)
+      .split(' ')
+      .where((part) => part.isNotEmpty)
+      .toSet();
+}
+
+double _overlapRatio(Set<String> left, Set<String> right) {
+  if (left.isEmpty || right.isEmpty) return 0;
+  return left.intersection(right).length / left.union(right).length;
+}
+
 class SourcedTrack extends BasicSourcedTrack {
+  static const _validatedStreamTtl = Duration(minutes: 10);
+  static const _refreshCooldown = Duration(seconds: 20);
+  static const _signedUrlSafetyWindow = Duration(minutes: 2);
+  static const _resolvedFetchCacheLimit = 250;
+  static const _siblingCacheLimit = 250;
+  static const _streamCacheLimit = 500;
+  static const _validatedStreamCacheLimit = 1000;
   static final Map<String, Future<SourcedTrack>> _inFlightFetches = {};
   static final Map<String, SourcedTrack> _resolvedFetches = {};
+  static final Map<String, Future<SourcedTrack>> _inFlightRefreshes = {};
+  static final Map<String, DateTime> _recentRefreshes = {};
+  static final Map<String, Future<List<SpotubeAudioSourceMatchObject>>>
+      _inFlightSiblingFetches = {};
+  static final Map<String, List<SpotubeAudioSourceMatchObject>>
+      _siblingFetches = {};
+  static final Map<String, Future<List<SpotubeAudioSourceStreamObject>>>
+      _inFlightStreamFetches = {};
+  static final Map<String, List<SpotubeAudioSourceStreamObject>>
+      _streamFetches = {};
+  static final Map<String, DateTime> _validatedStreams = {};
   final Ref ref;
 
   SourcedTrack({
@@ -81,16 +120,16 @@ class SourcedTrack extends BasicSourcedTrack {
     required SpotubeFullTrackObject query,
     required Ref ref,
   }) async {
+    PlaybackStartTrace.markTrack(query.id, 'sourced_track.fetch.start');
     final resolved = _resolvedFetches[query.id];
     if (resolved != null) {
-      AppLogger.trace("[sourced_track] reuse resolved track=${query.id}");
-      AppLogger.criticalTrace("[sourced_track] reuse resolved track=${query.id}");
+      PlaybackStartTrace.markTrack(query.id, 'sourced_track.fetch.cache_hit');
       return resolved;
     }
 
     final inflight = _inFlightFetches[query.id];
     if (inflight != null) {
-      AppLogger.trace("[sourced_track] join in-flight track=${query.id}");
+      PlaybackStartTrace.markTrack(query.id, 'sourced_track.fetch.join_inflight');
       return inflight;
     }
 
@@ -99,7 +138,12 @@ class SourcedTrack extends BasicSourcedTrack {
 
     try {
       final resolvedTrack = await future;
-      _resolvedFetches[query.id] = resolvedTrack;
+      _rememberResolvedTrack(query.id, resolvedTrack);
+      PlaybackStartTrace.markTrack(
+        query.id,
+        'sourced_track.fetch.done',
+        data: {'hasUrl': resolvedTrack.url != null},
+      );
       return resolvedTrack;
     } finally {
       final active = _inFlightFetches[query.id];
@@ -113,22 +157,12 @@ class SourcedTrack extends BasicSourcedTrack {
     required SpotubeFullTrackObject query,
     required Ref ref,
   }) async {
-    AppLogger.trace("[sourced_track] fetchFromTrack start track=${query.id}");
-    AppLogger.criticalTrace("[sourced_track] fetchFromTrack start track=${query.id}");
-    AppLogger.criticalTrace("[sourced_track] await audioSourcePluginProvider track=${query.id}");
     final audioSource = await ref.read(audioSourcePluginProvider.future);
-    AppLogger.criticalTrace("[sourced_track] audioSourcePluginProvider done track=${query.id} null=${audioSource == null}");
-    AppLogger.criticalTrace(
-      "[sourced_track] audio source slug sync track=${query.id} null=${audioSource == null}",
-    );
     if (audioSource == null) {
       throw MetadataPluginException.noDefaultAudioSourcePlugin();
     }
 
-    AppLogger.criticalTrace("[sourced_track] await database track=${query.id}");
     final database = AppDatabase.current ?? ref.read(databaseProvider)!;
-    AppLogger.criticalTrace("[sourced_track] database done track=${query.id}");
-    AppLogger.criticalTrace("[sourced_track] db cache query start track=${query.id}");
     final cachedSource = await (database.select(database.sourceMatchTable)
           ..where((s) =>
               s.trackId.equals(query.id) &
@@ -140,63 +174,68 @@ class SourcedTrack extends BasicSourcedTrack {
           ]))
         .get()
         .then((s) => s.firstOrNull);
-    AppLogger.criticalTrace(
-      "[sourced_track] db cache query done track=${query.id} hit=${cachedSource != null}",
-    );
 
     if (cachedSource == null) {
-      AppLogger.trace("[sourced_track] cache miss track=${query.id}");
-      AppLogger.criticalTrace("[sourced_track] cache miss track=${query.id}");
-      final siblings = await fetchSiblings(ref: ref, query: query);
-      if (siblings.isEmpty) {
+      PlaybackStartTrace.markTrack(query.id, 'sourced_track.cache_miss');
+      final rankedMatches = await _searchRankedMatches(
+        ref: ref,
+        query: query,
+        deferred: true,
+      );
+      if (rankedMatches.isEmpty) {
         throw TrackNotFoundError(query);
       }
+      final primaryMatch = rankedMatches.first;
+      final deferredSiblings = rankedMatches.skip(1).toList();
+      _rememberSiblingFetch(
+        _siblingCacheKey(
+          trackId: query.id,
+          sourceSlug: audioSource.slug,
+        ),
+        rankedMatches,
+      );
+      PlaybackStartTrace.markTrack(
+        query.id,
+        'sourced_track.siblings.deferred',
+        data: {'resultCount': deferredSiblings.length, 'siblingsDeferred': true},
+      );
 
       await database.into(database.sourceMatchTable).insert(
             SourceMatchTableCompanion.insert(
               trackId: query.id,
-              sourceInfo: Value(jsonEncode(siblings.first)),
+              sourceInfo: Value(jsonEncode(primaryMatch)),
               sourceType: audioSource.slug,
             ),
           );
 
-      AppLogger.criticalTrace(
-        "[sourced_track] streams start track=${query.id} source=${siblings.first.id}",
-      );
-      final manifest = await audioSource.audioSource.streams(siblings.first);
-      AppLogger.criticalTrace(
-        "[sourced_track] streams done track=${query.id} source=${siblings.first.id} count=${manifest.length}",
+      final manifest = await _fetchStreams(
+        ref: ref,
+        match: primaryMatch,
+        sourceSlug: audioSource.slug,
+        trackId: query.id,
       );
 
       final sourcedTrack = SourcedTrack(
         ref: ref,
-        siblings: siblings.skip(1).toList(),
-        info: siblings.first,
+        siblings: const [],
+        info: primaryMatch,
         source: audioSource.slug,
         sources: manifest,
         query: query,
       );
 
       final resolved = await sourcedTrack.resolvePlayableSource();
-      AppLogger.trace(
-        "[sourced_track] fetchFromTrack resolved track=${query.id} url=${resolved.url != null} siblings=${resolved.siblings.length}",
-      );
-      AppLogger.criticalTrace(
-        "[sourced_track] fetchFromTrack resolved track=${query.id} url=${resolved.url != null} siblings=${resolved.siblings.length}",
-      );
       return resolved;
     }
-    AppLogger.trace("[sourced_track] cache hit track=${query.id}");
-    AppLogger.criticalTrace("[sourced_track] cache hit track=${query.id}");
+    PlaybackStartTrace.markTrack(query.id, 'sourced_track.cache_hit');
     final item = SpotubeAudioSourceMatchObject.fromJson(
       jsonDecode(cachedSource.sourceInfo),
     );
-    AppLogger.criticalTrace(
-      "[sourced_track] streams start track=${query.id} source=${item.id}",
-    );
-    final manifest = await audioSource.audioSource.streams(item);
-    AppLogger.criticalTrace(
-      "[sourced_track] streams done track=${query.id} source=${item.id} count=${manifest.length}",
+    final manifest = await _fetchStreams(
+      ref: ref,
+      match: item,
+      sourceSlug: audioSource.slug,
+      trackId: query.id,
     );
 
     final sourcedTrack = SourcedTrack(
@@ -208,16 +247,7 @@ class SourcedTrack extends BasicSourcedTrack {
       source: audioSource.slug,
     );
 
-    AppLogger.log.i("${query.name}: ${sourcedTrack.url}");
-
-    final resolved = await sourcedTrack.resolvePlayableSource();
-    AppLogger.trace(
-      "[sourced_track] fetchFromTrack resolved track=${query.id} url=${resolved.url != null} siblings=${resolved.siblings.length}",
-    );
-    AppLogger.criticalTrace(
-      "[sourced_track] fetchFromTrack resolved track=${query.id} url=${resolved.url != null} siblings=${resolved.siblings.length}",
-    );
-    return resolved;
+    return sourcedTrack.resolvePlayableSource();
   }
 
   static List<SpotubeAudioSourceMatchObject> rankResults(
@@ -273,155 +303,279 @@ class SourcedTrack extends BasicSourcedTrack {
     List<SpotubeAudioSourceMatchObject> results,
     SpotubeFullTrackObject track,
   ) {
-    final trackName = track.name.toLowerCase();
     final normalizedTrackName = _normalizeSearchText(track.name);
-    final artistNames = track.artists.map((artist) => artist.name.toLowerCase());
-    final normalizedArtistNames =
-        track.artists.map((artist) => _normalizeSearchText(artist.name)).toList();
+    final cleanedTrackName = _normalizeSearchText(_stripDecorators(track.name));
+    final trackTokens = _tokenizeSearchText(cleanedTrackName);
+    final artistNames = track.artists.map((artist) => artist.name).toList();
+    final normalizedArtistNames = artistNames
+        .map(_normalizeSearchText)
+        .where((name) => name.isNotEmpty)
+        .toList();
+    final artistTokens = normalizedArtistNames
+        .expand(_tokenizeSearchText)
+        .where((token) => token.isNotEmpty)
+        .toSet();
     final expectedDurationSeconds = track.durationMs ~/ 1000;
 
     return results
-        .map((sibling) {
+        .mapIndexed((index, sibling) {
           final title = sibling.title.toLowerCase();
-          final normalizedTitle = _normalizeSearchText(title);
+          final normalizedTitle = _normalizeSearchText(sibling.title);
           final cleanedNormalizedTitle =
               _normalizeSearchText(_stripDecorators(sibling.title));
+          final titleTokens = _tokenizeSearchText(cleanedNormalizedTitle);
           final siblingArtists =
               sibling.artists.map((artist) => artist.toLowerCase()).toList();
           final normalizedSiblingArtists =
               siblingArtists.map(_normalizeSearchText).toList();
+          final siblingArtistTokens = normalizedSiblingArtists
+              .expand(_tokenizeSearchText)
+              .where((token) => token.isNotEmpty)
+              .toSet();
+          final combinedSiblingTokens = {
+            ...titleTokens,
+            ...siblingArtistTokens
+          };
           var score = 0;
 
-          if (title.contains(trackName)) {
-            score += 8;
-          }
           if (normalizedTitle == normalizedTrackName) {
-            score += 12;
-          } else if (cleanedNormalizedTitle == normalizedTrackName) {
-            score += 9;
-          } else if (cleanedNormalizedTitle.contains(normalizedTrackName)) {
-            score += 4;
+            score += 30;
+          }
+          if (cleanedNormalizedTitle == cleanedTrackName) {
+            score += 32;
+          } else if (cleanedNormalizedTitle.startsWith(cleanedTrackName)) {
+            score += 20;
+          } else if (cleanedNormalizedTitle.contains(cleanedTrackName)) {
+            score += 10;
           }
 
-          final titleWordCount = cleanedNormalizedTitle
-              .split(' ')
-              .where((part) => part.isNotEmpty)
-              .length;
-          final trackWordCount = normalizedTrackName
-              .split(' ')
-              .where((part) => part.isNotEmpty)
-              .length;
-          if (titleWordCount > trackWordCount + 3) {
-            score -= 4;
+          final titleOverlap = _overlapRatio(titleTokens, trackTokens);
+          score += (titleOverlap * 28).round();
+
+          final artistOverlap =
+              _overlapRatio(combinedSiblingTokens, artistTokens);
+          score += (artistOverlap * 18).round();
+
+          final titleWordCount = titleTokens.length;
+          final trackWordCount = trackTokens.length;
+          if (titleWordCount > trackWordCount + 4) {
+            score -= 6;
           }
 
           var hasStrongArtistMatch = false;
-          for (final artistName in artistNames) {
+          for (final artistName in artistNames.map(_normalizeSearchText)) {
             final normalizedArtistName = _normalizeSearchText(artistName);
             final exactArtistMatch = normalizedSiblingArtists.any(
               (artist) =>
                   artist == normalizedArtistName ||
-                  artist.contains(normalizedArtistName) ||
-                  normalizedArtistName.contains(artist),
+                  artist.startsWith(normalizedArtistName) ||
+                  normalizedArtistName.startsWith(artist),
             );
             if (exactArtistMatch) {
-              score += 5;
+              score += 14;
               hasStrongArtistMatch = true;
             }
             if (normalizedTitle.contains(normalizedArtistName)) {
-              score += 3;
+              score += 8;
               hasStrongArtistMatch = true;
             }
           }
 
           if (!hasStrongArtistMatch) {
-            score -= 10;
-          } else if (normalizedArtistNames.any(
-            (artist) => normalizedTitle.startsWith('$artist '),
-          )) {
-            score += 3;
+            score -= 18;
+          } else if (normalizedArtistNames.any((artist) {
+            return cleanedNormalizedTitle.startsWith('$artist ') ||
+                cleanedNormalizedTitle.contains(' $artist ');
+          })) {
+            score += 6;
           }
 
           final durationDelta =
               (sibling.duration.inSeconds - expectedDurationSeconds).abs();
-          if (durationDelta <= 2) {
-            score += 6;
+          if (durationDelta == 0) {
+            score += 18;
+          } else if (durationDelta <= 2) {
+            score += 16;
           } else if (durationDelta <= 5) {
-            score += 4;
+            score += 12;
           } else if (durationDelta <= 10) {
-            score += 2;
+            score += 6;
+          } else if (durationDelta <= 20) {
+            score += 1;
           } else if (durationDelta >= 30) {
-            score -= 3;
+            score -= 12;
           }
 
-          if (youtubeMusicRegex.hasMatch(title)) {
-            score += 8;
+          if (youtubeMusicRegex.hasMatch(title) ||
+              siblingArtists
+                  .any((artist) => youtubeMusicRegex.hasMatch(artist))) {
+            score += 16;
           }
           if (officialAudioRegex.hasMatch(title)) {
-            score += 5;
-          }
-          if (title.contains("audio")) {
-            score += 2;
+            score += 14;
           }
           if (officialMusicRegex.hasMatch(title)) {
-            score += 1;
+            score += 8;
+          }
+          if (title.contains("audio")) {
+            score += 4;
+          }
+          if (featuredArtistRegex.hasMatch(title)) {
+            score += 2;
           }
 
           if (musicVideoRegex.hasMatch(title)) {
-            score -= 8;
+            score -= 18;
           }
           if (lyricVideoRegex.hasMatch(title)) {
-            score -= 8;
+            score -= 18;
           }
           if (livePerformanceRegex.hasMatch(title)) {
-            score -= 6;
+            score -= 16;
           }
           if (remixStyleRegex.hasMatch(title)) {
-            score -= 4;
+            score -= 14;
           }
 
-          return (sibling: sibling, score: score);
+          return (index: index, sibling: sibling, score: score);
         })
-        .sorted((a, b) => b.score.compareTo(a.score))
+        .sorted((a, b) {
+          final scoreDiff = b.score.compareTo(a.score);
+          if (scoreDiff != 0) return scoreDiff;
+          return a.index.compareTo(b.index);
+        })
         .map((entry) => entry.sibling)
         .toList();
+  }
+
+  static String _siblingCacheKey({
+    required String trackId,
+    required String sourceSlug,
+  }) {
+    return "$sourceSlug::$trackId";
+  }
+
+  static String _streamCacheKey({
+    required String sourceSlug,
+    required SpotubeAudioSourceMatchObject match,
+  }) {
+    return "$sourceSlug::${match.id}";
+  }
+
+  static Future<List<SpotubeAudioSourceStreamObject>> _fetchStreams({
+    required Ref ref,
+    required SpotubeAudioSourceMatchObject match,
+    required String sourceSlug,
+    String? trackId,
+  }) async {
+    if (trackId != null) {
+      PlaybackStartTrace.markTrack(
+        trackId,
+        'sourced_track.streams.start',
+        data: {'sourceId': match.id, 'sourceSlug': sourceSlug},
+      );
+    }
+    final cacheKey = _streamCacheKey(sourceSlug: sourceSlug, match: match);
+    final cached = _streamFetches[cacheKey];
+    if (cached != null) {
+      if (trackId != null) {
+        PlaybackStartTrace.markTrack(
+          trackId,
+          'sourced_track.streams.cache_hit',
+          data: {'streamCount': cached.length},
+        );
+      }
+      return cached;
+    }
+
+    final active = _inFlightStreamFetches[cacheKey];
+    if (active != null) {
+      return active;
+    }
+
+    final future = (() async {
+      final audioSource = await ref.read(audioSourcePluginProvider.future);
+      if (audioSource == null) {
+        throw MetadataPluginException.noDefaultAudioSourcePlugin();
+      }
+
+      final manifest = await audioSource.audioSource.streams(match);
+      _rememberStreamFetch(cacheKey, manifest);
+      if (trackId != null) {
+        PlaybackStartTrace.markTrack(
+          trackId,
+          'sourced_track.streams.done',
+          data: {'streamCount': manifest.length, 'sourceId': match.id},
+        );
+      }
+      return manifest;
+    })();
+
+    _inFlightStreamFetches[cacheKey] = future;
+    try {
+      return await future;
+    } finally {
+      final current = _inFlightStreamFetches[cacheKey];
+      if (identical(current, future)) {
+        _inFlightStreamFetches.remove(cacheKey);
+      }
+    }
   }
 
   static Future<List<SpotubeAudioSourceMatchObject>> fetchSiblings({
     required SpotubeFullTrackObject query,
     required Ref ref,
   }) async {
-    AppLogger.trace("[sourced_track] fetchSiblings start track=${query.id}");
-    AppLogger.criticalTrace("[sourced_track] fetchSiblings start track=${query.id}");
     final audioSource = await ref.read(audioSourcePluginProvider.future);
 
     if (audioSource == null) {
       throw MetadataPluginException.noDefaultAudioSourcePlugin();
     }
 
-    final videoResults = <SpotubeAudioSourceMatchObject>[];
-    final experimentalScoring = ref.read(
-      userPreferencesProvider.select((value) => value.experimentalScoring),
+    final cacheKey = _siblingCacheKey(
+      trackId: query.id,
+      sourceSlug: audioSource.slug,
     );
-
-    final searchResults = await audioSource.audioSource.matches(query);
-
-    if (experimentalScoring) {
-      videoResults.addAll(rankResultsExperimental(searchResults, query));
-    } else if (ServiceUtils.onlyContainsEnglish(query.name)) {
-      videoResults.addAll(searchResults);
-    } else {
-      videoResults.addAll(rankResults(searchResults, query));
+    final cached = _siblingFetches[cacheKey];
+    if (cached != null) {
+      PlaybackStartTrace.markTrack(
+        query.id,
+        'sourced_track.siblings.cache_hit',
+        data: {'resultCount': cached.length},
+      );
+      return cached;
     }
 
-    final ranked = videoResults.toSet().toList();
-    AppLogger.trace(
-      "[sourced_track] fetchSiblings done track=${query.id} results=${ranked.length}",
-    );
-    AppLogger.criticalTrace(
-      "[sourced_track] fetchSiblings done track=${query.id} results=${ranked.length}",
-    );
-    return ranked;
+    final active = _inFlightSiblingFetches[cacheKey];
+    if (active != null) {
+      return active;
+    }
+
+    final future = (() async {
+      final ranked = await _searchRankedMatches(
+        ref: ref,
+        query: query,
+        sourceSlugOverride: audioSource.slug,
+        deferred: false,
+      );
+      _rememberSiblingFetch(cacheKey, ranked);
+      PlaybackStartTrace.markTrack(
+        query.id,
+        'sourced_track.siblings.done',
+        data: {'resultCount': ranked.length},
+      );
+      return ranked;
+    })();
+
+    _inFlightSiblingFetches[cacheKey] = future;
+    try {
+      return await future;
+    } finally {
+      final current = _inFlightSiblingFetches[cacheKey];
+      if (identical(current, future)) {
+        _inFlightSiblingFetches.remove(cacheKey);
+      }
+    }
   }
 
   Future<SourcedTrack> copyWithSibling() async {
@@ -441,12 +595,6 @@ class SourcedTrack extends BasicSourcedTrack {
   }
 
   Future<SourcedTrack> resolvePlayableSource() async {
-    AppLogger.trace(
-      "[sourced_track] resolvePlayableSource start track=${query.id} url=${url != null} siblings=${siblings.length}",
-    );
-    AppLogger.criticalTrace(
-      "[sourced_track] resolvePlayableSource start track=${query.id} url=${url != null} siblings=${siblings.length}",
-    );
     var current = this;
     if (current.url != null) return current;
 
@@ -475,20 +623,16 @@ class SourcedTrack extends BasicSourcedTrack {
       current = swapped;
     }
 
-    AppLogger.trace(
-      "[sourced_track] resolvePlayableSource done track=${query.id} url=${current.url != null} siblings=${current.siblings.length}",
-    );
-    AppLogger.criticalTrace(
-      "[sourced_track] resolvePlayableSource done track=${query.id} url=${current.url != null} siblings=${current.siblings.length}",
-    );
     return current;
   }
 
   Future<SourcedTrack?> swapWithSibling(
     SpotubeAudioSourceMatchObject sibling,
   ) async {
-    AppLogger.trace(
-      "[sourced_track] swapWithSibling track=${query.id} from=${info.id} to=${sibling.id}",
+    PlaybackStartTrace.markTrack(
+      query.id,
+      'sourced_track.swap_sibling.start',
+      data: {'fromSourceId': info.id, 'toSourceId': sibling.id},
     );
     if (sibling.id == info.id) {
       return null;
@@ -509,7 +653,12 @@ class SourcedTrack extends BasicSourcedTrack {
     final newSiblings = siblings.where((s) => s.id != sibling.id).toList()
       ..insert(0, info);
 
-    final manifest = await audioSource.audioSource.streams(newSourceInfo);
+    final manifest = await _fetchStreams(
+      ref: ref,
+      match: newSourceInfo,
+      sourceSlug: audioSource.slug,
+      trackId: query.id,
+    );
 
     final database = ref.read(databaseProvider);
 
@@ -542,6 +691,7 @@ class SourcedTrack extends BasicSourcedTrack {
     );
 
     _resolvedFetches[query.id] = sourcedTrack;
+    PlaybackStartTrace.markTrack(query.id, 'sourced_track.swap_sibling.done');
     return sourcedTrack;
   }
 
@@ -550,35 +700,155 @@ class SourcedTrack extends BasicSourcedTrack {
   }
 
   Future<SourcedTrack> refreshStream() async {
-    AppLogger.trace("[sourced_track] refreshStream start track=${query.id}");
+    PlaybackStartTrace.markTrack(query.id, 'sourced_track.refresh.start');
+    final active = _inFlightRefreshes[query.id];
+    if (active != null) {
+      PlaybackStartTrace.markTrack(query.id, 'sourced_track.refresh.join_inflight');
+      return active;
+    }
+
+    final future = _refreshStreamInternal();
+    _inFlightRefreshes[query.id] = future;
+
+    try {
+      final refreshed = await future;
+      _recentRefreshes[query.id] = DateTime.now();
+      _pruneMap(_recentRefreshes, _resolvedFetchCacheLimit);
+      PlaybackStartTrace.markTrack(
+        query.id,
+        'sourced_track.refresh.done',
+        data: {'hasUrl': refreshed.url != null},
+      );
+      return refreshed;
+    } finally {
+      final current = _inFlightRefreshes[query.id];
+      if (identical(current, future)) {
+        _inFlightRefreshes.remove(query.id);
+      }
+    }
+  }
+
+  static Future<List<SpotubeAudioSourceMatchObject>> _searchRankedMatches({
+    required Ref ref,
+    required SpotubeFullTrackObject query,
+    String? sourceSlugOverride,
+    required bool deferred,
+  }) async {
+    PlaybackStartTrace.markTrack(
+      query.id,
+      'sourced_track.siblings.start',
+      data: {'siblingsDeferred': deferred},
+    );
+    final audioSource = await ref.read(audioSourcePluginProvider.future);
+
+    if (audioSource == null) {
+      throw MetadataPluginException.noDefaultAudioSourcePlugin();
+    }
+
+    final sourceSlug = sourceSlugOverride ?? audioSource.slug;
+    final cacheKey = _siblingCacheKey(
+      trackId: query.id,
+      sourceSlug: sourceSlug,
+    );
+    final cached = _siblingFetches[cacheKey];
+    if (cached != null) {
+      PlaybackStartTrace.markTrack(
+        query.id,
+        'sourced_track.siblings.cache_hit',
+        data: {'resultCount': cached.length},
+      );
+      return cached;
+    }
+
+    final videoResults = <SpotubeAudioSourceMatchObject>[];
+    final experimentalScoring = ref.read(
+      userPreferencesProvider.select((value) => value.experimentalScoring),
+    );
+
+    final searchResults = await audioSource.audioSource.matches(query);
+
+    if (experimentalScoring) {
+      videoResults.addAll(rankResultsExperimental(searchResults, query));
+    } else if (ServiceUtils.onlyContainsEnglish(query.name)) {
+      videoResults.addAll(searchResults);
+    } else {
+      videoResults.addAll(rankResults(searchResults, query));
+    }
+
+    return videoResults.toSet().toList();
+  }
+
+  Future<SourcedTrack> _refreshStreamInternal() async {
     final audioSource = await ref.read(audioSourcePluginProvider.future);
     if (audioSource == null) {
       throw MetadataPluginException.noDefaultAudioSourcePlugin();
     }
 
+    if (hasFreshValidatedStream || _isRefreshCooldownActive(query.id)) {
+      PlaybackStartTrace.markTrack(
+        query.id,
+        'sourced_track.refresh.short_circuit',
+        data: {'hasFreshValidatedStream': hasFreshValidatedStream},
+      );
+      _rememberResolvedTrack(query.id, this);
+      return this;
+    }
+
+    final preferredStream = preferredPlaybackStream;
+
     List<SpotubeAudioSourceStreamObject> validStreams = [];
 
-    final stringBuffer = StringBuffer();
-    for (final source in sources) {
+    Future<SpotubeAudioSourceStreamObject?> validateStream(
+      SpotubeAudioSourceStreamObject source,
+    ) async {
+      if (_isRecentlyValidated(source.url)) {
+        return source;
+      }
+
+      if (_hasFreshSignedExpiry(source.url)) {
+        _markValidated(source.url);
+        return source;
+      }
+
       final res = await globalDio.head(
         source.url,
         options:
             Options(validateStatus: (status) => status != null && status < 500),
       );
 
-      stringBuffer.writeln(
-        "[${query.id}] ${res.statusCode} ${source.container} ${source.codec} ${source.bitrate}",
-      );
-
       if (res.statusCode! < 400) {
-        validStreams.add(source);
+        _markValidated(source.url);
+        return source;
+      }
+
+      _validatedStreams.remove(source.url);
+      return null;
+    }
+
+    if (preferredStream != null) {
+      final validatedPreferred = await validateStream(preferredStream);
+      if (validatedPreferred != null) {
+        validStreams = [
+          validatedPreferred,
+          ...sources.where((source) => source.url != validatedPreferred.url),
+        ];
       }
     }
 
-    AppLogger.log.d(stringBuffer.toString());
+    if (validStreams.isEmpty) {
+      final validationResults = await Future.wait(
+        sources.map(validateStream),
+      );
+      validStreams = validationResults.whereType<SpotubeAudioSourceStreamObject>().toList();
+    }
 
     if (validStreams.isEmpty) {
-      validStreams = await audioSource.audioSource.streams(info);
+      validStreams = await _fetchStreams(
+        ref: ref,
+        match: info,
+        sourceSlug: audioSource.slug,
+        trackId: query.id,
+      );
     }
 
     final sourcedTrack = SourcedTrack(
@@ -590,48 +860,143 @@ class SourcedTrack extends BasicSourcedTrack {
       query: query,
     );
 
-    AppLogger.log.i("Refreshing ${query.name}: ${sourcedTrack.url}");
-
     final resolved = await sourcedTrack.resolvePlayableSource();
-    AppLogger.trace(
-      "[sourced_track] refreshStream done track=${query.id} url=${resolved.url != null}",
-    );
-    _resolvedFetches[query.id] = resolved;
+    if (resolved.url != null) {
+      _markValidated(resolved.url!);
+    }
+    _rememberResolvedTrack(query.id, resolved);
     return resolved;
+  }
+
+  bool get hasFreshValidatedStream {
+    final preferredStream = preferredPlaybackStream;
+    return preferredStream != null &&
+        (_isRecentlyValidated(preferredStream.url) ||
+            _hasFreshSignedExpiry(preferredStream.url));
+  }
+
+  static bool _isRecentlyValidated(String url) {
+    _pruneValidatedStreams();
+    final validatedAt = _validatedStreams[url];
+    if (validatedAt == null) return false;
+
+    if (DateTime.now().difference(validatedAt) > _validatedStreamTtl) {
+      _validatedStreams.remove(url);
+      return false;
+    }
+
+    return true;
+  }
+
+  static void _markValidated(String url) {
+    _validatedStreams[url] = DateTime.now();
+    _pruneValidatedStreams();
+  }
+
+  static bool _hasFreshSignedExpiry(String url) {
+    try {
+      final uri = Uri.parse(url);
+      final expireParam =
+          uri.queryParameters["expire"] ?? uri.queryParameters["expires"];
+      if (expireParam == null || expireParam.isEmpty) return false;
+
+      final expireEpoch = int.tryParse(expireParam);
+      if (expireEpoch == null) return false;
+
+      final expiresAt = expireEpoch > 1000000000000
+          ? DateTime.fromMillisecondsSinceEpoch(expireEpoch, isUtc: true)
+          : DateTime.fromMillisecondsSinceEpoch(
+              expireEpoch * 1000,
+              isUtc: true,
+            );
+
+      return expiresAt.isAfter(
+        DateTime.now().toUtc().add(_signedUrlSafetyWindow),
+      );
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static bool _isRefreshCooldownActive(String trackId) {
+    final refreshedAt = _recentRefreshes[trackId];
+    if (refreshedAt == null) return false;
+
+    if (DateTime.now().difference(refreshedAt) > _refreshCooldown) {
+      _recentRefreshes.remove(trackId);
+      return false;
+    }
+
+    return true;
+  }
+
+  static void _rememberResolvedTrack(String trackId, SourcedTrack track) {
+    _resolvedFetches[trackId] = track;
+    _pruneMap(_resolvedFetches, _resolvedFetchCacheLimit);
+  }
+
+  static void _rememberSiblingFetch(
+    String cacheKey,
+    List<SpotubeAudioSourceMatchObject> siblings,
+  ) {
+    _siblingFetches[cacheKey] = siblings;
+    _pruneMap(_siblingFetches, _siblingCacheLimit);
+  }
+
+  static void _rememberStreamFetch(
+    String cacheKey,
+    List<SpotubeAudioSourceStreamObject> streams,
+  ) {
+    _streamFetches[cacheKey] = streams;
+    _pruneMap(_streamFetches, _streamCacheLimit);
+  }
+
+  static void _pruneValidatedStreams() {
+    final now = DateTime.now();
+    _validatedStreams.removeWhere(
+      (_, validatedAt) => now.difference(validatedAt) > _validatedStreamTtl,
+    );
+    _pruneMap(_validatedStreams, _validatedStreamCacheLimit);
+  }
+
+  static void _pruneMap<K, V>(Map<K, V> map, int maxEntries) {
+    while (map.length > maxEntries) {
+      map.remove(map.keys.first);
+    }
   }
 
   SpotubeAudioSourceStreamObject? get preferredPlaybackStream {
     if (sources.isEmpty) return null;
 
     final sorted = [...sources]..sort((a, b) {
-      int score(SpotubeAudioSourceStreamObject source) {
-        var value = 0;
-        if (source.container == "mp4") {
-          value += 4;
-        } else if (source.container == "webm") {
-          value += 3;
-        } else {
-          value += 1;
+        int score(SpotubeAudioSourceStreamObject source) {
+          var value = 0;
+          if (source.container == "mp4") {
+            value += 4;
+          } else if (source.container == "webm") {
+            value += 3;
+          } else {
+            value += 1;
+          }
+
+          if (source.type == SpotubeMediaCompressionType.lossless) {
+            value += 2;
+          }
+
+          return value;
         }
 
-        if (source.type == SpotubeMediaCompressionType.lossless) {
-          value += 2;
-        }
+        final scoreDiff = score(b).compareTo(score(a));
+        if (scoreDiff != 0) return scoreDiff;
 
-        return value;
-      }
+        final bitrateDiff = (b.bitrate ?? 0).compareTo(a.bitrate ?? 0);
+        if (bitrateDiff != 0) return bitrateDiff;
 
-      final scoreDiff = score(b).compareTo(score(a));
-      if (scoreDiff != 0) return scoreDiff;
+        final sampleRateDiff = (b.sampleRate ?? 0).compareTo(a.sampleRate ?? 0);
+        if (sampleRateDiff != 0) return sampleRateDiff;
 
-      final bitrateDiff = (b.bitrate ?? 0).compareTo(a.bitrate ?? 0);
-      if (bitrateDiff != 0) return bitrateDiff;
-
-      final sampleRateDiff = (b.sampleRate ?? 0).compareTo(a.sampleRate ?? 0);
-      if (sampleRateDiff != 0) return sampleRateDiff;
-
-      return (b.bitDepth ?? 0).compareTo(a.bitDepth ?? 0);
-    });
+        return (b.bitDepth ?? 0).compareTo(a.bitDepth ?? 0);
+      });
 
     return sorted.firstOrNull;
   }
@@ -718,7 +1083,8 @@ class SourcedTrack extends BasicSourcedTrack {
           name: stream.container,
           qualities: const <SpotubeAudioLosslessContainerQuality>[],
         ),
-      SpotubeMediaCompressionType.lossy => SpotubeAudioSourceContainerPreset.lossy(
+      SpotubeMediaCompressionType.lossy =>
+        SpotubeAudioSourceContainerPreset.lossy(
           type: stream.type,
           name: stream.container,
           qualities: const <SpotubeAudioLossyContainerQuality>[],

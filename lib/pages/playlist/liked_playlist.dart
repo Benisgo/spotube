@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart' as material;
 import 'package:flutter/widgets.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:spotube/collections/assets.gen.dart';
 import 'package:spotube/components/track_presentation/presentation_props.dart';
@@ -27,8 +30,18 @@ class LikedPlaylistPage extends HookConsumerWidget {
         ref.watch(metadataPluginSavedTracksProvider.notifier);
     final tracks = likedTracks.asData?.value.items ?? [];
 
+    useEffect(() {
+      if (likedTracks.asData?.value.hasMore == true) {
+        Future<void>.delayed(Duration.zero, () async {
+          await likedTracksNotifier.fetchAll();
+        });
+      }
+      return null;
+    }, [likedTracks.asData?.value.hasMore, likedTracksNotifier]);
+
     return material.RefreshIndicator.adaptive(
       onRefresh: () async {
+        resetSavedTracksFetchProgress(ref);
         ref.invalidate(metadataPluginSavedTracksProvider);
       },
       child: TrackPresentation(
@@ -45,6 +58,7 @@ class LikedPlaylistPage extends HookConsumerWidget {
               return await likedTracksNotifier.fetchAll();
             },
             onRefresh: () async {
+              resetSavedTracksFetchProgress(ref);
               ref.invalidate(metadataPluginSavedTracksProvider);
             },
           ),

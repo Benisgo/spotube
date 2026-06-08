@@ -195,17 +195,15 @@ class MultiSessionSuggestion {
   });
 
   factory MultiSessionSuggestion.fromJson(Map<String, dynamic> json) {
-    final voterIds =
-        (json["voterIds"] as List? ?? const [])
-            .map((value) => value.toString())
-            .toList();
+    final voterIds = (json["voterIds"] as List? ?? const [])
+        .map((value) => value.toString())
+        .toList();
 
     return MultiSessionSuggestion(
       id: json["id"] as String,
       track: SpotubeTrackObject.fromJson(
-            (json["track"] as Map).cast<String, dynamic>(),
-          )
-          as SpotubeFullTrackObject,
+        (json["track"] as Map).cast<String, dynamic>(),
+      ) as SpotubeFullTrackObject,
       suggestedBy: json["suggestedBy"] as String,
       createdAt: json["createdAt"] as int? ?? 0,
       voteCount: json["voteCount"] as int? ?? voterIds.length,
@@ -281,6 +279,7 @@ class MultiSessionRoomSnapshot {
   final int sequence;
   final List<Map<String, dynamic>> queue;
   final String? activeTrackId;
+  final SpotubeAudioSourceMatchObject? activeSource;
   final int positionMs;
   final bool playing;
   final List<MultiSessionMember> members;
@@ -293,6 +292,7 @@ class MultiSessionRoomSnapshot {
     required this.sequence,
     required this.queue,
     required this.activeTrackId,
+    required this.activeSource,
     required this.positionMs,
     required this.playing,
     required this.members,
@@ -310,11 +310,17 @@ class MultiSessionRoomSnapshot {
           .map((item) => item.cast<String, dynamic>())
           .toList(),
       activeTrackId: json["activeTrackId"] as String?,
+      activeSource: json["activeSource"] is Map
+          ? SpotubeAudioSourceMatchObject.fromJson(
+              (json["activeSource"] as Map).cast<String, dynamic>(),
+            )
+          : null,
       positionMs: json["positionMs"] as int? ?? 0,
       playing: json["playing"] == true,
       members: (json["members"] as List? ?? [])
           .cast<Map>()
-          .map((item) => MultiSessionMember.fromJson(item.cast<String, dynamic>()))
+          .map((item) =>
+              MultiSessionMember.fromJson(item.cast<String, dynamic>()))
           .toList(),
       suggestions: (json["suggestions"] as List? ?? [])
           .cast<Map>()
@@ -356,7 +362,9 @@ class MultiSessionState {
 
   MultiSessionMember? get currentMember {
     if (memberId == null || snapshot == null) return null;
-    return snapshot!.members.where((member) => member.id == memberId).firstOrNull;
+    return snapshot!.members
+        .where((member) => member.id == memberId)
+        .firstOrNull;
   }
 
   bool get isHost => currentMember?.role == "host";
@@ -366,7 +374,8 @@ class MultiSessionState {
   }
 
   MultiSessionSuggestion? get topSuggestion {
-    final suggestions = snapshot?.suggestions ?? const <MultiSessionSuggestion>[];
+    final suggestions =
+        snapshot?.suggestions ?? const <MultiSessionSuggestion>[];
     if (suggestions.isEmpty) return null;
 
     return suggestions.sorted((a, b) {

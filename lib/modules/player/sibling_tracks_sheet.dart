@@ -11,6 +11,7 @@ import 'package:spotube/extensions/duration.dart';
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/provider/audio_player/audio_player.dart';
 import 'package:spotube/provider/server/sourced_track_provider.dart';
+import 'package:spotube/collections/spotube_icons.dart';
 
 class SiblingTracksSheet extends HookConsumerWidget {
   final bool floating;
@@ -22,6 +23,7 @@ class SiblingTracksSheet extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, ref) {
     final controller = useScrollController();
+    final searchController = useTextEditingController();
 
     final activeTrack =
         ref.watch(audioPlayerProvider.select((e) => e.activeTrack));
@@ -34,6 +36,7 @@ class SiblingTracksSheet extends HookConsumerWidget {
       final sourcedTrack = ref.watch(sourcedTrackProvider(activeTrack));
       final sourcedTrackNotifier =
           ref.watch(sourcedTrackProvider(activeTrack).notifier);
+      final searchQuery = useState("");
 
       final siblings = useMemoized<List<SpotubeAudioSourceMatchObject>>(
         () => !sourcedTrack.isLoading
@@ -44,6 +47,20 @@ class SiblingTracksSheet extends HookConsumerWidget {
               ]
             : <SpotubeAudioSourceMatchObject>[],
         [sourcedTrack],
+      );
+      final filteredSiblings = useMemoized(
+        () {
+          final query = searchQuery.value.trim().toLowerCase();
+          if (query.isEmpty) return siblings;
+
+          return siblings.where((sourceInfo) {
+            final haystack =
+                "${sourceInfo.title} ${sourceInfo.artists.join(" ")}"
+                    .toLowerCase();
+            return haystack.contains(query);
+          }).toList();
+        },
+        [siblings, searchQuery.value],
       );
 
       useEffect(() {
@@ -65,14 +82,29 @@ class SiblingTracksSheet extends HookConsumerWidget {
               child: Row(
                 spacing: 5,
                 children: [
-                  AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 300),
-                      child: Text(
-                        context.l10n.alternative_track_sources,
-                      ).bold()),
+                  Expanded(
+                    child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 300),
+                        child: Text(
+                          context.l10n.alternative_track_sources,
+                        ).bold()),
+                  ),
                 ],
               ),
             ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: TextField(
+                controller: searchController,
+                enabled: !sourcedTrack.isLoading,
+                onChanged: (value) => searchQuery.value = value,
+                placeholder: Text(context.l10n.search),
+                features: const [
+                  InputFeature.leading(Icon(SpotubeIcons.search)),
+                ],
+              ),
+            ),
+            const Gap(8),
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 300),
               child: sourcedTrack.isLoading
@@ -92,10 +124,10 @@ class SiblingTracksSheet extends HookConsumerWidget {
                   child: ListView.separated(
                     padding: const EdgeInsets.all(8.0),
                     controller: controller,
-                    itemCount: siblings.length,
+                    itemCount: filteredSiblings.length,
                     separatorBuilder: (context, index) => const Gap(8),
                     itemBuilder: (context, index) {
-                      final sourceInfo = siblings[index];
+                      final sourceInfo = filteredSiblings[index];
 
                       return ButtonTile(
                         style: ButtonVariance.ghost,
@@ -126,11 +158,13 @@ class SiblingTracksSheet extends HookConsumerWidget {
                           if (!sourcedTrack.isLoading &&
                               sourceInfo.id !=
                                   sourcedTrack.asData?.value.info.id) {
-                            await sourcedTrackNotifier
+                            final swapped = await sourcedTrackNotifier
                                 .swapWithSibling(sourceInfo);
-                            await ref
-                                .read(audioPlayerProvider.notifier)
-                                .swapActiveSource();
+                            if (swapped.info.id == sourceInfo.id) {
+                              await ref
+                                  .read(audioPlayerProvider.notifier)
+                                  .swapActiveSource();
+                            }
 
                             if (context.mounted) {
                               if (MediaQuery.sizeOf(context).mdAndUp) {

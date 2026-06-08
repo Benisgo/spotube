@@ -9,6 +9,7 @@ import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/models/multi_session/multi_session.dart';
 import 'package:spotube/provider/audio_player/audio_player.dart';
 import 'package:spotube/provider/metadata_plugin/core/user.dart';
+import 'package:spotube/provider/server/sourced_track_provider.dart';
 import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
 import 'package:spotube/services/audio_player/audio_player.dart';
 import 'package:spotube/services/device_info/device_info.dart';
@@ -112,9 +113,11 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
     return previous.roomId == next.roomId &&
         previous.code == next.code &&
         previous.activeTrackId == next.activeTrackId &&
+        previous.activeSource?.id == next.activeSource?.id &&
         previous.playing == next.playing &&
         previous.communityQueueEnabled == next.communityQueueEnabled &&
-        _stringListEquality.equals(_queueIds(previous.queue), _queueIds(next.queue)) &&
+        _stringListEquality.equals(
+            _queueIds(previous.queue), _queueIds(next.queue)) &&
         _stringListEquality.equals(
           _memberSignatures(previous.members),
           _memberSignatures(next.members),
@@ -123,6 +126,24 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
           _suggestionSignatures(previous.suggestions),
           _suggestionSignatures(next.suggestions),
         );
+  }
+
+  Future<Map<String, dynamic>?> _activeSourcePayload() async {
+    final activeTrack = ref.read(audioPlayerProvider).activeTrack;
+    if (activeTrack is! SpotubeFullTrackObject) return null;
+
+    try {
+      final sourcedTrack =
+          await ref.read(sourcedTrackProvider(activeTrack).future);
+      return sourcedTrack.info.toJson();
+    } catch (error, stackTrace) {
+      await AppLogger.reportError(
+        error,
+        stackTrace,
+        "Failed to resolve active track source for multi-session sync",
+      );
+      return null;
+    }
   }
 
   @override
@@ -568,7 +589,8 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
     _applyingRemote = true;
     try {
       final localState = ref.read(audioPlayerProvider);
-      final localTracks = localState.tracks.whereType<SpotubeFullTrackObject>().toList();
+      final localTracks =
+          localState.tracks.whereType<SpotubeFullTrackObject>().toList();
       final remoteTrackIds = _queueIds(snapshot.queue);
       if (remoteTrackIds.isEmpty) return;
 
@@ -597,6 +619,24 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
               initialIndex: index,
               autoPlay: snapshot.playing,
             );
+      }
+
+      final postLoadState = ref.read(audioPlayerProvider);
+      final activeTrack = postLoadState.activeTrack;
+      final activeSource = snapshot.activeSource;
+      if (activeTrack is SpotubeFullTrackObject &&
+          activeSource != null &&
+          activeTrack.id == snapshot.activeTrackId) {
+        final sourcedTrack =
+            await ref.read(sourcedTrackProvider(activeTrack).future);
+        if (sourcedTrack.info.id != activeSource.id) {
+          final swapped = await ref
+              .read(sourcedTrackProvider(activeTrack).notifier)
+              .swapWithSibling(activeSource);
+          if (swapped.info.id == activeSource.id) {
+            await ref.read(audioPlayerProvider.notifier).swapActiveSource();
+          }
+        }
       }
 
       final localPositionMs = audioPlayer.position.inMilliseconds;
@@ -710,21 +750,25 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
   }
 
   void sendQueue() {
-    final playerState = ref.read(audioPlayerProvider);
-    _send("queue", {
-      "queue": playerState.tracks
-          .whereType<SpotubeFullTrackObject>()
-          .map((track) => track.toJson())
-          .toList(),
-      "activeTrackId": playerState.activeTrack?.id,
-    });
+    unawaited(() async {
+      final playerState = ref.read(audioPlayerProvider);
+      _send("queue", {
+        "queue": playerState.tracks
+            .whereType<SpotubeFullTrackObject>()
+            .map((track) => track.toJson())
+            .toList(),
+        "activeTrackId": playerState.activeTrack?.id,
+        "activeSource": await _activeSourcePayload(),
+      });
+    }());
   }
 
-  void sendPlayback() {
+  void sendPlayback() async {
     _send("playback", {
       "playing": audioPlayer.isPlaying,
       "positionMs": audioPlayer.position.inMilliseconds,
       "activeTrackId": ref.read(audioPlayerProvider).activeTrack?.id,
+      "activeSource": await _activeSourcePayload(),
     });
   }
 

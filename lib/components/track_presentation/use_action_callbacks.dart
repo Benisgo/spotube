@@ -77,7 +77,7 @@ UseActionCallbacks useActionCallbacks(WidgetRef ref) {
               [options.collection as SpotubeSimplePlaylistObject]);
         }
 
-        if (!options.pagination.hasNextPage) {
+        if (options.pagination.hasNextPage) {
           final allTracks = await options.pagination.onFetchAll();
           final remainingTracks = allTracks.sublist(initialTracks.length);
           if (remainingTracks.isNotEmpty) {
@@ -134,7 +134,7 @@ UseActionCallbacks useActionCallbacks(WidgetRef ref) {
           );
         }
 
-        if (!options.pagination.hasNextPage) {
+        if (options.pagination.hasNextPage) {
           final allTracks = await options.pagination.onFetchAll();
           final remainingTracks = allTracks.sublist(initialTracks.length);
           if (remainingTracks.isNotEmpty) {

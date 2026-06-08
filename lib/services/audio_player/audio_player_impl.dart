@@ -7,27 +7,36 @@ class SpotubeAudioPlayer extends AudioPlayerInterface
   Future<void> pause() async {
     _trace("pause");
     if (isCrossfading) {
-      await _activePlayer.pause();
-      await _inactivePlayer.pause();
+      await _bestEffortPlayerCommand(
+        _activePlayer.pause(),
+        'active.pause.crossfading',
+      );
+      await _bestEffortPlayerCommand(
+        _inactivePlayer.pause(),
+        'inactive.pause.crossfading',
+      );
       _isPlaying = false;
       _playingStreamController.add(false);
       return;
     }
 
-    await _activePlayer.pause();
+    await _withPlayerTimeout(_activePlayer.pause(), 'active.pause');
   }
 
   Future<void> resume() async {
     _trace("resume");
     if (isCrossfading) {
-      await _activePlayer.play();
-      await _inactivePlayer.play();
+      await _withPlayerTimeout(_activePlayer.play(), 'active.play.crossfading');
+      await _bestEffortPlayerCommand(
+        _inactivePlayer.play(),
+        'inactive.play.crossfading',
+      );
       _isPlaying = true;
       _playingStreamController.add(true);
       return;
     }
 
-    await _activePlayer.play();
+    await _withPlayerTimeout(_activePlayer.play(), 'active.play');
   }
 
   Future<void> stop() async {
@@ -130,20 +139,42 @@ class SpotubeAudioPlayer extends AudioPlayerInterface
 
   Future<void> skipToNext() async {
     _trace("skipToNext");
+    final nextIndex = _nextIndexFrom(_currentIndex);
     await _stopCrossfade();
-    await _activePlayer.next();
+    try {
+      await _withPlayerTimeout(_activePlayer.next(), 'active.next');
+    } catch (_) {
+      if (nextIndex != null) {
+        await _forceActivateIndex(nextIndex);
+        return;
+      }
+      rethrow;
+    }
   }
 
   Future<void> skipToPrevious() async {
     _trace("skipToPrevious");
+    final previousIndex = _previousIndexFrom(_currentIndex);
     await _stopCrossfade();
-    await _activePlayer.previous();
+    try {
+      await _withPlayerTimeout(_activePlayer.previous(), 'active.previous');
+    } catch (_) {
+      if (previousIndex != null) {
+        await _forceActivateIndex(previousIndex);
+        return;
+      }
+      rethrow;
+    }
   }
 
   Future<void> jumpTo(int index) async {
     _trace("jumpTo index=$index");
     await _stopCrossfade();
-    await _activePlayer.jump(index);
+    try {
+      await _withPlayerTimeout(_activePlayer.jump(index), 'active.jump($index)');
+    } catch (_) {
+      await _forceActivateIndex(index);
+    }
   }
 
   Future<void> addTrack(mk.Media media) async {

@@ -21,3 +21,18 @@ final queryingTrackInfoProvider = Provider<bool>((ref) {
       )
       .isLoading;
 });
+
+final trackQueryingInfoProvider =
+    Provider.family<bool, SpotubeTrackObject>((ref, track) {
+  if (track is! SpotubeFullTrackObject) {
+    return false;
+  }
+
+  final activeTrack =
+      ref.watch(audioPlayerProvider.select((audioPlayer) => audioPlayer.activeTrack));
+  if (activeTrack?.id != track.id) {
+    return false;
+  }
+
+  return ref.watch(sourcedTrackProvider(track)).isLoading;
+});

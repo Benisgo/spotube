@@ -9,6 +9,7 @@ import 'package:spotube/components/track_presentation/presentation_state.dart';
 import 'package:spotube/extensions/constrains.dart';
 import 'package:spotube/extensions/context.dart';
 import 'package:spotube/hooks/controllers/use_shadcn_text_editing_controller.dart';
+import 'package:spotube/provider/metadata_plugin/library/tracks.dart';
 
 class TrackPresentationModifiersSection extends HookConsumerWidget {
   final FocusNode? focusNode;
@@ -24,105 +25,141 @@ class TrackPresentationModifiersSection extends HookConsumerWidget {
     final notifier = ref.watch(
       presentationStateProvider(options.collection).notifier,
     );
+    final savedTracksFetchProgress =
+        ref.watch(metadataPluginSavedTracksFetchProgressProvider);
 
     final controller = useShadcnTextEditingController();
     final scale = context.theme.scaling;
+    final searchProgress = state.searchQuery.isEmpty
+        ? null
+        : savedTracksFetchProgress ?? (state.isSearchLoading ? null : null);
+    final showSearchProgress =
+        state.searchQuery.isNotEmpty &&
+        (savedTracksFetchProgress != null || state.isSearchLoading);
 
     return LayoutBuilder(builder: (context, constrains) {
       return Padding(
         padding: EdgeInsets.symmetric(
           horizontal: (constrains.mdAndUp ? 16 : 8) * scale,
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Row(
-              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Checkbox(
-                  state: state.selectedTracks.length == options.tracks.length
-                      ? CheckboxState.checked
-                      : CheckboxState.unchecked,
-                  onChanged: (value) {
-                    if (value == CheckboxState.checked) {
-                      notifier.selectAllTracks();
-                    } else {
-                      notifier.deselectAllTracks();
-                    }
-                  },
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Checkbox(
+                      state: state.selectedTracks.length == options.tracks.length
+                          ? CheckboxState.checked
+                          : CheckboxState.unchecked,
+                      onChanged: (value) {
+                        if (value == CheckboxState.checked) {
+                          notifier.selectAllTracks();
+                        } else {
+                          notifier.deselectAllTracks();
+                        }
+                      },
+                    ),
+                    SizedBox(width: 10 * scale),
+                    Tooltip(
+                      tooltip: TooltipContainer(
+                        child: Text(context.l10n.update_playlist),
+                      ).call,
+                      child: Button.outline(
+                        leading: const Icon(SpotubeIcons.refresh),
+                        onPressed: options.pagination.onRefresh,
+                        child: Text(context.l10n.update),
+                      ),
+                    ),
+                  ],
+                ),
+                Flexible(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    spacing: 8,
+                    children: [
+                      Flexible(
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxWidth: 320 * scale,
+                            maxHeight: 38 * scale,
+                          ),
+                          child: TextField(
+                            controller: controller,
+                            focusNode: focusNode,
+                            placeholder: Text(context.l10n.search_tracks),
+                            onChanged: (value) {
+                              if (value.isEmpty) {
+                                notifier.clearFilter();
+                              } else {
+                                notifier.filterTracks(value);
+                              }
+                            },
+                            features: [
+                              InputFeature.leading(
+                                Icon(
+                                  SpotubeIcons.search,
+                                  color:
+                                      context.theme.colorScheme.mutedForeground,
+                                ),
+                              ),
+                              InputFeature.trailing(
+                                ListenableBuilder(
+                                    listenable: controller,
+                                    builder: (context, _) {
+                                      return AnimatedCrossFade(
+                                        duration:
+                                            const Duration(milliseconds: 300),
+                                        crossFadeState: controller.text.isEmpty
+                                            ? CrossFadeState.showFirst
+                                            : CrossFadeState.showSecond,
+                                        firstChild:
+                                            const SizedBox.square(dimension: 20),
+                                        secondChild: AnimatedScale(
+                                          duration:
+                                              const Duration(milliseconds: 300),
+                                          scale:
+                                              controller.text.isEmpty ? 0 : 1,
+                                          child: IconButton.ghost(
+                                            size: const ButtonSize(.6),
+                                            icon: const Icon(SpotubeIcons.close),
+                                            onPressed: () {
+                                              controller.clear();
+                                              notifier.clearFilter();
+                                            },
+                                          ),
+                                        ),
+                                      );
+                                    }),
+                              )
+                            ],
+                          ),
+                        ),
+                      ),
+                      SortTracksDropdown(
+                        value: state.sortBy,
+                        onChanged: (value) {
+                          notifier.sortTracks(value);
+                        },
+                      ),
+                      const TrackPresentationActionsSection(),
+                    ],
+                  ),
                 ),
               ],
             ),
-            Flexible(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                spacing: 8,
-                children: [
-                  Flexible(
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        maxWidth: 320 * scale,
-                        maxHeight: 38 * scale,
-                      ),
-                      child: TextField(
-                        controller: controller,
-                        focusNode: focusNode,
-                        placeholder: Text(context.l10n.search_tracks),
-                        onChanged: (value) {
-                          if (value.isEmpty) {
-                            notifier.clearFilter();
-                          } else {
-                            notifier.filterTracks(value);
-                          }
-                        },
-                        features: [
-                          InputFeature.leading(
-                            Icon(
-                              SpotubeIcons.search,
-                              color: context.theme.colorScheme.mutedForeground,
-                            ),
-                          ),
-                          InputFeature.trailing(
-                            ListenableBuilder(
-                                listenable: controller,
-                                builder: (context, _) {
-                                  return AnimatedCrossFade(
-                                    duration: const Duration(milliseconds: 300),
-                                    crossFadeState: controller.text.isEmpty
-                                        ? CrossFadeState.showFirst
-                                        : CrossFadeState.showSecond,
-                                    firstChild:
-                                        const SizedBox.square(dimension: 20),
-                                    secondChild: AnimatedScale(
-                                      duration:
-                                          const Duration(milliseconds: 300),
-                                      scale: controller.text.isEmpty ? 0 : 1,
-                                      child: IconButton.ghost(
-                                        size: const ButtonSize(.6),
-                                        icon: const Icon(SpotubeIcons.close),
-                                        onPressed: () {
-                                          controller.clear();
-                                          notifier.clearFilter();
-                                        },
-                                      ),
-                                    ),
-                                  );
-                                }),
-                          )
-                        ],
-                      ),
-                    ),
-                  ),
-                  SortTracksDropdown(
-                    value: state.sortBy,
-                    onChanged: (value) {
-                      notifier.sortTracks(value);
-                    },
-                  ),
-                  const TrackPresentationActionsSection(),
-                ],
+            if (showSearchProgress) ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: LinearProgressIndicator(
+                  value: searchProgress,
+                ),
               ),
-            ),
+            ],
           ],
         ),
       );

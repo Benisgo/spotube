@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:media_kit/media_kit.dart' hide Track;
 import 'package:media_kit/media_kit.dart' as mk;
 import 'package:spotube/models/metadata/metadata.dart';
+import 'package:spotube/services/logger/logger.dart';
 import 'package:spotube/services/audio_player/custom_player.dart';
 import 'package:spotube/services/audio_player/playback_state.dart';
 import 'package:spotube/utils/platform.dart';
@@ -39,6 +40,8 @@ class SpotubeMedia extends mk.Media {
 }
 
 abstract class AudioPlayerInterface {
+  static const _playerCommandTimeout = Duration(seconds: 4);
+  static const _backgroundPlayerCommandTimeout = Duration(seconds: 2);
   late final CustomPlayer _primaryPlayer;
   CustomPlayer? _secondaryPlayer;
 
@@ -75,6 +78,9 @@ abstract class AudioPlayerInterface {
   bool _primaryPlayerActive = true;
   bool _isCrossfading = false;
   bool _crossfadePreloadEnabled = false;
+  bool _resumeAfterCompletedAdvancePending = false;
+  int? _completedAdvanceOriginIndex;
+  Timer? _completedAdvanceTimer;
   Timer? _crossfadeTimer;
   Timer? _crossfadeHandoffTimer;
   String? _lastEmittedPlaylistSignature;
@@ -94,7 +100,8 @@ abstract class AudioPlayerInterface {
 
   void _critical(String message) {}
 
-  bool get _mirrorsSecondaryPlayer => _crossfadePreloadEnabled || _isCrossfading;
+  bool get _mirrorsSecondaryPlayer =>
+      _crossfadePreloadEnabled || _isCrossfading;
 
   Future<void> _mirrorSecondary(
     Future<void> Function(CustomPlayer player) action,
@@ -159,6 +166,56 @@ abstract class AudioPlayerInterface {
 
   bool _isActivePlayer(bool isPrimary) => _primaryPlayerActive == isPrimary;
 
+  Future<T> _withPlayerTimeout<T>(
+    Future<T> future,
+    String label, {
+    Duration timeout = _playerCommandTimeout,
+  }) async {
+    try {
+      return await future.timeout(timeout);
+    } on TimeoutException {
+      throw TimeoutException('Audio player command timed out: $label', timeout);
+    }
+  }
+
+  Future<void> _bestEffortPlayerCommand(
+    Future<void> future,
+    String label, {
+    Duration timeout = _backgroundPlayerCommandTimeout,
+  }) async {
+    try {
+      await future.timeout(timeout);
+    } catch (error, stackTrace) {
+      await AppLogger.reportError(
+        error,
+        stackTrace,
+        'Best-effort audio player command failed: $label',
+      );
+    }
+  }
+
+  Future<void> _forceActivateIndex(
+    int index, {
+    bool? play,
+  }) async {
+    if (_playlist.medias.isEmpty) return;
+    final safeIndex = index.clamp(0, _playlist.medias.length - 1).toInt();
+    await _withPlayerTimeout(
+      _openPlayerWithPlaylist(
+        _activePlayer,
+        safeIndex,
+        play: play ?? _isPlaying,
+      ),
+      'forceActivateIndex($safeIndex)',
+    );
+    await _bestEffortPlayerCommand(
+      _activePlayer.setVolume(_targetVolume * 100),
+      'forceActivateIndex.setVolume($safeIndex)',
+    );
+    _syncIndexFromActive(safeIndex);
+    _emitPlaybackSnapshot(includePlaylist: true);
+  }
+
   void _bindPlayer(
     CustomPlayer player, {
     required bool isPrimary,
@@ -189,6 +246,12 @@ abstract class AudioPlayerInterface {
       player.stream.playing.listen((event) {
         if (_isActivePlayer(isPrimary)) {
           _isPlaying = event;
+          if (event) {
+            _resumeAfterCompletedAdvancePending = false;
+            _completedAdvanceOriginIndex = null;
+            _completedAdvanceTimer?.cancel();
+            _completedAdvanceTimer = null;
+          }
           _playingStreamController.add(event);
         }
       }),
@@ -226,6 +289,9 @@ abstract class AudioPlayerInterface {
       }),
       player.stream.completed.listen((event) {
         if (_isActivePlayer(isPrimary) && event && !_isCrossfading) {
+          _completedAdvanceOriginIndex = _currentIndex;
+          _resumeAfterCompletedAdvancePending = _nextIndexFrom(_currentIndex) != null;
+          _scheduleCompletedAdvanceRecovery();
           _completedStreamController.add(null);
         }
       }),
@@ -347,9 +413,12 @@ abstract class AudioPlayerInterface {
     _critical(
       "openPlayerWithPlaylist index=$safeIndex play=$play uri=${_playlist.medias[safeIndex].uri}",
     );
-    await player.open(
-      mk.Playlist(_playlist.medias, index: safeIndex),
-      play: play,
+    await _withPlayerTimeout(
+      player.open(
+        mk.Playlist(_playlist.medias, index: safeIndex),
+        play: play,
+      ),
+      'player.open(index=$safeIndex, play=$play)',
     );
     _critical(
       "openPlayerWithPlaylist complete index=$safeIndex play=$play uri=${_playlist.medias[safeIndex].uri}",
@@ -360,11 +429,24 @@ abstract class AudioPlayerInterface {
     _trace("prepareInactivePlayer preload=$_crossfadePreloadEnabled");
     _critical("prepareInactivePlayer preload=$_crossfadePreloadEnabled");
     if (!_crossfadePreloadEnabled) {
+      if (_secondaryPlayer != null) {
+        await _bestEffortPlayerCommand(
+          _inactivePlayer.stop(),
+          'inactive.stop.preload_disabled',
+        );
+      }
+      return;
+    }
+
+    if (!_isPlaying) {
       return;
     }
 
     if (_playlist.medias.isEmpty) {
-      await _inactivePlayer.stop();
+      await _bestEffortPlayerCommand(
+        _inactivePlayer.stop(),
+        'inactive.stop.empty_playlist',
+      );
       return;
     }
 
@@ -372,14 +454,30 @@ abstract class AudioPlayerInterface {
 
     final nextIndex = _nextIndexFrom(_currentIndex);
     if (nextIndex == null) {
-      await _inactivePlayer.stop();
+      await _bestEffortPlayerCommand(
+        _inactivePlayer.stop(),
+        'inactive.stop.no_next_index',
+      );
       return;
     }
 
-    await _inactivePlayer.setPlaylistMode(_loopMode);
-    await _inactivePlayer.setShuffle(_isShuffled);
-    await _openPlayerWithPlaylist(_inactivePlayer, nextIndex, play: false);
-    await _inactivePlayer.setVolume(0);
+    await _bestEffortPlayerCommand(
+      _inactivePlayer.setPlaylistMode(_loopMode),
+      'inactive.setPlaylistMode',
+    );
+    await _bestEffortPlayerCommand(
+      _inactivePlayer.setShuffle(_isShuffled),
+      'inactive.setShuffle',
+    );
+    await _bestEffortPlayerCommand(
+      _openPlayerWithPlaylist(_inactivePlayer, nextIndex, play: false),
+      'inactive.open(next=$nextIndex)',
+      timeout: _playerCommandTimeout,
+    );
+    await _bestEffortPlayerCommand(
+      _inactivePlayer.setVolume(0),
+      'inactive.setVolume(0)',
+    );
   }
 
   Future<void> _stopCrossfade({
@@ -390,20 +488,91 @@ abstract class AudioPlayerInterface {
     _crossfadeTimer = null;
     _crossfadeHandoffTimer?.cancel();
     _crossfadeHandoffTimer = null;
+    _completedAdvanceTimer?.cancel();
+    _completedAdvanceTimer = null;
 
     if (_secondaryPlayer != null &&
         stopInactivePlayer &&
         _inactivePlayer.state.playing) {
-      await _inactivePlayer.pause();
-      await _inactivePlayer.seek(Duration.zero);
-      await _inactivePlayer.setVolume(0);
+      await _bestEffortPlayerCommand(
+        _inactivePlayer.pause(),
+        'inactive.pause.stopCrossfade',
+      );
+      await _bestEffortPlayerCommand(
+        _inactivePlayer.seek(Duration.zero),
+        'inactive.seek.stopCrossfade',
+      );
+      await _bestEffortPlayerCommand(
+        _inactivePlayer.setVolume(0),
+        'inactive.setVolume.stopCrossfade',
+      );
     }
 
     if (restoreActiveVolume && hasSource) {
-      await _activePlayer.setVolume(_targetVolume * 100);
+      await _bestEffortPlayerCommand(
+        _activePlayer.setVolume(_targetVolume * 100),
+        'active.setVolume.restore',
+      );
     }
 
     _isCrossfading = false;
+  }
+
+  Future<void> _resumeAfterCompletedAdvance() async {
+    if (_playlist.medias.isEmpty || _isCrossfading) return;
+    if (_activePlayer.state.playing) return;
+
+    try {
+      await _bestEffortPlayerCommand(
+        _activePlayer.seek(Duration.zero),
+        'active.seek.resumeAfterCompletedAdvance',
+      );
+    } catch (_) {}
+    await _withPlayerTimeout(
+      _activePlayer.play(),
+      'active.play.resumeAfterCompletedAdvance',
+    );
+  }
+
+  void _scheduleCompletedAdvanceRecovery() {
+    _completedAdvanceTimer?.cancel();
+    _completedAdvanceTimer = Timer(const Duration(milliseconds: 180), () {
+      unawaited(_recoverCompletedAdvance());
+    });
+  }
+
+  Future<void> _recoverCompletedAdvance() async {
+    if (_playlist.medias.isEmpty || _isCrossfading) return;
+    if (!_resumeAfterCompletedAdvancePending) return;
+    if (_activePlayer.state.playing) {
+      _resumeAfterCompletedAdvancePending = false;
+      _completedAdvanceOriginIndex = null;
+      return;
+    }
+
+    final originIndex = _completedAdvanceOriginIndex;
+    if (originIndex != null && _currentIndex == originIndex) {
+      final nextIndex = _nextIndexFrom(originIndex);
+      if (nextIndex != null) {
+        try {
+          await _activePlayer.jump(nextIndex);
+        } catch (_) {}
+        _syncIndexFromActive(nextIndex);
+      }
+    }
+
+    await _resumeAfterCompletedAdvance();
+    await Future<void>.delayed(const Duration(milliseconds: 180));
+
+    if (!_activePlayer.state.playing && _currentIndex >= 0) {
+      try {
+        await _activePlayer.jump(_currentIndex);
+      } catch (_) {}
+      await _resumeAfterCompletedAdvance();
+    }
+
+    _resumeAfterCompletedAdvancePending = false;
+    _completedAdvanceOriginIndex = null;
   }
 
   Future<void> _animateCrossfade(Duration duration) async {
@@ -454,7 +623,7 @@ abstract class AudioPlayerInterface {
     await oldActive.setVolume(0);
 
     _isCrossfading = false;
-    await _prepareInactivePlayer();
+      await _prepareInactivePlayer();
   }
 
   /// Whether the current platform supports the audioplayers plugin
@@ -516,6 +685,8 @@ abstract class AudioPlayerInterface {
     return _playlist.medias.elementAt(previousIndex).uri;
   }
 
+  bool get canSkipToPrevious => _previousIndexFrom(_currentIndex) != null;
+
   bool get isCrossfading => _isCrossfading;
 
   Future<bool> startCrossfadeToNext(Duration duration) async {
@@ -540,9 +711,8 @@ abstract class AudioPlayerInterface {
     await _animateCrossfade(duration);
 
     const handoffLead = Duration(milliseconds: 180);
-    final handoffDelay = duration > handoffLead
-        ? duration - handoffLead
-        : Duration.zero;
+    final handoffDelay =
+        duration > handoffLead ? duration - handoffLead : Duration.zero;
 
     _crossfadeHandoffTimer?.cancel();
     _crossfadeHandoffTimer = Timer(handoffDelay, () {

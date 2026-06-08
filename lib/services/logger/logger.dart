@@ -194,9 +194,8 @@ class AppLogger {
   // #endregion
 
   static void trace(String message) {
-    log.i(message);
-
     if (!kReleaseMode) return;
+    log.i(message);
     if (_traceBacklog > 200) return;
 
     try {
@@ -217,6 +216,8 @@ class AppLogger {
   }
 
   static void criticalTrace(String message) {
+    if (!kReleaseMode) return;
+
     log.i("[critical] $message");
 
     try {

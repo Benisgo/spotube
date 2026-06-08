@@ -18,6 +18,8 @@ import 'package:spotube/services/kv_store/kv_store.dart';
 import 'package:spotube/services/audio_player/audio_player.dart';
 import 'package:spotube/services/audio_services/audio_services.dart';
 import 'package:spotube/services/logger/logger.dart';
+import 'package:spotube/services/logger/playback_start_trace.dart';
+import 'package:spotube/services/youtube_engine/yt_dlp_worker.dart';
 
 class AudioPlayerStreamListeners {
   final Ref ref;
@@ -45,6 +47,7 @@ class AudioPlayerStreamListeners {
       subscribeToSkipSponsor(),
       subscribeToScrobbleChanged(),
       subscribeToPosition(),
+      subscribeToBufferingAndState(),
       subscribeToCrossfadeTransitions(),
       subscribeToPlayerError(),
     ];
@@ -65,6 +68,13 @@ class AudioPlayerStreamListeners {
       ref.read(playbackHistoryActionsProvider);
   double get targetVolume => KVStoreService.volume;
   bool get isInListeningRoom => ref.read(multiSessionProvider).connected;
+
+  bool _isExpectedBackgroundPrefetchSkip(Object error) {
+    final message = error.toString().toLowerCase();
+    return message.contains('yt-dlp worker unavailable') ||
+        message.contains('background worker deferred') ||
+        message.contains('worker cancelled');
+  }
 
   Future<void> _stopCrossfadeAndRestoreVolume() async {
     if (!audioPlayer.isCrossfading &&
@@ -215,16 +225,51 @@ class AudioPlayerStreamListeners {
         }
 
         try {
-          await ref.read(
-            sourcedTrackProvider(nextTrack as SpotubeFullTrackObject).future,
-          );
+          final fullTrack = nextTrack as SpotubeFullTrackObject;
+          await YtDlpExecutionContext.runBackground(() async {
+            final sourcedTrack =
+                await ref.read(sourcedTrackProvider(fullTrack).future);
+            if (!sourcedTrack.hasFreshValidatedStream) {
+              await ref
+                  .read(sourcedTrackProvider(fullTrack).notifier)
+                  .refreshStreamingUrl();
+            }
+          }, cancelGroup: 'position-prefetch:${fullTrack.id}');
         } finally {
           lastTrack = nextTrack.id;
         }
       } catch (e, stack) {
+        if (_isExpectedBackgroundPrefetchSkip(e)) {
+          return;
+        }
         AppLogger.reportError(e, stack);
       }
     });
+  }
+
+  StreamSubscription subscribeToBufferingAndState() {
+    final bufferingSubscription = audioPlayer.bufferingStream.listen((buffering) {
+      final activeTrackId = audioPlayerState.activeTrack?.id;
+      if (activeTrackId == null) return;
+      PlaybackStartTrace.markTrack(
+        activeTrackId,
+        buffering ? 'player.buffering_true' : 'player.buffering_false',
+      );
+    });
+
+    final playerStateSubscription = audioPlayer.playerStateStream.listen((state) {
+      final activeTrackId = audioPlayerState.activeTrack?.id;
+      if (activeTrackId == null) return;
+      PlaybackStartTrace.markTrack(
+        activeTrackId,
+        'player.state.${state.name}',
+      );
+    });
+
+    return _CompositeSubscription([
+      bufferingSubscription,
+      playerStateSubscription,
+    ]);
   }
 
   StreamSubscription subscribeToCrossfadeTransitions() {
@@ -286,7 +331,17 @@ class AudioPlayerStreamListeners {
   }
 
   StreamSubscription subscribeToPlayerError() {
-    return audioPlayer.errorStream.listen((event) {});
+    return audioPlayer.errorStream.listen((event) {
+      final activeTrackId = audioPlayerState.activeTrack?.id;
+      if (activeTrackId != null) {
+        PlaybackStartTrace.failTrack(
+          activeTrackId,
+          'player.error',
+          data: {'error': event},
+        );
+      }
+      ref.read(audioPlayerProvider.notifier).clearPendingPlaybackTrackId();
+    });
   }
 }
 

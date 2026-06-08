@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'dart:async';
 
 import 'package:collection/collection.dart';
 import 'package:drift/drift.dart';
@@ -12,18 +13,46 @@ import 'package:spotube/provider/audio_player/state.dart';
 import 'package:spotube/provider/blacklist_provider.dart';
 import 'package:spotube/provider/database/database.dart';
 import 'package:spotube/provider/discord_provider.dart';
+import 'package:spotube/provider/metadata_plugin/metadata_plugin_provider.dart';
 import 'package:spotube/provider/server/server.dart';
 import 'package:spotube/provider/server/sourced_track_provider.dart';
 import 'package:spotube/services/audio_player/audio_player.dart';
 import 'package:spotube/services/logger/logger.dart';
+import 'package:spotube/services/logger/playback_start_trace.dart';
+import 'package:spotube/services/youtube_engine/yt_dlp_worker.dart';
 import 'package:spotube/utils/platform.dart';
+
+final pendingPlaybackTrackIdProvider = StateProvider<String?>((ref) => null);
 
 class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
   BlackListNotifier get _blacklist => ref.read(blacklistProvider.notifier);
   String? _lastPersistedPlaylistSignature;
 
+  bool _isExpectedBackgroundPrefetchSkip(Object error) {
+    final message = error.toString().toLowerCase();
+    return message.contains('yt-dlp worker unavailable') ||
+        message.contains('background worker deferred') ||
+        message.contains('worker cancelled');
+  }
+
+  Future<bool> _hasCachedSourceMatch(SpotubeFullTrackObject track) async {
+    final audioSource = await ref.read(audioSourcePluginProvider.future);
+    final database = ref.read(databaseProvider);
+    if (audioSource == null) return false;
+
+    final cached = await (database.select(database.sourceMatchTable)
+          ..where((tbl) =>
+              tbl.trackId.equals(track.id) &
+              tbl.sourceType.equals(audioSource.slug))
+          ..limit(1))
+        .getSingleOrNull();
+    return cached != null;
+  }
+
   void _prefetchAdjacentSources() {
-    if (state.tracks.isEmpty) return;
+    if (state.tracks.isEmpty || YtDlpWorkerClient.shouldDeferBackgroundWork) {
+      return;
+    }
 
     final centerIndex = state.currentIndex < 0 ? 0 : state.currentIndex;
     final indexes = <int>{
@@ -35,7 +64,34 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
     for (final index in indexes) {
       final track = state.tracks[index];
       if (track is SpotubeFullTrackObject) {
-        ref.read(sourcedTrackProvider(track));
+        unawaited(
+          YtDlpExecutionContext.runBackground(() async {
+            try {
+              final isImmediateNext = index == centerIndex || index == centerIndex + 1;
+              if (!isImmediateNext && !await _hasCachedSourceMatch(track)) {
+                return;
+              }
+              final sourcedTrack =
+                  await ref.read(sourcedTrackProvider(track).future);
+              if (isImmediateNext &&
+                  !sourcedTrack.hasFreshValidatedStream) {
+                await ref
+                    .read(sourcedTrackProvider(track).notifier)
+                    .refreshStreamingUrl()
+                    .catchError((_) => sourcedTrack);
+              }
+            } catch (error, stack) {
+              if (_isExpectedBackgroundPrefetchSkip(error)) {
+                return;
+              }
+              await AppLogger.reportError(
+                error,
+                stack,
+                "Failed to prefetch sourced track ${track.id}",
+              );
+            }
+          }, cancelGroup: 'adjacent-prefetch:${track.id}'),
+        );
       }
     }
   }
@@ -55,6 +111,61 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
       tracks is SpotubeFullTrackObject || tracks is SpotubeLocalTrackObject,
       'Track must be either SpotubeFullTrackObject or SpotubeLocalTrackObject',
     );
+  }
+
+  void setPendingPlaybackTrackId(String? trackId) {
+    ref.read(pendingPlaybackTrackIdProvider.notifier).state = trackId;
+  }
+
+  void clearPendingPlaybackTrackId([String? trackId]) {
+    final notifier = ref.read(pendingPlaybackTrackIdProvider.notifier);
+    if (trackId == null || notifier.state == trackId) {
+      notifier.state = null;
+    }
+  }
+
+  Future<void> primeTrackPlayback(
+    SpotubeTrackObject track, {
+    bool refreshStream = true,
+  }) async {
+    if (track is! SpotubeFullTrackObject) return;
+
+    try {
+      await YtDlpExecutionContext.runForeground(() async {
+        PlaybackStartTrace.markTrack(track.id, 'prime_track.start');
+        final sourcedTrack = await ref.read(sourcedTrackProvider(track).future);
+        PlaybackStartTrace.markTrack(
+          track.id,
+          'prime_track.sourced_ready',
+          data: {'hasFreshValidatedStream': sourcedTrack.hasFreshValidatedStream},
+        );
+        if (refreshStream && !sourcedTrack.hasFreshValidatedStream) {
+          PlaybackStartTrace.markTrack(
+            track.id,
+            'prime_track.refresh_stream.start',
+          );
+          await ref
+              .read(sourcedTrackProvider(track).notifier)
+              .refreshStreamingUrl();
+          PlaybackStartTrace.markTrack(
+            track.id,
+            'prime_track.refresh_stream.done',
+          );
+        }
+        PlaybackStartTrace.markTrack(track.id, 'prime_track.done');
+      }, cancelGroup: 'playback:${track.id}');
+    } catch (error, stack) {
+      PlaybackStartTrace.markTrack(
+        track.id,
+        'prime_track.failed',
+        data: {'error': error.toString()},
+      );
+      await AppLogger.reportError(
+        error,
+        stack,
+        "Failed to prime track playback ${track.id}",
+      );
+    }
   }
 
   Future<void> _syncSavedState() async {
@@ -144,6 +255,13 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
       audioPlayer.playingStream.listen((playing) async {
         try {
           state = state.copyWith(playing: playing);
+          final activeTrackId = state.activeTrack?.id;
+          if (activeTrackId != null) {
+            PlaybackStartTrace.markTrack(
+              activeTrackId,
+              playing ? 'player.playing_true' : 'player.playing_false',
+            );
+          }
 
           await _updatePlayerState(
             AudioPlayerStateTableCompanion(
@@ -194,6 +312,20 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
             tracks: tracks,
             currentIndex: playlist.index,
           );
+          if (state.activeTrack != null) {
+            PlaybackStartTrace.markTrack(
+              state.activeTrack!.id,
+              'playlist_stream.updated',
+              data: {
+                'playlistLength': tracks.length,
+                'currentIndex': playlist.index,
+              },
+            );
+          }
+          final pendingTrackId = ref.read(pendingPlaybackTrackIdProvider);
+          if (pendingTrackId != null && state.activeTrack?.id == pendingTrackId) {
+            clearPendingPlaybackTrackId(pendingTrackId);
+          }
           _prefetchAdjacentSources();
 
           await _updatePlayerState(
@@ -208,8 +340,17 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
       }),
       audioPlayer.positionStream.listen((position) async {
         try {
+          final activeTrackId = state.activeTrack?.id;
+          if (activeTrackId != null && position > Duration.zero) {
+            PlaybackStartTrace.completeTrack(
+              activeTrackId,
+              'player.first_position',
+              data: {'positionMs': position.inMilliseconds},
+            );
+          }
+          if (!audioPlayer.isPlaying) return;
           final positionMs = max(position.inMilliseconds, 0);
-          if ((positionMs - lastSavedPositionMs).abs() < 1000) return;
+          if ((positionMs - lastSavedPositionMs).abs() < 5000) return;
 
           lastSavedPositionMs = positionMs;
 
@@ -480,7 +621,19 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
     bool autoPlay = false,
   }) async {
     _assertAllowedTracks(tracks);
+    final targetTrack =
+        tracks.isEmpty ? null : tracks[initialIndex.clamp(0, tracks.length - 1)];
+    if (targetTrack != null) {
+      PlaybackStartTrace.markTrack(
+        targetTrack.id,
+        'audio_player_notifier.load.start',
+        data: {'trackCount': tracks.length, 'initialIndex': initialIndex},
+      );
+    }
     await ref.read(serverProvider.future);
+    if (targetTrack != null) {
+      PlaybackStartTrace.markTrack(targetTrack.id, 'server.ready');
+    }
 
     final medias = _blacklist
         .filter(tracks)
@@ -488,9 +641,15 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
         .asMediaList()
         .unique((a, b) => a.uri == b.uri);
 
-    if (medias.isEmpty) return;
+    if (medias.isEmpty) {
+      if (targetTrack != null) {
+        PlaybackStartTrace.failTrack(targetTrack.id, 'load.no_playable_media');
+      }
+      return;
+    }
 
     final safeInitialIndex = initialIndex.clamp(0, medias.length - 1).toInt();
+    final selectedTrack = medias[safeInitialIndex].track;
 
     state = state.copyWith(
       // These are filtered tracks as well
@@ -499,11 +658,17 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
       collections: [],
     );
     _prefetchAdjacentSources();
+    PlaybackStartTrace.markTrack(
+      selectedTrack.id,
+      'audio_player.open_playlist.start',
+      data: {'mediaCount': medias.length, 'autoPlay': autoPlay},
+    );
     await audioPlayer.openPlaylist(
       medias,
       initialIndex: safeInitialIndex,
       autoPlay: autoPlay,
     );
+    PlaybackStartTrace.markTrack(selectedTrack.id, 'audio_player.open_playlist.done');
 
     await _updatePlayerState(
       AudioPlayerStateTableCompanion(
@@ -512,6 +677,7 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
         positionMs: const Value(0),
       ),
     );
+    PlaybackStartTrace.markTrack(selectedTrack.id, 'audio_player_notifier.load.done');
   }
 
   Future<void> swapActiveSource() async {
@@ -551,7 +717,13 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
     final index =
         state.tracks.toList().indexWhere((element) => element.id == track.id);
     if (index == -1) return;
+    PlaybackStartTrace.markTrack(
+      track.id,
+      'audio_player_notifier.jump.start',
+      data: {'index': index},
+    );
     await audioPlayer.jumpTo(index);
+    PlaybackStartTrace.markTrack(track.id, 'audio_player_notifier.jump.done');
   }
 
   Future<void> moveTrack(int oldIndex, int newIndex) async {

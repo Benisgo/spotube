@@ -49,6 +49,21 @@ class PlayerControls extends HookConsumerWidget {
         useStream(audioPlayer.playingStream).data ?? audioPlayer.isPlaying;
     final theme = Theme.of(context);
 
+    void showNoPreviousTrackToast() {
+      showToast(
+        context: context,
+        location: ToastLocation.bottomCenter,
+        builder: (context, overlay) {
+          return const SurfaceCard(
+            child: Basic(
+              leading: Icon(SpotubeIcons.skipBack),
+              title: Text("There is no previous track to go back to."),
+            ),
+          );
+        },
+      );
+    }
+
     final buttonSize =
         kIsMobile ? const ButtonSize(1.5) : const ButtonSize(1.2);
 
@@ -182,7 +197,13 @@ class PlayerControls extends HookConsumerWidget {
                       size: buttonSize,
                       enabled: !isFetchingActiveTrack,
                       icon: const Icon(SpotubeIcons.skipBack),
-                      onPressed: audioPlayer.skipToPrevious,
+                      onPressed: () {
+                        if (!audioPlayer.canSkipToPrevious) {
+                          showNoPreviousTrackToast();
+                          return;
+                        }
+                        audioPlayer.skipToPrevious();
+                      },
                     ),
                   ),
                   Tooltip(

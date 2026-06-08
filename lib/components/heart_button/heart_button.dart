@@ -5,7 +5,6 @@ import 'package:spotube/components/heart_button/use_track_toggle_like.dart';
 import 'package:spotube/extensions/context.dart';
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/provider/metadata_plugin/core/auth.dart';
-import 'package:spotube/provider/metadata_plugin/library/tracks.dart';
 import 'package:spotube/provider/metadata_plugin/core/user.dart';
 
 class HeartButton extends HookConsumerWidget {
@@ -79,7 +78,6 @@ class TrackHeartButton extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, ref) {
-    final savedTracks = ref.watch(metadataPluginSavedTracksProvider);
     final me = ref.watch(metadataPluginUserProvider);
     final (:isLiked, :isLoading, :toggleTrackLike) =
         useTrackToggleLike(track, ref);
@@ -94,11 +92,7 @@ class TrackHeartButton extends HookConsumerWidget {
           : context.l10n.save_as_favorite,
       isLiked: isLiked,
       requireAuthentication: requireAuthentication,
-      onPressed: savedTracks.asData?.value == null || isLoading
-          ? null
-          : () {
-              toggleTrackLike(track);
-            },
+      onPressed: isLoading ? null : () => toggleTrackLike(track),
     );
   }
 }

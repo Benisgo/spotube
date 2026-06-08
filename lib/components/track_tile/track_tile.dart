@@ -1,8 +1,5 @@
-import 'dart:async';
-
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/gestures.dart';
-import 'package:flutter_hooks/flutter_hooks.dart';
 
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
@@ -18,6 +15,8 @@ import 'package:spotube/components/ui/button_tile.dart';
 import 'package:spotube/extensions/constrains.dart';
 import 'package:spotube/extensions/duration.dart';
 import 'package:spotube/models/metadata/metadata.dart';
+import 'package:spotube/provider/audio_player/audio_player.dart';
+import 'package:spotube/provider/audio_player/querying_track_info.dart';
 import 'package:spotube/provider/audio_player/state.dart';
 import 'package:spotube/provider/blacklist_provider.dart';
 import 'package:spotube/utils/platform.dart';
@@ -72,12 +71,15 @@ class TrackTile extends HookConsumerWidget {
     final theme = Theme.of(context);
 
     final isBlackListed = ref.watch(isBlacklistedProvider(track));
-
-    final isLoading = useState(false);
-
-    final isPlaying = playlist.activeTrack?.id == track.id;
-
-    final isSelected = isPlaying || isLoading.value;
+    final activeTrackId =
+        ref.watch(audioPlayerProvider.select((value) => value.activeTrack?.id));
+    final isPlaying = activeTrackId == track.id;
+    final pendingPlaybackTrackId = ref.watch(pendingPlaybackTrackIdProvider);
+    final isPendingPlayback =
+        pendingPlaybackTrackId == track.id && playlist.activeTrack?.id != track.id;
+    final isTrackQuerying =
+        isFetchingActiveTrack || ref.watch(trackQueryingInfoProvider(track));
+    final isSelected = isPlaying || isPendingPlayback;
 
     // Treat either explicit selectionMode or presence of onChanged as selection
     // context. Some lists enable selection by providing `onChanged` without
@@ -107,14 +109,7 @@ class TrackTile extends HookConsumerWidget {
             selected: isSelected,
             onPressed: () async {
               if (isBlackListed) return;
-              try {
-                isLoading.value = true;
-                await onTap?.call();
-              } finally {
-                if (context.mounted) {
-                  isLoading.value = false;
-                }
-              }
+              await onTap?.call();
             },
             onLongPress: onLongPress,
             style: (isBlackListed
@@ -181,26 +176,25 @@ class TrackTile extends HookConsumerWidget {
                     Positioned.fill(
                       child: Center(
                         child: Skeleton.ignore(
-                          child: AnimatedSwitcher(
+                            child: AnimatedSwitcher(
                             duration: const Duration(milliseconds: 300),
                             child: switch ((
                               isPlaying,
-                              isFetchingActiveTrack,
-                              isPlaying,
+                              isTrackQuerying,
                               isHovering,
-                              isLoading.value
+                              isPendingPlayback
                             )) {
-                              (true, true, _, _, _) || (_, _, _, _, true) =>
+                              (true, true, _, _) || (_, _, _, true) =>
                                 const SizedBox(
                                   width: 26,
                                   height: 26,
                                   child: CircularProgressIndicator(),
                                 ),
-                              (_, _, true, _, _) => Icon(
+                              (true, _, _, _) => Icon(
                                   SpotubeIcons.pause,
                                   color: theme.colorScheme.primary,
                                 ),
-                              (_, _, _, true, _) => const Icon(
+                              (_, _, true, _) => const Icon(
                                   SpotubeIcons.play,
                                   color: Colors.white,
                                 ),

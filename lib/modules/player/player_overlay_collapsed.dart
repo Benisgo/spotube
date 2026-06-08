@@ -28,6 +28,21 @@ class PlayerOverlayCollapsedSection extends HookConsumerWidget {
 
     final theme = Theme.of(context);
 
+    void showNoPreviousTrackToast() {
+      showToast(
+        context: context,
+        location: ToastLocation.bottomCenter,
+        builder: (context, overlay) {
+          return const SurfaceCard(
+            child: Basic(
+              leading: Icon(SpotubeIcons.skipBack),
+              title: Text("There is no previous track to go back to."),
+            ),
+          );
+        },
+      );
+    }
+
     final shouldShow = useState(true);
 
     ref.listen(navigationPanelHeight, (_, height) {
@@ -72,7 +87,13 @@ class PlayerOverlayCollapsedSection extends HookConsumerWidget {
                                 icon: const Icon(SpotubeIcons.skipBack),
                                 onPressed: isFetchingActiveTrack
                                     ? null
-                                    : audioPlayer.skipToPrevious,
+                                    : () {
+                                        if (!audioPlayer.canSkipToPrevious) {
+                                          showNoPreviousTrackToast();
+                                          return;
+                                        }
+                                        audioPlayer.skipToPrevious();
+                                      },
                               ),
                               Consumer(
                                 builder: (context, ref, _) {

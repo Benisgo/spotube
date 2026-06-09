@@ -29,6 +29,16 @@ if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
 }
 
+def resolveKeystore(String path) {
+    if (path == null) return null
+    def f = file(path)
+    if (f.exists()) return f
+    f = new File(rootProject.projectDir, path)
+    if (f.exists()) return f
+    f = new File(rootProject.projectDir.parentFile, path)
+    return f.exists() ? f : null
+}
+
 def composeVersion = "1.4.8"
 
 android {
@@ -77,7 +87,7 @@ android {
             release {
                 keyAlias keystoreProperties['keyAlias']
                 keyPassword keystoreProperties['keyPassword']
-                storeFile keystoreProperties['storeFile'] ? file(keystoreProperties['storeFile']) : null
+                storeFile keystoreProperties['storeFile'] ? resolveKeystore(keystoreProperties['storeFile']) : null
                 storePassword keystoreProperties['storePassword']
             }
         }
@@ -125,6 +135,14 @@ android {
 
     packagingOptions {
         resources.excludes += "DebugProbesKt.bin"
+    }
+
+    // youtubedl-android ships libpython.zip.so as a zip (not an ELF),
+    // so llvm-strip can't process it
+    applicationVariants.configureEach { variant ->
+        variant.mergeNativeLibsProvider.configure {
+            doNotStrip "**/libpython.zip.so"
+        }
     }
 }
 

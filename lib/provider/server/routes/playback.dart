@@ -212,7 +212,7 @@ class ServerPlaybackRoutes {
     };
   }
 
-  bool _shouldBypassStreamingProxy(SourcedTrack track) => true;
+  bool _shouldBypassStreamingProxy(SourcedTrack track) => kIsDesktop;
 
   Future<String> _getTrackCacheFilePath(SourcedTrack track) async {
     return join(
@@ -601,6 +601,32 @@ class ServerPlaybackRoutes {
           _markStreamFailure(activeTrack);
           AppLogger.reportError(retryError, retryStack);
         }
+        rethrow;
+      }
+    }
+
+    if (res.statusCode != 200) {
+      _trace(
+        "upstream non-200 uri=$requestedUri track=${activeTrack.query.id} status=${res.statusCode}",
+      );
+      final notifier = ref.read(sourcedTrackProvider(activeTrack.query).notifier);
+      _ensurePlaybackRequestRelevant(requestedUri);
+      try {
+        activeTrack = await _resolvePlayableTrack(
+          await notifier.refreshStreamingUrl(),
+          requestedUri,
+        );
+      } catch (resolveError, resolveStack) {
+        _markStreamFailure(activeTrack);
+        AppLogger.reportError(resolveError, resolveStack);
+        rethrow;
+      }
+      url = activeTrack.url!;
+      try {
+        res = await fetchStream(url);
+      } catch (retryError, retryStack) {
+        _markStreamFailure(activeTrack);
+        AppLogger.reportError(retryError, retryStack);
         rethrow;
       }
     }

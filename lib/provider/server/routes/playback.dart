@@ -516,11 +516,15 @@ class ServerPlaybackRoutes {
     Options optionsFor(String sourceUrl) => Options(
           headers: {
             ...headers,
-            "user-agent": _randomUserAgent,
+            "user-agent": "Mozilla/5.0 (Linux; Android 14; SM-S908E) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.6367.83 Mobile Safari/537.36",
+            "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            "accept-language": "en-US,en;q=0.5",
             "referer": "https://www.youtube.com/",
             "origin": "https://www.youtube.com/",
+            "sec-fetch-dest": "audio",
+            "sec-fetch-mode": "no-cors",
+            "sec-fetch-site": "cross-site",
             "Cache-Control": "max-age=3600",
-            "Connection": "close",
             "host": Uri.parse(sourceUrl).host,
           },
           responseType: ResponseType.stream,

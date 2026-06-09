@@ -18,6 +18,7 @@ import 'package:spotube/provider/server/sourced_track_provider.dart';
 import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
 import 'package:spotube/services/audio_player/audio_player.dart';
 import 'package:spotube/services/logger/logger.dart';
+import 'package:spotube/utils/platform.dart';
 import 'package:spotube/services/logger/playback_start_trace.dart';
 import 'package:spotube/services/sourced_track/sourced_track.dart';
 import 'package:spotube/utils/service_utils.dart';
@@ -212,7 +213,8 @@ class ServerPlaybackRoutes {
   }
 
   bool _shouldBypassStreamingProxy(SourcedTrack track) {
-    return true;
+    // Desktop MPV handles redirects fine; on Android proxy through Dart
+    return kIsDesktop;
   }
 
   Future<String> _getTrackCacheFilePath(SourcedTrack track) async {

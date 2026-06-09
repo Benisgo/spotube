@@ -10,6 +10,15 @@ import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 class AndroidYtDlpEngine implements YouTubeEngine {
   static const _channel = MethodChannel("oss.krtirtho.spotube/yt_dlp");
 
+  /// Cache of yt-dlp http_headers per CDN URL, needed because YouTube's CDN
+  /// rejects requests that don't carry the exact headers yt-dlp extracted.
+  static final _headersByUrl = <String, Map<String, String>>{};
+
+  /// Returns the yt-dlp http_headers for a given CDN URL, if cached.
+  static Map<String, String>? headersForUrl(String url) {
+    return _headersByUrl[url];
+  }
+
   StreamManifest _parseFormats(List formats, videoId) {
     final audioOnlyStreams = formats
         .where((f) => f["resolution"] == "audio only" || f["vcodec"] == "none")
@@ -17,10 +26,16 @@ class AndroidYtDlpEngine implements YouTubeEngine {
         .sorted((a, b) => (a["quality"] ?? 0) > (b["quality"] ?? 0) ? 1 : -1)
         .map((f) {
       final filesize = f["filesize"] ?? f["filesize_approx"];
+      final url = f["url"] as String;
+      if (f["http_headers"] != null) {
+        _headersByUrl[url] = (f["http_headers"] as Map).map(
+          (k, v) => MapEntry(k.toString(), v.toString()),
+        );
+      }
       return AudioOnlyStreamInfo(
         VideoId(videoId),
         0,
-        Uri.parse(f["url"]),
+        Uri.parse(url),
         StreamContainer.parse(
           f["container"]?.replaceAll("_dash", "").replaceAll("m4a", "mp4") ??
               (f["protocol"] == "m3u8_native" ? "m3u8" : "mp4"),

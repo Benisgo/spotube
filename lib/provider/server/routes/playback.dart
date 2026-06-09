@@ -18,6 +18,7 @@ import 'package:spotube/provider/server/sourced_track_provider.dart';
 import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
 import 'package:spotube/services/audio_player/audio_player.dart';
 import 'package:spotube/services/logger/logger.dart';
+import 'package:spotube/services/youtube_engine/android_yt_dlp_engine.dart';
 import 'package:spotube/utils/platform.dart';
 import 'package:spotube/services/logger/playback_start_trace.dart';
 import 'package:spotube/services/sourced_track/sourced_track.dart';
@@ -516,20 +517,21 @@ class ServerPlaybackRoutes {
     Options optionsFor(String sourceUrl) => Options(
           headers: {
             ...headers,
-            "user-agent": "Mozilla/5.0 (Linux; Android 14; SM-S908E) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.6367.83 Mobile Safari/537.36",
-            "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-            "accept-language": "en-US,en;q=0.5",
+            ...?_ytDlpHeaders(sourceUrl),
             "referer": "https://www.youtube.com/",
-            "origin": "https://www.youtube.com/",
-            "sec-fetch-dest": "audio",
-            "sec-fetch-mode": "no-cors",
-            "sec-fetch-site": "cross-site",
-            "Cache-Control": "max-age=3600",
             "host": Uri.parse(sourceUrl).host,
           },
           responseType: ResponseType.stream,
           validateStatus: (_) => true,
         );
+
+    Map<String, String>? _ytDlpHeaders(String url) {
+      try {
+        return AndroidYtDlpEngine.headersForUrl(url);
+      } catch (_) {
+        return null;
+      }
+    }
 
     Future<dio_lib.Response<ResponseBody>> fetchStream(String sourceUrl) {
       final attemptCount = (_upstreamAttemptCounts[requestedUri] =

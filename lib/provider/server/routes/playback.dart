@@ -213,7 +213,7 @@ class ServerPlaybackRoutes {
     };
   }
 
-  bool _shouldBypassStreamingProxy(SourcedTrack track) => kIsDesktop;
+  bool _shouldBypassStreamingProxy(SourcedTrack track) => true;
 
   Future<String> _getTrackCacheFilePath(SourcedTrack track) async {
     return join(

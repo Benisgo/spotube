@@ -636,10 +636,24 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
       PlaybackStartTrace.markTrack(targetTrack.id, 'server.ready');
     }
 
+    // Resolve the first track's CDN URL directly so MPV can play it without
+    // going through the local proxy (which has issues on some Android devices)
+    String? firstTrackDirectUrl;
+    if (targetTrack != null && targetTrack is SpotubeFullTrackObject && !kIsDesktop) {
+      try {
+        final sourced = await ref.read(sourcedTrackProvider(targetTrack).future);
+        if (sourced?.url != null) {
+          await ref.read(sourcedTrackProvider(targetTrack).notifier).refreshStreamingUrl();
+          final refreshed = ref.read(sourcedTrackProvider(targetTrack));
+          firstTrackDirectUrl = refreshed?.url;
+        }
+      } catch (_) {}
+    }
+
     final medias = _blacklist
         .filter(tracks)
         .toList()
-        .asMediaList()
+        .asMediaList(firstTrackDirectUrl: firstTrackDirectUrl, targetTrack: targetTrack)
         .unique((a, b) => a.uri == b.uri);
 
     if (medias.isEmpty) {

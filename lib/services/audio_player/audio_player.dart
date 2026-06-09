@@ -21,7 +21,7 @@ class SpotubeMedia extends mk.Media {
       kIsWindows ? "localhost" : InternetAddress.loopbackIPv4.address;
 
   final SpotubeTrackObject track;
-  SpotubeMedia(this.track)
+  SpotubeMedia(this.track, {String? directUrl})
       : assert(
           track is SpotubeLocalTrackObject || track is SpotubeFullTrackObject,
           "Track must be a either a local track or a full track object with ISRC",
@@ -29,7 +29,7 @@ class SpotubeMedia extends mk.Media {
         super(
           track is SpotubeLocalTrackObject
               ? track.path
-              : "http://$_host:$serverPort/stream/${track.id}",
+              : directUrl ?? "http://$_host:$serverPort/stream/${track.id}",
           extras: track.toJson(),
         );
 

@@ -31,7 +31,7 @@
       android:value="false" /> -->
 
     <activity
-      android:name="com.ryanheise.audioservice.AudioServiceActivity"
+      android:name="oss.krtirtho.spotube.MainActivity"
       android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
       android:exported="true"
       android:hardwareAccelerated="true"

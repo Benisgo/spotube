@@ -514,24 +514,24 @@ class ServerPlaybackRoutes {
       "register upstream uri=$requestedUri track=${activeTrack.query.id} active=${_activeUpstreamRequests.length}",
     );
 
-    Options optionsFor(String sourceUrl) => Options(
-          headers: {
-            ...headers,
-            ...?_ytDlpHeaders(sourceUrl),
-            "referer": "https://www.youtube.com/",
-            "host": Uri.parse(sourceUrl).host,
-          },
-          responseType: ResponseType.stream,
-          validateStatus: (_) => true,
-        );
-
-    Map<String, String>? _ytDlpHeaders(String url) {
+    Map<String, String>? ytDlpHeaders(String url) {
       try {
         return AndroidYtDlpEngine.headersForUrl(url);
       } catch (_) {
         return null;
       }
     }
+
+    Options optionsFor(String sourceUrl) => Options(
+          headers: {
+            ...headers,
+            ...?ytDlpHeaders(sourceUrl),
+            "referer": "https://www.youtube.com/",
+            "host": Uri.parse(sourceUrl).host,
+          },
+          responseType: ResponseType.stream,
+          validateStatus: (_) => true,
+        );
 
     Future<dio_lib.Response<ResponseBody>> fetchStream(String sourceUrl) {
       final attemptCount = (_upstreamAttemptCounts[requestedUri] =

@@ -641,11 +641,11 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
     String? firstTrackDirectUrl;
     if (targetTrack != null && targetTrack is SpotubeFullTrackObject && !kIsDesktop) {
       try {
+        final notifier = ref.read(sourcedTrackProvider(targetTrack).notifier);
         final sourced = await ref.read(sourcedTrackProvider(targetTrack).future);
         if (sourced?.url != null) {
-          await ref.read(sourcedTrackProvider(targetTrack).notifier).refreshStreamingUrl();
-          final refreshed = ref.read(sourcedTrackProvider(targetTrack));
-          firstTrackDirectUrl = refreshed?.url;
+          await notifier.refreshStreamingUrl();
+          firstTrackDirectUrl = notifier.state.value?.url;
         }
       } catch (_) {}
     }

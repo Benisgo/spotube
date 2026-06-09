@@ -135,14 +135,7 @@ android {
 
     packagingOptions {
         resources.excludes += "DebugProbesKt.bin"
-    }
-
-    // youtubedl-android ships libpython.zip.so as a zip (not an ELF),
-    // so llvm-strip can't process it
-    applicationVariants.configureEach { variant ->
-        variant.mergeNativeLibsProvider.configure {
-            doNotStrip "**/libpython.zip.so"
-        }
+        doNotStrip "**/libpython.zip.so"
     }
 }
 

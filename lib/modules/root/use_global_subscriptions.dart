@@ -63,7 +63,7 @@ void useGlobalSubscriptions(WidgetRef ref) {
     queueToast(() {
       showToast(
         context: context,
-        location: ToastLocation.bottomCenter,
+        location: ToastLocation.topCenter,
         builder: (context, overlay) {
           return SurfaceCard(
             fillColor: theme.colorScheme.destructive,
@@ -90,9 +90,18 @@ void useGlobalSubscriptions(WidgetRef ref) {
         context: context,
         location: ToastLocation.topRight,
         builder: (context, overlay) {
-          return SurfaceCard(
-            child: Basic(
-              title: Text(message),
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.muted.withValues(alpha: 0.85),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text(
+              message,
+              style: TextStyle(
+                fontSize: 12,
+                color: theme.colorScheme.foreground,
+              ),
             ),
           );
         },

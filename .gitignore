@@ -74,6 +74,8 @@ dist
 appimage-build
 
 android/key.properties
+upload-keystore.jks
+keystore.b64
 
 **/pb_data
 

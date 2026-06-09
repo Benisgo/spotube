@@ -282,6 +282,8 @@ class MultiSessionRoomSnapshot {
   final SpotubeAudioSourceMatchObject? activeSource;
   final int positionMs;
   final bool playing;
+  final String loopMode;
+  final bool shuffle;
   final List<MultiSessionMember> members;
   final List<MultiSessionSuggestion> suggestions;
   final bool communityQueueEnabled;
@@ -295,6 +297,8 @@ class MultiSessionRoomSnapshot {
     required this.activeSource,
     required this.positionMs,
     required this.playing,
+    this.loopMode = "none",
+    this.shuffle = false,
     required this.members,
     required this.suggestions,
     required this.communityQueueEnabled,
@@ -317,6 +321,8 @@ class MultiSessionRoomSnapshot {
           : null,
       positionMs: json["positionMs"] as int? ?? 0,
       playing: json["playing"] == true,
+      loopMode: json["loopMode"] as String? ?? "none",
+      shuffle: json["shuffle"] == true,
       members: (json["members"] as List? ?? [])
           .cast<Map>()
           .map((item) =>

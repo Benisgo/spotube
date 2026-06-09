@@ -39,6 +39,8 @@ type RoomState = {
   activeSource: Record<string, unknown> | null;
   positionMs: number;
   playing: boolean;
+  loopMode: string;
+  shuffle: boolean;
   members: Record<string, Member>;
   suggestions: Suggestion[];
   communityQueueEnabled: boolean;
@@ -212,6 +214,8 @@ export class SpotubeRoom {
         activeSource: null,
         positionMs: 0,
         playing: false,
+        loopMode: "none",
+        shuffle: false,
         members: {
           [hostId]: {
             id: hostId,
@@ -467,6 +471,8 @@ export class SpotubeRoom {
         positionMs?: number;
         activeTrackId?: string | null;
         activeSource?: Record<string, unknown> | null;
+        loopMode?: string;
+        shuffle?: boolean;
       };
       this.stateValue.playing = data.playing ?? this.stateValue.playing;
       this.stateValue.positionMs = data.positionMs ?? this.stateValue.positionMs;
@@ -476,6 +482,10 @@ export class SpotubeRoom {
         data.activeSource === undefined
           ? this.stateValue.activeSource
           : data.activeSource;
+      this.stateValue.loopMode =
+        data.loopMode ?? this.stateValue.loopMode;
+      this.stateValue.shuffle =
+        data.shuffle ?? this.stateValue.shuffle;
       this.reconcileCommunityQueue();
       await this.bump();
     }
@@ -503,6 +513,8 @@ export class SpotubeRoom {
           : previousActiveTrackId !== this.stateValue.activeTrackId
             ? null
             : this.stateValue.activeSource;
+      this.stateValue.positionMs =
+        (data as { positionMs?: number }).positionMs ?? this.stateValue.positionMs;
       this.reconcileCommunityQueue();
       await this.bump();
     }

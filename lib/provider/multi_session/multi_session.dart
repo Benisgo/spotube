@@ -5,6 +5,7 @@ import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:http/http.dart' as http;
+import 'package:media_kit/media_kit.dart' hide Track;
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/models/multi_session/multi_session.dart';
 import 'package:spotube/provider/audio_player/audio_player.dart';
@@ -559,7 +560,9 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
     _debugTrace(
         'message:type=${event["type"]} gen=$generation code=${state.code}');
     if (event["type"] == "ended") {
-      _beginRoomShutdown(notifyRelay: false, endedByHost: true);
+      unawaited(
+        _beginRoomShutdown(notifyRelay: false, endedByHost: true),
+      );
       state = const MultiSessionState(error: "Room ended");
       return;
     }
@@ -603,11 +606,11 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
       final index = activeIndex < 0 ? 0 : activeIndex;
       final activeTrackChanged =
           localState.activeTrack?.id != snapshot.activeTrackId;
-      final queueChanged =
-          !_stringListEquality.equals(localTrackIds, remoteTrackIds) ||
-              localState.currentIndex != index;
+      final queueIdsChanged =
+          !_stringListEquality.equals(localTrackIds, remoteTrackIds);
+      final indexChanged = localState.currentIndex != index;
 
-      if (queueChanged) {
+      if (queueIdsChanged) {
         final tracks = snapshot.queue
             .map(SpotubeTrackObject.fromJson)
             .whereType<SpotubeFullTrackObject>()
@@ -619,6 +622,15 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
               initialIndex: index,
               autoPlay: snapshot.playing,
             );
+      } else if (indexChanged) {
+        final medias = audioPlayer.playlist.medias;
+        if (medias.isNotEmpty && index < medias.length) {
+          await audioPlayer.openPlaylist(
+            medias,
+            initialIndex: index,
+            autoPlay: snapshot.playing,
+          );
+        }
       }
 
       final postLoadState = ref.read(audioPlayerProvider);
@@ -641,7 +653,8 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
 
       final localPositionMs = audioPlayer.position.inMilliseconds;
       final positionDriftMs = (snapshot.positionMs - localPositionMs).abs();
-      final shouldSeek = queueChanged ||
+      final shouldSeek = queueIdsChanged ||
+          indexChanged ||
           activeTrackChanged ||
           localPositionMs == 0 ||
           positionDriftMs >= _remoteSeekThresholdMs;
@@ -654,6 +667,18 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
         await audioPlayer.resume();
       } else if (!snapshot.playing && audioPlayer.isPlaying) {
         await audioPlayer.pause();
+      }
+
+      if (audioPlayer.loopMode.name != snapshot.loopMode) {
+        await audioPlayer.setLoopMode(
+          PlaylistMode.values.firstWhere(
+            (mode) => mode.name == snapshot.loopMode,
+            orElse: () => PlaylistMode.none,
+          ),
+        );
+      }
+      if (audioPlayer.isShuffled != snapshot.shuffle) {
+        await audioPlayer.setShuffle(snapshot.shuffle);
       }
     } catch (e, stack) {
       AppLogger.reportError(e, stack);
@@ -702,10 +727,10 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
     _debugTrace('dispose:queued gen=$_connectionGeneration');
   }
 
-  void _beginRoomShutdown({
+  Future<void> _beginRoomShutdown({
     required bool notifyRelay,
     required bool endedByHost,
-  }) {
+  }) async {
     if (_closingRoom) {
       _debugTrace('shutdown:ignored already-closing');
       return;
@@ -722,31 +747,27 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
         ? const MultiSessionState(error: "Room ended")
         : state.copyWith(clearRoom: true);
 
-    Timer.run(() {
-      unawaited(() async {
-        try {
-          if (notifyRelay && previousState.connected) {
-            final eventType = previousState.isHost ? "end" : "leave";
-            _debugTrace('shutdown:send:$eventType');
-            _channel?.sink.add(encodeRoomEvent(eventType, null));
-            if (previousState.isHost) {
-              await Future<void>.delayed(const Duration(milliseconds: 100));
-            }
-          }
-        } catch (error, stackTrace) {
-          await AppLogger.reportError(
-            error,
-            stackTrace,
-            previousState.isHost
-                ? "Failed to notify relay about ending a multi-session room"
-                : "Failed to notify relay about leaving a multi-session room",
-          );
-        } finally {
-          _disposeConnection();
-          _debugTrace('shutdown:end');
+    try {
+      if (notifyRelay && previousState.connected) {
+        final eventType = previousState.isHost ? "end" : "leave";
+        _debugTrace('shutdown:send:$eventType');
+        _channel?.sink.add(encodeRoomEvent(eventType, null));
+        if (previousState.isHost) {
+          await Future<void>.delayed(const Duration(milliseconds: 100));
         }
-      }());
-    });
+      }
+    } catch (error, stackTrace) {
+      await AppLogger.reportError(
+        error,
+        stackTrace,
+        previousState.isHost
+            ? "Failed to notify relay about ending a multi-session room"
+            : "Failed to notify relay about leaving a multi-session room",
+      );
+    } finally {
+      _disposeConnection();
+      _debugTrace('shutdown:end');
+    }
   }
 
   void sendQueue() {
@@ -759,6 +780,7 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
             .toList(),
         "activeTrackId": playerState.activeTrack?.id,
         "activeSource": await _activeSourcePayload(),
+        "positionMs": audioPlayer.position.inMilliseconds,
       });
     }());
   }
@@ -769,6 +791,8 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
       "positionMs": audioPlayer.position.inMilliseconds,
       "activeTrackId": ref.read(audioPlayerProvider).activeTrack?.id,
       "activeSource": await _activeSourcePayload(),
+      "loopMode": audioPlayer.loopMode.name,
+      "shuffle": audioPlayer.isShuffled,
     });
   }
 
@@ -870,9 +894,9 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
 
     try {
       if (state.isHost) {
-        await endRoom().timeout(const Duration(milliseconds: 200));
+        await endRoom().timeout(const Duration(seconds: 1));
       } else {
-        await leaveRoom().timeout(const Duration(milliseconds: 200));
+        await leaveRoom().timeout(const Duration(seconds: 1));
       }
     } catch (error, stackTrace) {
       await AppLogger.reportError(
@@ -884,8 +908,7 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
   }
 
   Future<void> leaveRoom() async {
-    _beginRoomShutdown(notifyRelay: true, endedByHost: false);
-    await Future<void>.delayed(const Duration(milliseconds: 150));
+    await _beginRoomShutdown(notifyRelay: true, endedByHost: false);
   }
 
   Future<void> endRoom() async {
@@ -893,8 +916,7 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
       await leaveRoom();
       return;
     }
-    _beginRoomShutdown(notifyRelay: true, endedByHost: true);
-    await Future<void>.delayed(const Duration(milliseconds: 150));
+    await _beginRoomShutdown(notifyRelay: true, endedByHost: true);
   }
 }
 

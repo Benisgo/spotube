@@ -1,0 +1,40 @@
+{
+  "sha": "e4e5ccc1fdef8afc684cf00cd01ecb19cc7ef4b0",
+  "node_id": "C_kwDOBPtjWNoAKGU0ZTVjY2MxZmRlZjhhZmM2ODRjZjAwY2QwMWVjYjE5Y2M3ZWY0YjA",
+  "url": "https://api.github.com/repos/TeamNewPipe/NewPipeExtractor/git/commits/e4e5ccc1fdef8afc684cf00cd01ecb19cc7ef4b0",
+  "html_url": "https://github.com/TeamNewPipe/NewPipeExtractor/commit/e4e5ccc1fdef8afc684cf00cd01ecb19cc7ef4b0",
+  "author": {
+    "name": "Tobi",
+    "email": "TobiGr@users.noreply.github.com",
+    "date": "2026-01-30T14:51:09Z"
+  },
+  "committer": {
+    "name": "GitHub",
+    "email": "noreply@github.com",
+    "date": "2026-01-30T14:51:09Z"
+  },
+  "tree": {
+    "sha": "5fb924416fda3650366288ab2aedcb7419703160",
+    "url": "https://api.github.com/repos/TeamNewPipe/NewPipeExtractor/git/trees/5fb924416fda3650366288ab2aedcb7419703160"
+  },
+  "message": "Merge pull request #1442 from G-flat/support_more_yt_channels\n\n[YouTube] Support more YouTube channel URLs",
+  "parents": [
+    {
+      "sha": "48d27be28372281195346a85ba21676791e0829c",
+      "url": "https://api.github.com/repos/TeamNewPipe/NewPipeExtractor/git/commits/48d27be28372281195346a85ba21676791e0829c",
+      "html_url": "https://github.com/TeamNewPipe/NewPipeExtractor/commit/48d27be28372281195346a85ba21676791e0829c"
+    },
+    {
+      "sha": "9831bcc5c52740ae8e2469a41f17075a1e69cf00",
+      "url": "https://api.github.com/repos/TeamNewPipe/NewPipeExtractor/git/commits/9831bcc5c52740ae8e2469a41f17075a1e69cf00",
+      "html_url": "https://github.com/TeamNewPipe/NewPipeExtractor/commit/9831bcc5c52740ae8e2469a41f17075a1e69cf00"
+    }
+  ],
+  "verification": {
+    "verified": true,
+    "reason": "valid",
+    "signature": "-----BEGIN PGP SIGNATURE-----\n\nwsFcBAABCAAQBQJpfMVdCRC1aQ7uu5UhlAAAdaMQADeCLSO108TN/uNU7oNfJ83E\nOyZeWLIJDt561RhNqEmgEIc6E7QSEdsc3wbOy3u8ml+jvbnvw4qLdDLWsxaH0NSa\nrSQ7S1wRr6nqrKV3YEYY+J50GMjEjZkt9lXETBvClldUL6AQHcn6sRT6mvGZP3Ks\nywTQ60tqhcSa5HGKPwqZxFlBrWYj0M+pZJikBk1SnvpDrbz3X2U0VGvx46+WiGoB\njs2XVb6azg7f6Wn6A8tGJnBm6ptjDr15TihTlhsdEH6NQpTLRCQ8P+lYiNWedOo8\nV1CAqC72sHSjm2GZo7zixpwvGVChSkpZHrSUg0c6PyNlpUX3U/f9cRr4BYyTJggy\n4HRtCNKhLGf6fj5Da5msD5N3XUZA8bL3aZ33hgAWyRUA5Jtdhzk5ni+c7b3jvWUL\nnDCfAabcxE2p6sfArwywsZxAyw4nwK0z0cdgu51whYg39M0BCM3NEM/vEMOyiUEV\nBWjazTGlXR8OI0b8mfIE/rUsc+8l+6lNiYQO0M6R6bg8q7MDrJw0s1n1kRM7i8jx\n/XcTXpr/CYbQeALaf+RCjw5+JKeupPXFoG5JB5Z2ZQgL6iaUL1noRX8zRQCLWU7K\nVIaETe1BDLqp247MBlBKMlZYmUWfmi2cprnZrhHnlX725/wrxQWOp8SR7em4NMwB\nL1A5MwPpq4MvJ63hpYUa\n=tMsY\n-----END PGP SIGNATURE-----\n",
+    "payload": "tree 5fb924416fda3650366288ab2aedcb7419703160\nparent 48d27be28372281195346a85ba21676791e0829c\nparent 9831bcc5c52740ae8e2469a41f17075a1e69cf00\nauthor Tobi <TobiGr@users.noreply.github.com> 1769784669 -0800\ncommitter GitHub <noreply@github.com> 1769784669 -0800\n\nMerge pull request #1442 from G-flat/support_more_yt_channels\n\n[YouTube] Support more YouTube channel URLs",
+    "verified_at": "2026-01-30T14:51:10Z"
+  }
+}

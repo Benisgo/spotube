@@ -213,7 +213,7 @@ class ServerPlaybackRoutes {
     };
   }
 
-  bool _shouldBypassStreamingProxy(SourcedTrack track) => true;
+  bool _shouldBypassStreamingProxy(SourcedTrack track) => kIsDesktop;
 
   Future<String> _getTrackCacheFilePath(SourcedTrack track) async {
     return join(
@@ -514,18 +514,23 @@ class ServerPlaybackRoutes {
       "register upstream uri=$requestedUri track=${activeTrack.query.id} active=${_activeUpstreamRequests.length}",
     );
 
-    Map<String, String>? ytDlpHeaders(String url) {
+    Map<String, String> ytDlpOrFallbackHeaders(String url) {
       try {
-        return AndroidYtDlpEngine.headersForUrl(url);
-      } catch (_) {
-        return null;
-      }
+        final h = AndroidYtDlpEngine.headersForUrl(url);
+        if (h != null && h.isNotEmpty) return h;
+      } catch (_) {}
+      return {
+        "user-agent": "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.6367.83 Mobile Safari/537.36",
+        "accept": "*/*",
+        "accept-language": "en-US,en;q=0.5",
+        "origin": "https://www.youtube.com",
+      };
     }
 
     Options optionsFor(String sourceUrl) => Options(
           headers: {
             ...headers,
-            ...?ytDlpHeaders(sourceUrl),
+            ...ytDlpOrFallbackHeaders(sourceUrl),
             "referer": "https://www.youtube.com/",
             "host": Uri.parse(sourceUrl).host,
           },
@@ -626,6 +631,10 @@ class ServerPlaybackRoutes {
       url = activeTrack.url!;
       try {
         res = await fetchStream(url);
+        if (res.statusCode != 200) {
+          _markStreamFailure(activeTrack);
+          throw StateError("Stream ${activeTrack.query.id} returned ${res.statusCode} after retry");
+        }
       } catch (retryError, retryStack) {
         _markStreamFailure(activeTrack);
         AppLogger.reportError(retryError, retryStack);

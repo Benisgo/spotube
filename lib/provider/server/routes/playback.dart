@@ -212,10 +212,7 @@ class ServerPlaybackRoutes {
     };
   }
 
-  bool _shouldBypassStreamingProxy(SourcedTrack track) {
-    // Desktop MPV handles redirects fine; on Android proxy through Dart
-    return kIsDesktop;
-  }
+  bool _shouldBypassStreamingProxy(SourcedTrack track) => kIsDesktop;
 
   Future<String> _getTrackCacheFilePath(SourcedTrack track) async {
     return join(
@@ -520,12 +517,14 @@ class ServerPlaybackRoutes {
           headers: {
             ...headers,
             "user-agent": _randomUserAgent,
+            "referer": "https://www.youtube.com/",
+            "origin": "https://www.youtube.com/",
             "Cache-Control": "max-age=3600",
             "Connection": "close",
             "host": Uri.parse(sourceUrl).host,
           },
           responseType: ResponseType.stream,
-          validateStatus: (status) => status! < 400,
+          validateStatus: (_) => true,
         );
 
     Future<dio_lib.Response<ResponseBody>> fetchStream(String sourceUrl) {

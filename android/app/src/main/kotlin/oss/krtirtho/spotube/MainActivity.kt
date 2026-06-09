@@ -2,8 +2,8 @@ package oss.krtirtho.spotube
 
 import android.os.Handler
 import android.os.Looper
-import com.yausername.youtubedl_android.UpdateChannel
 import com.yausername.youtubedl_android.YoutubeDL
+import com.yausername.youtubedl_android.YoutubeDL.UpdateChannel
 import com.yausername.youtubedl_android.YoutubeDLException
 import com.yausername.youtubedl_android.YoutubeDLRequest
 import io.flutter.embedding.android.FlutterActivity

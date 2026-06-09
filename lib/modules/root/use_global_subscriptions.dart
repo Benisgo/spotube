@@ -315,6 +315,8 @@ void useGlobalSubscriptions(WidgetRef ref) {
         });
       }),
       audioPlayer.errorStream.listen((error) {
+        // ignore: avoid_print
+        print('[MPV_ERROR] $error');
         final message = buildFriendlyPlaybackError(error);
         final now = DateTime.now();
         final isRepeatedRecentError =

@@ -126,18 +126,10 @@ class PlaybackStartTrace {
     final deltaMs = now.difference(attempt.lastEventAt).inMilliseconds;
     attempt.lastEventAt = now;
 
-    AppLogger.agentDebug(
-      'playback_start_trace.dart:$phase',
-      phase,
-      {
-        'attemptId': attempt.id,
-        'trackId': attempt.trackId,
-        'elapsedMs': elapsedMs,
-        'deltaMs': deltaMs,
-        ...data,
-      },
-      hypothesisId: 'PLAYBACK_START',
-      runId: 'startup-trace',
+    AppLogger.log.d(
+      '[playback_start_trace.dart:$phase] $phase: '
+      'attemptId=${attempt.id}, trackId=${attempt.trackId}, '
+      'elapsedMs=$elapsedMs, deltaMs=$deltaMs, data=$data'
     );
   }
 

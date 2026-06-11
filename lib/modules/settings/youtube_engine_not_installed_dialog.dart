@@ -11,6 +11,7 @@ import 'package:spotube/extensions/context.dart';
 import 'package:spotube/hooks/controllers/use_shadcn_text_editing_controller.dart';
 import 'package:spotube/models/database/database.dart';
 import 'package:spotube/services/kv_store/kv_store.dart';
+import 'package:spotube/services/youtube_engine/android_yt_dlp_engine.dart';
 import 'package:spotube/services/youtube_engine/yt_dlp_binary.dart';
 import 'package:spotube/utils/platform.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -58,7 +59,7 @@ class YouTubeEngineNotInstalledDialog extends HookConsumerWidget {
             Text(
               context.l10n.youtube_engine_not_installed_message(engine.label),
             ),
-            if (engine == YoutubeClientEngine.ytDlp && kIsDesktop)
+            if (engine == YoutubeClientEngine.ytDlp && (kIsDesktop || kIsAndroid))
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 spacing: 8,
@@ -72,16 +73,26 @@ class YouTubeEngineNotInstalledDialog extends HookConsumerWidget {
                             downloadError.value = null;
 
                             try {
-                              await YtDlpBinary.downloadManagedBinary(
-                                onReceiveProgress: (received, total) {
-                                  if (total <= 0) {
-                                    downloadProgress.value = null;
-                                    return;
-                                  }
-
-                                  downloadProgress.value = received / total;
-                                },
-                              );
+                              if (kIsDesktop) {
+                                await YtDlpBinary.downloadManagedBinary(
+                                  onReceiveProgress: (received, total) {
+                                    if (total <= 0) {
+                                      downloadProgress.value = null;
+                                      return;
+                                    }
+                                    downloadProgress.value = received / total;
+                                  },
+                                );
+                              } else if (kIsAndroid) {
+                                await AndroidYtDlpEngine.update();
+                                final installed =
+                                    await AndroidYtDlpEngine.isInstalled();
+                                if (!installed) {
+                                  throw Exception(
+                                    "yt-dlp update completed but still not available",
+                                  );
+                                }
+                              }
 
                               if (!context.mounted) return;
                               Navigator.of(context).pop(true);

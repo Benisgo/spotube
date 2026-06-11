@@ -18,6 +18,7 @@ import 'package:spotube/extensions/constrains.dart';
 import 'package:spotube/extensions/context.dart';
 import 'package:spotube/provider/audio_player/audio_player.dart';
 import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
+import 'package:spotube/provider/custom_theme/custom_theme_provider.dart';
 
 import 'package:spotube/provider/volume_provider.dart';
 import 'package:spotube/utils/platform.dart';
@@ -51,9 +52,14 @@ class BottomPlayer extends HookConsumerWidget {
       return PlayerOverlay(albumArt: albumArt);
     }
 
+    final customTheme = ref.watch(customThemeProvider);
+    final hasBackgroundImage = customTheme.enabled &&
+        customTheme.useNowPlayingCoverBackground &&
+        playlist.activeTrack?.album.images.isNotEmpty == true;
+
     return SurfaceCard(
       borderRadius: BorderRadius.zero,
-      surfaceBlur: context.theme.surfaceBlur,
+      surfaceBlur: hasBackgroundImage ? 20 : context.theme.surfaceBlur,
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [

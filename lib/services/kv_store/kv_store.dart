@@ -32,6 +32,12 @@ abstract class KVStoreService {
   static Future<void> setRecentSearches(List<String> value) async =>
       await sharedPreferences.setStringList('recentSearches', value);
 
+  static List<String> get pinnedPlaylists =>
+      sharedPreferences.getStringList('pinnedPlaylists') ?? [];
+
+  static Future<void> setPinnedPlaylists(List<String> value) async =>
+      await sharedPreferences.setStringList('pinnedPlaylists', value);
+
   static WindowSize? get windowSize {
     final raw = sharedPreferences.getString('windowSize');
 

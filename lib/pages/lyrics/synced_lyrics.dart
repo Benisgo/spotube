@@ -24,11 +24,13 @@ class SyncedLyrics extends HookConsumerWidget {
   final PaletteColor palette;
   final bool? isModal;
   final int defaultTextZoom;
+  final bool showControls;
 
   const SyncedLyrics({
     required this.palette,
     this.isModal,
     this.defaultTextZoom = 100,
+    this.showControls = true,
     super.key,
   });
 
@@ -242,41 +244,42 @@ class SyncedLyrics extends HookConsumerWidget {
               ),
           ],
         ),
-        Align(
-          alignment: Alignment.bottomRight,
-          child: Builder(builder: (context) {
-            final actions = [
-              ZoomControls(
-                value: delay,
-                onChanged: (value) =>
-                    ref.read(syncedLyricsDelayProvider.notifier).state = value,
-                interval: 1,
-                unit: "s",
-                increaseIcon: const Icon(SpotubeIcons.add),
-                decreaseIcon: const Icon(SpotubeIcons.remove),
-                direction: isModal == true ? Axis.horizontal : Axis.vertical,
-              ),
-              ZoomControls(
-                value: textZoomLevel.value,
-                onChanged: (value) => textZoomLevel.value = value,
-                min: 50,
-                max: 200,
-              ),
-            ];
+        if (showControls)
+          Align(
+            alignment: Alignment.bottomRight,
+            child: Builder(builder: (context) {
+              final actions = [
+                ZoomControls(
+                  value: delay,
+                  onChanged: (value) =>
+                      ref.read(syncedLyricsDelayProvider.notifier).state = value,
+                  interval: 1,
+                  unit: "s",
+                  increaseIcon: const Icon(SpotubeIcons.add),
+                  decreaseIcon: const Icon(SpotubeIcons.remove),
+                  direction: isModal == true ? Axis.horizontal : Axis.vertical,
+                ),
+                ZoomControls(
+                  value: textZoomLevel.value,
+                  onChanged: (value) => textZoomLevel.value = value,
+                  min: 50,
+                  max: 200,
+                ),
+              ];
 
-            return isModal == true
-                ? Row(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: actions,
-                  )
-                : Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: actions,
-                  );
-          }),
-        ),
+              return isModal == true
+                  ? Row(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: actions,
+                    )
+                  : Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: actions,
+                    );
+            }),
+          ),
       ],
     );
   }

@@ -5,6 +5,19 @@ plugins {
     id "org.jetbrains.kotlin.plugin.compose"
 }
 
+// Dynamically compute the Windows 8.3 short path if the project path contains spaces
+// This prevents the Flutter Gradle Plugin from breaking on Windows usernames with spaces
+if (System.getProperty("os.name").toLowerCase().contains("windows") && rootProject.projectDir.parentFile.absolutePath.contains(" ")) {
+    def buildPath = new File(rootProject.projectDir.parentFile, "build\\app").absolutePath
+    def process = "cmd /c for %I in (\"${buildPath}\") do @echo %~sI".execute()
+    process.waitFor()
+    def shortBuildPath = process.text.trim()
+    
+    project.buildDir = shortBuildPath
+    project.layout.buildDirectory.set(new File(shortBuildPath))
+}
+
+
 def localProperties = new Properties()
 def localPropertiesFile = rootProject.file('local.properties')
 if (localPropertiesFile.exists()) {

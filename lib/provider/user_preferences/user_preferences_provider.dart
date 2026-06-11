@@ -187,6 +187,10 @@ class UserPreferencesNotifier extends Notifier<PreferencesTableData> {
     setData(PreferencesTableCompanion(youtubeClientEngine: Value(engine)));
   }
 
+  void setYoutubeClientEngines(List<YoutubeClientEngine> engines) {
+    setData(PreferencesTableCompanion(youtubeClientEngines: Value(engines)));
+  }
+
   void setSystemTitleBar(bool isSystemTitleBar) {
     setData(
       PreferencesTableCompanion(

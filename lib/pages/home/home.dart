@@ -29,43 +29,44 @@ class HomePage extends HookConsumerWidget {
     final layoutMode =
         ref.watch(userPreferencesProvider.select((s) => s.layoutMode));
 
+    final showMobileHeader = layoutMode == LayoutMode.compact ||
+        (mediaQuery.smAndDown && layoutMode == LayoutMode.adaptive);
+
     return SafeArea(
         bottom: false,
         child: Scaffold(
           headers: [
-            if (kTitlebarVisible) const TitleBar(height: 30),
+            if (kTitlebarVisible && !showMobileHeader) const TitleBar(height: 30),
+            if (showMobileHeader)
+              TitleBar(
+                showWindowButtons: false,
+                automaticallyImplyLeading: false,
+                title: DefaultTextStyle(
+                  style: TextStyle(
+                    fontFamily: "Cookie",
+                    fontSize: 30,
+                    letterSpacing: 1.8,
+                    color: theme.colorScheme.foreground,
+                  ),
+                  child: const Text("Spotube", textAlign: TextAlign.center),
+                ),
+                trailing: [
+                  const ConnectDeviceButton(),
+                  const Gap(10),
+                  IconButton.ghost(
+                    icon: const Icon(SpotubeIcons.settings, size: 20),
+                    onPressed: () {
+                      context.navigateTo(const SettingsRoute());
+                    },
+                  ),
+                  const Gap(10),
+                ],
+              ),
           ],
           child: CustomScrollView(
             controller: controller,
             slivers: [
-              if (mediaQuery.smAndDown || layoutMode == LayoutMode.compact)
-                SliverAppBar(
-                  floating: true,
-                  title: DefaultTextStyle(
-                    style: TextStyle(
-                      fontFamily: "Cookie",
-                      fontSize: 30,
-                      letterSpacing: 1.8,
-                      color: theme.colorScheme.foreground,
-                    ),
-                    child: const Text("Spotube"),
-                  ),
-                  backgroundColor: theme.colorScheme.background,
-                  foregroundColor: theme.colorScheme.foreground,
-                  actions: [
-                    const ConnectDeviceButton(),
-                    const Gap(10),
-                    IconButton.ghost(
-                      icon: const Icon(SpotubeIcons.settings, size: 20),
-                      onPressed: () {
-                        context.navigateTo(const SettingsRoute());
-                      },
-                    ),
-                    const Gap(10),
-                  ],
-                )
-              else if (kIsMacOS)
-                const SliverGap(10),
+              if (kIsMacOS && !showMobileHeader) const SliverGap(10),
               const SliverGap(10),
               SliverList.builder(
                 itemCount: 3,

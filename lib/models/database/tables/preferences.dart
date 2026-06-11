@@ -14,7 +14,9 @@ enum CloseBehavior {
 enum YoutubeClientEngine {
   ytDlp("yt-dlp"),
   youtubeExplode("YouTubeExplode"),
-  newPipe("NewPipe");
+  newPipe("NewPipe"),
+  invidious("Invidious"),
+  verome("Verome");
 
   final String label;
 
@@ -27,6 +29,8 @@ enum YoutubeClientEngine {
       YoutubeClientEngine.ytDlp => YtDlpEngine.isAvailableForPlatform ||
           AndroidYtDlpEngine.isAvailableForPlatform,
       YoutubeClientEngine.newPipe => NewPipeEngine.isAvailableForPlatform,
+      YoutubeClientEngine.invidious => InvidiousEngine.isAvailableForPlatform,
+      YoutubeClientEngine.verome => VeromeEngine.isAvailableForPlatform,
     };
   }
 }
@@ -53,6 +57,30 @@ enum SearchMode {
 
   factory SearchMode.fromString(String key) {
     return SearchMode.values.firstWhere((e) => e.name == key);
+  }
+}
+
+class YoutubeClientEnginesConverter
+    extends TypeConverter<List<YoutubeClientEngine>, String> {
+  const YoutubeClientEnginesConverter();
+
+  @override
+  List<YoutubeClientEngine> fromSql(String fromDb) {
+    try {
+      final List<dynamic> list = jsonDecode(fromDb);
+      return list
+          .map((e) => YoutubeClientEngine.values
+              .firstWhereOrNull((v) => v.name == e))
+          .nonNulls
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  @override
+  String toSql(List<YoutubeClientEngine> value) {
+    return jsonEncode(value.map((e) => e.name).toList());
   }
 }
 
@@ -94,6 +122,9 @@ class PreferencesTable extends Table {
   TextColumn get audioSourceId => text().nullable()();
   TextColumn get youtubeClientEngine => textEnum<YoutubeClientEngine>()
       .withDefault(Constant(YoutubeClientEngine.youtubeExplode.name))();
+  TextColumn get youtubeClientEngines => text()
+      .map(const YoutubeClientEnginesConverter())
+      .withDefault(const Constant('[]'))();
   BoolColumn get discordPresence =>
       boolean().withDefault(const Constant(true))();
   BoolColumn get endlessPlayback =>
@@ -143,6 +174,11 @@ class PreferencesTable extends Table {
       youtubeClientEngine: kIsIOS
           ? YoutubeClientEngine.youtubeExplode
           : YoutubeClientEngine.newPipe,
+      youtubeClientEngines: [
+        kIsIOS
+            ? YoutubeClientEngine.youtubeExplode
+            : YoutubeClientEngine.newPipe
+      ],
       discordPresence: true,
       endlessPlayback: true,
       enableConnect: false,

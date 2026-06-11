@@ -19,6 +19,7 @@ import 'package:spotube/services/audio_player/audio_player.dart';
 import 'package:spotube/services/connectivity_adapter.dart';
 import 'package:spotube/services/logger/logger.dart';
 import 'package:spotube/utils/service_utils.dart';
+import 'package:spotube/services/youtube_engine/fallback_youtube_engine.dart';
 
 const _maxGlobalToastsPerWindow = 4;
 const _globalToastWindow = Duration(seconds: 8);
@@ -155,7 +156,8 @@ void useGlobalSubscriptions(WidgetRef ref) {
     final currentTopSuggestion = snapshot.suggestions.firstOrNull;
     if (currentTopSuggestion != null &&
         currentTopSuggestion.id != previousTopSuggestion?.id) {
-      final actor = memberById(snapshot, currentTopSuggestion.suggestedBy)?.name;
+      final actor =
+          memberById(snapshot, currentTopSuggestion.suggestedBy)?.name;
       final message = actor == null
           ? "${currentTopSuggestion.track.name} was suggested"
           : "${currentTopSuggestion.track.name} was suggested by $actor";
@@ -203,7 +205,7 @@ void useGlobalSubscriptions(WidgetRef ref) {
     bool pausedByStream = false;
     String? lastPlaybackError;
     DateTime? lastPlaybackErrorAt;
-    bool skippedAfterPlaybackError = false;
+    int consecutiveErrorSkips = 0;
 
     String? buildFriendlyPlaybackError(String rawError) {
       final lower = rawError.toLowerCase();
@@ -319,25 +321,31 @@ void useGlobalSubscriptions(WidgetRef ref) {
         print('[MPV_ERROR] $error');
         final message = buildFriendlyPlaybackError(error);
         final now = DateTime.now();
-        final isRepeatedRecentError =
-            message != null &&
+        final isRepeatedRecentError = message != null &&
             message == lastPlaybackError &&
             lastPlaybackErrorAt != null &&
             now.difference(lastPlaybackErrorAt!) < const Duration(seconds: 8);
-        if (!context.mounted ||
-            message == null ||
-            isRepeatedRecentError) {
+        if (!context.mounted || message == null || isRepeatedRecentError) {
           return;
         }
 
         lastPlaybackError = message;
         lastPlaybackErrorAt = now;
         showDestructiveToast(message);
-        if (!skippedAfterPlaybackError) {
-          skippedAfterPlaybackError = true;
+        if (consecutiveErrorSkips < 5) {
+          consecutiveErrorSkips++;
           unawaited(audioPlayer.skipToNext());
         }
-      })
+      }),
+      audioPlayer.playingStream.listen((playing) {
+        if (playing) {
+          consecutiveErrorSkips = 0;
+        }
+      }),
+      FallbackYouTubeEngine.fallbackNotifier.stream.listen((message) {
+        if (!context.mounted) return;
+        showInformationalToast(message);
+      }),
     ];
 
     return () {

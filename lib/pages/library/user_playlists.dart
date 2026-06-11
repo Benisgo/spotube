@@ -22,6 +22,7 @@ import 'package:spotube/provider/metadata_plugin/library/playlists.dart';
 import 'package:spotube/provider/metadata_plugin/core/user.dart';
 import 'package:auto_route/auto_route.dart';
 import 'package:spotube/services/metadata/errors/exceptions.dart';
+import 'package:spotube/provider/user_preferences/pinned_playlists_provider.dart';
 
 @RoutePage()
 class UserPlaylistsPage extends HookConsumerWidget {
@@ -58,17 +59,26 @@ class UserPlaylistsPage extends HookConsumerWidget {
       [context.l10n, me.asData?.value],
     );
 
+    final pinnedPlaylists = ref.watch(pinnedPlaylistsProvider);
+
     final playlists = useMemoized(
       () {
+        final queryItems = playlistsQuery.asData?.value.items ?? [];
         if (searchText.value.isEmpty) {
           return [
             if (likedTracksPlaylist != null) likedTracksPlaylist,
-            ...?playlistsQuery.asData?.value.items,
+            ...queryItems.sorted((a, b) {
+              final aPinned = pinnedPlaylists.contains(a.id);
+              final bPinned = pinnedPlaylists.contains(b.id);
+              if (aPinned && !bPinned) return -1;
+              if (!aPinned && bPinned) return 1;
+              return 0;
+            }),
           ];
         }
         return [
           if (likedTracksPlaylist != null) likedTracksPlaylist,
-          ...?playlistsQuery.asData?.value.items,
+          ...queryItems,
         ]
             .map((e) => (weightedRatio(e.name, searchText.value), e))
             .sorted((a, b) => b.$1.compareTo(a.$1))
@@ -76,7 +86,7 @@ class UserPlaylistsPage extends HookConsumerWidget {
             .map((e) => e.$2)
             .toList();
       },
-      [playlistsQuery, searchText.value],
+      [playlistsQuery, searchText.value, pinnedPlaylists, likedTracksPlaylist],
     );
 
     final controller = useScrollController();

@@ -17,6 +17,8 @@ class PlaybuttonTile extends StatelessWidget {
   final bool isLoading;
   final String title;
   final bool isOwner;
+  final bool isPinned;
+  final void Function()? onPinPressed;
 
   const PlaybuttonTile({
     required this.isPlaying,
@@ -25,8 +27,10 @@ class PlaybuttonTile extends StatelessWidget {
     this.description,
     this.onPlaybuttonPressed,
     this.onAddToQueuePressed,
+    this.onPinPressed,
     this.onTap,
     this.isOwner = false,
+    this.isPinned = false,
     this.imageUrl,
     this.image,
     super.key,
@@ -70,6 +74,18 @@ class PlaybuttonTile extends StatelessWidget {
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (onPinPressed != null)
+            Tooltip(
+              tooltip: TooltipContainer(child: Text(isPinned ? "Unpin" : "Pin")).call,
+              child: IconButton.outline(
+                icon: Icon(
+                  isPinned ? SpotubeIcons.pinOn : SpotubeIcons.pinOff,
+                  color: isPinned ? context.theme.colorScheme.primary : null,
+                ),
+                onPressed: onPinPressed,
+              ),
+            ),
+          if (onPinPressed != null) const Gap(8),
           Tooltip(
             tooltip: TooltipContainer(child: Text(context.l10n.add_to_queue)).call,
             child: IconButton.outline(

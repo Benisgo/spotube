@@ -155,6 +155,10 @@ class AppRouter extends RootStackRouter {
               page: TrackRoute.page,
             ),
             AutoRoute(
+              path: "multi-session",
+              page: MultiSessionRoute.page,
+            ),
+            AutoRoute(
               path: "connect",
               page: ConnectRoute.page,
             ),

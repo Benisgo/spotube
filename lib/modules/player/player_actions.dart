@@ -25,12 +25,14 @@ class PlayerActions extends HookConsumerWidget {
   final MainAxisAlignment mainAxisAlignment;
   final bool floatingQueue;
   final bool showQueue;
+  final bool showHeart;
   final List<Widget>? extraActions;
 
   const PlayerActions({
     this.mainAxisAlignment = MainAxisAlignment.center,
     this.floatingQueue = true,
     this.showQueue = true,
+    this.showHeart = true,
     this.extraActions,
     super.key,
   });
@@ -92,32 +94,38 @@ class PlayerActions extends HookConsumerWidget {
               icon: const Icon(SpotubeIcons.queue),
               enabled: playlist.activeTrack != null,
               onPressed: () {
-                openDrawer(
-                  context: context,
-                  position: OverlayPosition.right,
-                  transformBackdrop: false,
-                  draggable: false,
-                  surfaceBlur: context.theme.surfaceBlur,
-                  surfaceOpacity: 0.7,
-                  builder: (context) {
-                    return Container(
-                      constraints: const BoxConstraints(maxWidth: 800),
-                      child: Consumer(
-                        builder: (context, ref, _) {
-                          final playlist = ref.watch(audioPlayerProvider);
-                          final playlistNotifier =
-                              ref.read(audioPlayerProvider.notifier);
+                final screenSize = MediaQuery.sizeOf(context);
+                if (screenSize.smAndDown) {
+                  context.pushRoute(const PlayerQueueRoute());
+                } else {
+                  openDrawer(
+                    context: context,
+                    position: OverlayPosition.right,
+                    transformBackdrop: false,
+                    draggable: false,
+                    surfaceBlur: context.theme.surfaceBlur,
+                    surfaceOpacity: 0.7,
+                    builder: (context) {
+                      return Container(
+                        constraints: const BoxConstraints(maxWidth: 800),
+                        child: Consumer(
+                          builder: (context, ref, _) {
+                            final playlist =
+                                ref.watch(audioPlayerProvider);
+                            final playlistNotifier =
+                                ref.read(audioPlayerProvider.notifier);
 
-                          return PlayerQueue.fromAudioPlayerNotifier(
-                            floating: true,
-                            playlist: playlist,
-                            notifier: playlistNotifier,
-                          );
-                        },
-                      ),
-                    );
-                  },
-                );
+                            return PlayerQueue.fromAudioPlayerNotifier(
+                              floating: true,
+                              playlist: playlist,
+                              notifier: playlistNotifier,
+                            );
+                          },
+                        ),
+                      );
+                    },
+                  );
+                }
               },
             ),
           ),
@@ -138,10 +146,10 @@ class PlayerActions extends HookConsumerWidget {
                     builder: (context) {
                       return SurfaceCard(
                         padding: EdgeInsets.zero,
-                        child: ConstrainedBox(
+                        child:                         ConstrainedBox(
                           constraints: const BoxConstraints(
-                            maxHeight: 600,
-                            maxWidth: 500,
+                            maxHeight: 720,
+                            maxWidth: 640,
                           ),
                           child: SiblingTracksSheet(floating: floatingQueue),
                         ),
@@ -178,7 +186,8 @@ class PlayerActions extends HookConsumerWidget {
                     : null,
               ),
             ),
-        if (playlist.activeTrack != null &&
+        if (showHeart &&
+            playlist.activeTrack != null &&
             !isLocalTrack &&
             authenticated.asData?.value == true)
           TrackHeartButton(

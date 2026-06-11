@@ -17,6 +17,7 @@ import 'package:spotube/provider/metadata_plugin/library/tracks.dart';
 import 'package:spotube/provider/metadata_plugin/tracks/playlist.dart';
 import 'package:spotube/provider/metadata_plugin/core/user.dart';
 import 'package:spotube/services/audio_player/audio_player.dart';
+import 'package:spotube/provider/user_preferences/pinned_playlists_provider.dart';
 
 class PlaylistCard extends HookConsumerWidget {
   final SpotubeSimplePlaylistObject playlist;
@@ -49,6 +50,10 @@ class PlaylistCard extends HookConsumerWidget {
 
     final updating = useState(false);
     final me = ref.watch(metadataPluginUserProvider);
+
+    final pinnedPlaylists = ref.watch(pinnedPlaylistsProvider);
+    final isPinned = pinnedPlaylists.contains(playlist.id);
+    final pinnedPlaylistsNotifier = ref.read(pinnedPlaylistsProvider.notifier);
 
     final fetchInitialTracks = useCallback(() async {
       if (playlist.id == 'user-liked-tracks') {
@@ -202,6 +207,8 @@ class PlaylistCard extends HookConsumerWidget {
         isPlaying: isPlaylistPlaying,
         isLoading: isLoading,
         isOwner: isOwner,
+        isPinned: isPinned,
+        onPinPressed: () => pinnedPlaylistsNotifier.togglePin(playlist.id),
         onTap: onTap,
         onPlaybuttonPressed: onPlaybuttonPressed,
         onAddToQueuePressed: onAddToQueuePressed,
@@ -216,6 +223,8 @@ class PlaylistCard extends HookConsumerWidget {
       isPlaying: isPlaylistPlaying,
       isLoading: isLoading,
       isOwner: isOwner,
+      isPinned: isPinned,
+      onPinPressed: () => pinnedPlaylistsNotifier.togglePin(playlist.id),
       onTap: onTap,
       onPlaybuttonPressed: onPlaybuttonPressed,
       onAddToQueuePressed: onAddToQueuePressed,

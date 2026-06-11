@@ -155,43 +155,6 @@ class AppLogger {
     }
   }
 
-  // #region agent log
-  static const _agentDebugLogPath =
-      r'C:\Users\Ahmed Mohamed\Documents\GitHub\spotube\debug-9dd842.log';
-
-  static Future<void> _agentDebugWriteQueue = Future.value();
-
-  static void agentDebug(
-    String location,
-    String message,
-    Map<String, dynamic> data, {
-    String hypothesisId = 'A',
-    String runId = 'post-fix',
-  }) {
-    if (!kDebugMode) return;
-    try {
-      final line = jsonEncode({
-        'sessionId': '9dd842',
-        'timestamp': DateTime.now().millisecondsSinceEpoch,
-        'location': location,
-        'message': message,
-        'data': data,
-        'hypothesisId': hypothesisId,
-        'runId': runId,
-      });
-      _agentDebugWriteQueue = _agentDebugWriteQueue
-          .then(
-            (_) async {
-              await File(_agentDebugLogPath).writeAsString(
-                '$line\n',
-                mode: FileMode.append,
-              );
-            },
-          )
-          .catchError((_) async {});
-    } catch (_) {}
-  }
-  // #endregion
 
   static void trace(String message) {
     if (!kReleaseMode) return;

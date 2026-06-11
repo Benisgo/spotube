@@ -832,6 +832,18 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
     });
   }
 
+  void kickMember(String memberId) {
+    if (!_guardPermission(
+      MultiSessionPermission.manageMembers,
+      "kick a member",
+    )) {
+      return;
+    }
+    final memberName = _memberById(memberId)?.name ?? "That member";
+    _pushNotice("$memberName was kicked by $_actorName");
+    _send("kick", {"memberId": memberId});
+  }
+
   void setCommunityQueueEnabled(bool enabled) {
     if (!_guardPermission(
       MultiSessionPermission.editQueue,

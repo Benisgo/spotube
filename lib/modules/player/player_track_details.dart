@@ -3,6 +3,8 @@ import 'package:flutter/gestures.dart';
 
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:spotube/services/audio_player/audio_player.dart';
 
 import 'package:spotube/collections/assets.gen.dart';
 import 'package:spotube/collections/routes.gr.dart';
@@ -26,6 +28,22 @@ class PlayerTrackDetails extends HookConsumerWidget {
     final theme = Theme.of(context);
     final mediaQuery = MediaQuery.of(context);
     final playback = ref.watch(audioPlayerProvider);
+    final playing = useStream(audioPlayer.playingStream).data ?? audioPlayer.isPlaying;
+
+    final glowController = useAnimationController(
+      duration: const Duration(milliseconds: 2000),
+    );
+
+    useEffect(() {
+      if (playing) {
+        glowController.repeat(reverse: true);
+      } else {
+        glowController.animateTo(0.0, duration: const Duration(milliseconds: 500));
+      }
+      return null;
+    }, [playing]);
+
+    final glowAnimation = useAnimation(glowController);
 
     return Listener(
       onPointerDown: (event) {
@@ -44,18 +62,36 @@ class PlayerTrackDetails extends HookConsumerWidget {
       child: Row(
         children: [
           if (playback.activeTrack != null)
-            Container(
-              padding: const EdgeInsets.all(6),
-              constraints: const BoxConstraints(
-                maxWidth: 80,
-                maxHeight: 80,
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: UniversalImage(
-                  path: (track?.album.images)
-                      .asUrlString(placeholder: ImagePlaceholder.albumArt),
-                  placeholder: Assets.images.albumPlaceholder.path,
+            Transform.scale(
+              scale: 1.0 + (0.05 * glowAnimation),
+              child: Container(
+                padding: const EdgeInsets.all(6),
+                margin: const EdgeInsets.only(right: 6, left: 4),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(10),
+                  boxShadow: playing
+                      ? [
+                          BoxShadow(
+                            color: theme.colorScheme.primary.withValues(
+                              alpha: (0.2 + (0.2 * glowAnimation)).toDouble(),
+                            ),
+                            blurRadius: (10 + (10 * glowAnimation)).toDouble(),
+                            spreadRadius: (2 + (3 * glowAnimation)).toDouble(),
+                          )
+                        ]
+                      : [],
+                ),
+                constraints: const BoxConstraints(
+                  maxWidth: 80,
+                  maxHeight: 80,
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: UniversalImage(
+                    path: (track?.album.images)
+                        .asUrlString(placeholder: ImagePlaceholder.albumArt),
+                    placeholder: Assets.images.albumPlaceholder.path,
+                  ),
                 ),
               ),
             ),

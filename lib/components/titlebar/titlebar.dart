@@ -31,6 +31,7 @@ class TitleBar extends HookConsumerWidget implements PreferredSizeWidget {
   final bool useSafeArea;
   final double? surfaceBlur;
   final double? surfaceOpacity;
+  final bool showWindowButtons;
 
   const TitleBar({
     super.key,
@@ -52,6 +53,7 @@ class TitleBar extends HookConsumerWidget implements PreferredSizeWidget {
     this.surfaceBlur,
     this.surfaceOpacity,
     this.useSafeArea = false,
+    this.showWindowButtons = true,
   });
 
   void onDrag(WidgetRef ref) {
@@ -102,11 +104,12 @@ class TitleBar extends HookConsumerWidget implements PreferredSizeWidget {
               leading: canPop ? [const BackButton()] : leading,
               trailing: [
                 ...trailing,
-                Align(
-                  alignment: Alignment.topRight,
-                  child:
-                      WindowTitleBarButtons(foregroundColor: foregroundColor),
-                ),
+                if (kTitlebarVisible && showWindowButtons)
+                  Align(
+                    alignment: Alignment.topRight,
+                    child: WindowTitleBarButtons(
+                        foregroundColor: foregroundColor),
+                  ),
               ],
               title: title,
               header: header,

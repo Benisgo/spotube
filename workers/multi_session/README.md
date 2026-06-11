@@ -22,7 +22,7 @@ It uses a Durable Object per room to coordinate queue, playback state, and membe
 5. Push this repo to GitHub.
 6. Run the `Multi-Session Worker` workflow, or push changes to `master`.
 
-The workflow at [.github/workflows/multi-session-worker.yml](C:/Users/Ahmed Mohamed/Documents/GitHub/spotube/.github/workflows/multi-session-worker.yml) installs dependencies, runs tests, and deploys with Wrangler.
+The workflow at [.github/workflows/multi-session-worker.yml](../../.github/workflows/multi-session-worker.yml) installs dependencies, runs tests, and deploys with Wrangler.
 
 ## First deploy
 

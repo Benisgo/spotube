@@ -89,6 +89,11 @@ class SiblingTracksSheet extends HookConsumerWidget {
                           context.l10n.alternative_track_sources,
                         ).bold()),
                   ),
+                  if (!floating)
+                    IconButton.ghost(
+                      icon: const Icon(SpotubeIcons.close),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
                 ],
               ),
             ),

@@ -4,7 +4,6 @@ import 'package:spotube/collections/routes.gr.dart';
 import 'package:spotube/collections/spotube_icons.dart';
 import 'package:spotube/components/ui/button_tile.dart';
 import 'package:spotube/modules/connect/local_devices.dart';
-import 'package:spotube/modules/connect/multi_session_rooms.dart';
 import 'package:spotube/components/titlebar/titlebar.dart';
 import 'package:spotube/extensions/context.dart';
 import 'package:spotube/provider/connect/clients.dart';
@@ -44,7 +43,19 @@ class ConnectPage extends HookConsumerWidget {
                 ),
               ),
               const SliverGap(10),
-              const ConnectPageMultiSessionRooms(),
+              SliverToBoxAdapter(
+                child: ButtonTile(
+                  leading: const Icon(Icons.groups_rounded),
+                  title: const Text("Multi-Session / Listening Room"),
+                  subtitle: const Text(
+                    "Listen together with friends in real-time",
+                  ),
+                  trailing: const Icon(SpotubeIcons.angleRight),
+                  onPressed: () {
+                    context.navigateTo(const MultiSessionRoute());
+                  },
+                ),
+              ),
               SliverList.separated(
                 itemCount: discoveredDevices?.length ?? 0,
                 separatorBuilder: (context, index) => const Gap(10),

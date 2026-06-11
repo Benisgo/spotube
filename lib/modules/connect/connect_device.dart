@@ -46,34 +46,30 @@ class ConnectDeviceButton extends HookConsumerWidget {
       );
     }
 
-    return Row(
-      children: [
-        SecondaryBadge(
-          onPressed: () {
-            context.navigateTo(const ConnectRoute());
-          },
-          style: const ButtonStyle.secondary(size: ButtonSize(.8)),
-          leading: connectClients.asData?.value.resolvedService != null
-              ? const Center(
-                  child: DotItem(
-                    size: 6,
-                    borderRadius: 10,
-                    color: Colors.green,
-                  ),
-                )
-              : null,
-          child: Text(
-            "${context.l10n.devices}"
-            "${hasServices ? " (${connectClients.asData?.value.services.length})" : ""}",
-          ),
-        ),
-        IconButton.primary(
-          icon: const Icon(SpotubeIcons.speaker),
-          onPressed: () {
-            context.navigateTo(const ConnectRoute());
-          },
-        )
-      ],
+    return SecondaryBadge(
+      onPressed: () {
+        context.navigateTo(const ConnectRoute());
+      },
+      style: const ButtonStyle.secondary(size: ButtonSize(.8)),
+      leading: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(SpotubeIcons.speaker, size: 16),
+          if (connectClients.asData?.value.resolvedService != null)
+            const Padding(
+              padding: EdgeInsets.only(left: 4),
+              child: DotItem(
+                size: 6,
+                borderRadius: 10,
+                color: Colors.green,
+              ),
+            ),
+        ],
+      ),
+      trailing: hasServices
+          ? Text("(${connectClients.asData?.value.services.length})")
+          : null,
+      child: Text(context.l10n.devices),
     );
   }
 }

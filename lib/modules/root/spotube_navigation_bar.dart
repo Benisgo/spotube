@@ -14,7 +14,7 @@ import 'package:spotube/models/database/database.dart';
 import 'package:spotube/provider/download_manager_provider.dart';
 import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
 
-final navigationPanelHeight = StateProvider<double>((ref) => 50);
+final navigationPanelHeight = StateProvider<double>((ref) => 75);
 
 class SpotubeNavigationBar extends HookConsumerWidget {
   const SpotubeNavigationBar({
@@ -59,39 +59,36 @@ class SpotubeNavigationBar extends HookConsumerWidget {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 100),
       height: panelHeight,
-      child: SingleChildScrollView(
-        child: Column(
-          children: [
-            const Divider(),
-            NavigationBar(
-              selectedKey: ValueKey(selectedTile.id),
-              surfaceBlur: context.theme.surfaceBlur,
-              surfaceOpacity: context.theme.surfaceOpacity,
-              children: [
-                for (final tile in navbarTileList)
-                  NavigationItem(
-                    key: ValueKey(tile.id),
-                    selectedStyle:
-                        const ButtonStyle.fixed(density: ButtonDensity.icon),
-                    style: const ButtonStyle.muted(density: ButtonDensity.icon),
-                    child: Badge(
-                      isLabelVisible: tile.id == "library" && downloadCount > 0,
-                      label: Text(downloadCount.toString()),
-                      child: Icon(tile.icon),
-                    ),
-                  )
-              ],
-              onSelected: (key) {
-                if (key case final ValueKey<String> valueKey) {
-                  final tile = navbarTileList.firstWhere(
-                    (tile) => tile.id == valueKey.value,
-                  );
-                  context.navigateTo(tile.route);
-                }
-              },
-            ),
-          ],
-        ),
+      child: NavigationBar(
+        selectedKey: ValueKey(selectedTile.id),
+        alignment: NavigationBarAlignment.spaceEvenly,
+        labelType: NavigationLabelType.all,
+        labelSize: NavigationLabelSize.large,
+        surfaceBlur: context.theme.surfaceBlur,
+        surfaceOpacity: context.theme.surfaceOpacity,
+        children: [
+          for (final tile in navbarTileList)
+            NavigationItem(
+              key: ValueKey(tile.id),
+              label: Text(tile.title),
+              selectedStyle:
+                  const ButtonStyle.fixed(density: ButtonDensity.icon),
+              style: const ButtonStyle.muted(density: ButtonDensity.icon),
+              child: Badge(
+                isLabelVisible: tile.id == "library" && downloadCount > 0,
+                label: Text(downloadCount.toString()),
+                child: Icon(tile.icon),
+              ),
+            )
+        ],
+        onSelected: (key) {
+          if (key case final ValueKey<String> valueKey) {
+            final tile = navbarTileList.firstWhere(
+              (tile) => tile.id == valueKey.value,
+            );
+            context.navigateTo(tile.route);
+          }
+        },
       ),
     );
   }

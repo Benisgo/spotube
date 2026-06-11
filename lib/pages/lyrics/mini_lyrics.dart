@@ -237,6 +237,7 @@ class _MiniPlayerScaffold extends ConsumerWidget {
                                         index: index,
                                         onTabChanged: onTabChanged,
                                         theme: theme,
+                                        showControls: areaActive || !hoverMode,
                                       )
                                     : _MiniPlayerBody(
                                         track: activeTrack,
@@ -634,30 +635,34 @@ class _MiniLyricsBody extends StatelessWidget {
   final int index;
   final ValueChanged<int> onTabChanged;
   final ThemeData theme;
+  final bool showControls;
 
   const _MiniLyricsBody({
     required this.index,
     required this.onTabChanged,
     required this.theme,
+    this.showControls = true,
   });
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Row(
-          children: [
-            Tabs(
-              index: index,
-              onChanged: onTabChanged,
-              children: [
-                TabItem(child: Text(context.l10n.synced)),
-                TabItem(child: Text(context.l10n.plain)),
-              ],
-            ),
-          ],
-        ),
-        const Gap(14),
+        if (showControls) ...[
+          Row(
+            children: [
+              Tabs(
+                index: index,
+                onChanged: onTabChanged,
+                children: [
+                  TabItem(child: Text(context.l10n.synced)),
+                  TabItem(child: Text(context.l10n.plain)),
+                ],
+              ),
+            ],
+          ),
+          const Gap(14),
+        ],
         Expanded(
           child: IndexedStack(
             index: index,
@@ -666,11 +671,13 @@ class _MiniLyricsBody extends StatelessWidget {
                 palette: PaletteColor(theme.colorScheme.background, 0),
                 isModal: true,
                 defaultTextZoom: 65,
+                showControls: showControls,
               ),
               PlainLyrics(
                 palette: PaletteColor(theme.colorScheme.background, 0),
                 isModal: true,
                 defaultTextZoom: 65,
+                showControls: showControls,
               ),
             ],
           ),

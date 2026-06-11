@@ -716,6 +716,15 @@ class $PreferencesTableTable extends PreferencesTable
               defaultValue: Constant(YoutubeClientEngine.youtubeExplode.name))
           .withConverter<YoutubeClientEngine>(
               $PreferencesTableTable.$converteryoutubeClientEngine);
+  @override
+  late final GeneratedColumnWithTypeConverter<List<YoutubeClientEngine>, String>
+      youtubeClientEngines = GeneratedColumn<String>(
+              'youtube_client_engines', aliasedName, false,
+              type: DriftSqlType.string,
+              requiredDuringInsert: false,
+              defaultValue: const Constant('[]'))
+          .withConverter<List<YoutubeClientEngine>>(
+              $PreferencesTableTable.$converteryoutubeClientEngines);
   static const VerificationMeta _discordPresenceMeta =
       const VerificationMeta('discordPresence');
   @override
@@ -858,6 +867,7 @@ class $PreferencesTableTable extends PreferencesTable
         themeMode,
         audioSourceId,
         youtubeClientEngine,
+        youtubeClientEngines,
         discordPresence,
         endlessPlayback,
         enableConnect,
@@ -1070,6 +1080,10 @@ class $PreferencesTableTable extends PreferencesTable
       youtubeClientEngine: $PreferencesTableTable.$converteryoutubeClientEngine
           .fromSql(attachedDatabase.typeMapping.read(DriftSqlType.string,
               data['${effectivePrefix}youtube_client_engine'])!),
+      youtubeClientEngines: $PreferencesTableTable
+          .$converteryoutubeClientEngines
+          .fromSql(attachedDatabase.typeMapping.read(DriftSqlType.string,
+              data['${effectivePrefix}youtube_client_engines'])!),
       discordPresence: attachedDatabase.typeMapping
           .read(DriftSqlType.bool, data['${effectivePrefix}discord_presence'])!,
       endlessPlayback: attachedDatabase.typeMapping
@@ -1129,6 +1143,8 @@ class $PreferencesTableTable extends PreferencesTable
   static JsonTypeConverter2<YoutubeClientEngine, String, String>
       $converteryoutubeClientEngine =
       const EnumNameConverter<YoutubeClientEngine>(YoutubeClientEngine.values);
+  static TypeConverter<List<YoutubeClientEngine>, String>
+      $converteryoutubeClientEngines = const YoutubeClientEnginesConverter();
   static JsonTypeConverter2<LyricsCharacterEdge, String, String>
       $converterlyricsCharacterEdge =
       const EnumNameConverter<LyricsCharacterEdge>(LyricsCharacterEdge.values);
@@ -1155,6 +1171,7 @@ class PreferencesTableData extends DataClass
   final ThemeMode themeMode;
   final String? audioSourceId;
   final YoutubeClientEngine youtubeClientEngine;
+  final List<YoutubeClientEngine> youtubeClientEngines;
   final bool discordPresence;
   final bool endlessPlayback;
   final bool enableConnect;
@@ -1188,6 +1205,7 @@ class PreferencesTableData extends DataClass
       required this.themeMode,
       this.audioSourceId,
       required this.youtubeClientEngine,
+      required this.youtubeClientEngines,
       required this.discordPresence,
       required this.endlessPlayback,
       required this.enableConnect,
@@ -1255,6 +1273,11 @@ class PreferencesTableData extends DataClass
           .$converteryoutubeClientEngine
           .toSql(youtubeClientEngine));
     }
+    {
+      map['youtube_client_engines'] = Variable<String>($PreferencesTableTable
+          .$converteryoutubeClientEngines
+          .toSql(youtubeClientEngines));
+    }
     map['discord_presence'] = Variable<bool>(discordPresence);
     map['endless_playback'] = Variable<bool>(endlessPlayback);
     map['enable_connect'] = Variable<bool>(enableConnect);
@@ -1298,6 +1321,7 @@ class PreferencesTableData extends DataClass
           ? const Value.absent()
           : Value(audioSourceId),
       youtubeClientEngine: Value(youtubeClientEngine),
+      youtubeClientEngines: Value(youtubeClientEngines),
       discordPresence: Value(discordPresence),
       endlessPlayback: Value(endlessPlayback),
       enableConnect: Value(enableConnect),
@@ -1345,6 +1369,8 @@ class PreferencesTableData extends DataClass
       audioSourceId: serializer.fromJson<String?>(json['audioSourceId']),
       youtubeClientEngine: $PreferencesTableTable.$converteryoutubeClientEngine
           .fromJson(serializer.fromJson<String>(json['youtubeClientEngine'])),
+      youtubeClientEngines: serializer
+          .fromJson<List<YoutubeClientEngine>>(json['youtubeClientEngines']),
       discordPresence: serializer.fromJson<bool>(json['discordPresence']),
       endlessPlayback: serializer.fromJson<bool>(json['endlessPlayback']),
       enableConnect: serializer.fromJson<bool>(json['enableConnect']),
@@ -1397,6 +1423,8 @@ class PreferencesTableData extends DataClass
       'youtubeClientEngine': serializer.toJson<String>($PreferencesTableTable
           .$converteryoutubeClientEngine
           .toJson(youtubeClientEngine)),
+      'youtubeClientEngines':
+          serializer.toJson<List<YoutubeClientEngine>>(youtubeClientEngines),
       'discordPresence': serializer.toJson<bool>(discordPresence),
       'endlessPlayback': serializer.toJson<bool>(endlessPlayback),
       'enableConnect': serializer.toJson<bool>(enableConnect),
@@ -1437,6 +1465,7 @@ class PreferencesTableData extends DataClass
           ThemeMode? themeMode,
           Value<String?> audioSourceId = const Value.absent(),
           YoutubeClientEngine? youtubeClientEngine,
+          List<YoutubeClientEngine>? youtubeClientEngines,
           bool? discordPresence,
           bool? endlessPlayback,
           bool? enableConnect,
@@ -1471,6 +1500,7 @@ class PreferencesTableData extends DataClass
         audioSourceId:
             audioSourceId.present ? audioSourceId.value : this.audioSourceId,
         youtubeClientEngine: youtubeClientEngine ?? this.youtubeClientEngine,
+        youtubeClientEngines: youtubeClientEngines ?? this.youtubeClientEngines,
         discordPresence: discordPresence ?? this.discordPresence,
         endlessPlayback: endlessPlayback ?? this.endlessPlayback,
         enableConnect: enableConnect ?? this.enableConnect,
@@ -1536,6 +1566,9 @@ class PreferencesTableData extends DataClass
       youtubeClientEngine: data.youtubeClientEngine.present
           ? data.youtubeClientEngine.value
           : this.youtubeClientEngine,
+      youtubeClientEngines: data.youtubeClientEngines.present
+          ? data.youtubeClientEngines.value
+          : this.youtubeClientEngines,
       discordPresence: data.discordPresence.present
           ? data.discordPresence.value
           : this.discordPresence,
@@ -1598,6 +1631,7 @@ class PreferencesTableData extends DataClass
           ..write('themeMode: $themeMode, ')
           ..write('audioSourceId: $audioSourceId, ')
           ..write('youtubeClientEngine: $youtubeClientEngine, ')
+          ..write('youtubeClientEngines: $youtubeClientEngines, ')
           ..write('discordPresence: $discordPresence, ')
           ..write('endlessPlayback: $endlessPlayback, ')
           ..write('enableConnect: $enableConnect, ')
@@ -1636,6 +1670,7 @@ class PreferencesTableData extends DataClass
         themeMode,
         audioSourceId,
         youtubeClientEngine,
+        youtubeClientEngines,
         discordPresence,
         endlessPlayback,
         enableConnect,
@@ -1673,6 +1708,7 @@ class PreferencesTableData extends DataClass
           other.themeMode == this.themeMode &&
           other.audioSourceId == this.audioSourceId &&
           other.youtubeClientEngine == this.youtubeClientEngine &&
+          other.youtubeClientEngines == this.youtubeClientEngines &&
           other.discordPresence == this.discordPresence &&
           other.endlessPlayback == this.endlessPlayback &&
           other.enableConnect == this.enableConnect &&
@@ -1708,6 +1744,7 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
   final Value<ThemeMode> themeMode;
   final Value<String?> audioSourceId;
   final Value<YoutubeClientEngine> youtubeClientEngine;
+  final Value<List<YoutubeClientEngine>> youtubeClientEngines;
   final Value<bool> discordPresence;
   final Value<bool> endlessPlayback;
   final Value<bool> enableConnect;
@@ -1741,6 +1778,7 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
     this.themeMode = const Value.absent(),
     this.audioSourceId = const Value.absent(),
     this.youtubeClientEngine = const Value.absent(),
+    this.youtubeClientEngines = const Value.absent(),
     this.discordPresence = const Value.absent(),
     this.endlessPlayback = const Value.absent(),
     this.enableConnect = const Value.absent(),
@@ -1775,6 +1813,7 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
     this.themeMode = const Value.absent(),
     this.audioSourceId = const Value.absent(),
     this.youtubeClientEngine = const Value.absent(),
+    this.youtubeClientEngines = const Value.absent(),
     this.discordPresence = const Value.absent(),
     this.endlessPlayback = const Value.absent(),
     this.enableConnect = const Value.absent(),
@@ -1809,6 +1848,7 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
     Expression<String>? themeMode,
     Expression<String>? audioSourceId,
     Expression<String>? youtubeClientEngine,
+    Expression<String>? youtubeClientEngines,
     Expression<bool>? discordPresence,
     Expression<bool>? endlessPlayback,
     Expression<bool>? enableConnect,
@@ -1846,6 +1886,8 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
       if (audioSourceId != null) 'audio_source_id': audioSourceId,
       if (youtubeClientEngine != null)
         'youtube_client_engine': youtubeClientEngine,
+      if (youtubeClientEngines != null)
+        'youtube_client_engines': youtubeClientEngines,
       if (discordPresence != null) 'discord_presence': discordPresence,
       if (endlessPlayback != null) 'endless_playback': endlessPlayback,
       if (enableConnect != null) 'enable_connect': enableConnect,
@@ -1889,6 +1931,7 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
       Value<ThemeMode>? themeMode,
       Value<String?>? audioSourceId,
       Value<YoutubeClientEngine>? youtubeClientEngine,
+      Value<List<YoutubeClientEngine>>? youtubeClientEngines,
       Value<bool>? discordPresence,
       Value<bool>? endlessPlayback,
       Value<bool>? enableConnect,
@@ -1922,6 +1965,7 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
       themeMode: themeMode ?? this.themeMode,
       audioSourceId: audioSourceId ?? this.audioSourceId,
       youtubeClientEngine: youtubeClientEngine ?? this.youtubeClientEngine,
+      youtubeClientEngines: youtubeClientEngines ?? this.youtubeClientEngines,
       discordPresence: discordPresence ?? this.discordPresence,
       endlessPlayback: endlessPlayback ?? this.endlessPlayback,
       enableConnect: enableConnect ?? this.enableConnect,
@@ -2014,6 +2058,11 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
           .$converteryoutubeClientEngine
           .toSql(youtubeClientEngine.value));
     }
+    if (youtubeClientEngines.present) {
+      map['youtube_client_engines'] = Variable<String>($PreferencesTableTable
+          .$converteryoutubeClientEngines
+          .toSql(youtubeClientEngines.value));
+    }
     if (discordPresence.present) {
       map['discord_presence'] = Variable<bool>(discordPresence.value);
     }
@@ -2084,6 +2133,7 @@ class PreferencesTableCompanion extends UpdateCompanion<PreferencesTableData> {
           ..write('themeMode: $themeMode, ')
           ..write('audioSourceId: $audioSourceId, ')
           ..write('youtubeClientEngine: $youtubeClientEngine, ')
+          ..write('youtubeClientEngines: $youtubeClientEngines, ')
           ..write('discordPresence: $discordPresence, ')
           ..write('endlessPlayback: $endlessPlayback, ')
           ..write('enableConnect: $enableConnect, ')
@@ -4929,6 +4979,7 @@ typedef $$PreferencesTableTableCreateCompanionBuilder
   Value<ThemeMode> themeMode,
   Value<String?> audioSourceId,
   Value<YoutubeClientEngine> youtubeClientEngine,
+  Value<List<YoutubeClientEngine>> youtubeClientEngines,
   Value<bool> discordPresence,
   Value<bool> endlessPlayback,
   Value<bool> enableConnect,
@@ -4964,6 +5015,7 @@ typedef $$PreferencesTableTableUpdateCompanionBuilder
   Value<ThemeMode> themeMode,
   Value<String?> audioSourceId,
   Value<YoutubeClientEngine> youtubeClientEngine,
+  Value<List<YoutubeClientEngine>> youtubeClientEngines,
   Value<bool> discordPresence,
   Value<bool> endlessPlayback,
   Value<bool> enableConnect,
@@ -5068,6 +5120,12 @@ class $$PreferencesTableTableFilterComposer
           String>
       get youtubeClientEngine => $composableBuilder(
           column: $table.youtubeClientEngine,
+          builder: (column) => ColumnWithTypeConverterFilters(column));
+
+  ColumnWithTypeConverterFilters<List<YoutubeClientEngine>,
+          List<YoutubeClientEngine>, String>
+      get youtubeClientEngines => $composableBuilder(
+          column: $table.youtubeClientEngines,
           builder: (column) => ColumnWithTypeConverterFilters(column));
 
   ColumnFilters<bool> get discordPresence => $composableBuilder(
@@ -5200,6 +5258,10 @@ class $$PreferencesTableTableOrderingComposer
       column: $table.youtubeClientEngine,
       builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get youtubeClientEngines => $composableBuilder(
+      column: $table.youtubeClientEngines,
+      builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<bool> get discordPresence => $composableBuilder(
       column: $table.discordPresence,
       builder: (column) => ColumnOrderings(column));
@@ -5323,6 +5385,10 @@ class $$PreferencesTableTableAnnotationComposer
       get youtubeClientEngine => $composableBuilder(
           column: $table.youtubeClientEngine, builder: (column) => column);
 
+  GeneratedColumnWithTypeConverter<List<YoutubeClientEngine>, String>
+      get youtubeClientEngines => $composableBuilder(
+          column: $table.youtubeClientEngines, builder: (column) => column);
+
   GeneratedColumn<bool> get discordPresence => $composableBuilder(
       column: $table.discordPresence, builder: (column) => column);
 
@@ -5412,6 +5478,8 @@ class $$PreferencesTableTableTableManager extends RootTableManager<
             Value<String?> audioSourceId = const Value.absent(),
             Value<YoutubeClientEngine> youtubeClientEngine =
                 const Value.absent(),
+            Value<List<YoutubeClientEngine>> youtubeClientEngines =
+                const Value.absent(),
             Value<bool> discordPresence = const Value.absent(),
             Value<bool> endlessPlayback = const Value.absent(),
             Value<bool> enableConnect = const Value.absent(),
@@ -5447,6 +5515,7 @@ class $$PreferencesTableTableTableManager extends RootTableManager<
             themeMode: themeMode,
             audioSourceId: audioSourceId,
             youtubeClientEngine: youtubeClientEngine,
+            youtubeClientEngines: youtubeClientEngines,
             discordPresence: discordPresence,
             endlessPlayback: endlessPlayback,
             enableConnect: enableConnect,
@@ -5481,6 +5550,8 @@ class $$PreferencesTableTableTableManager extends RootTableManager<
             Value<ThemeMode> themeMode = const Value.absent(),
             Value<String?> audioSourceId = const Value.absent(),
             Value<YoutubeClientEngine> youtubeClientEngine =
+                const Value.absent(),
+            Value<List<YoutubeClientEngine>> youtubeClientEngines =
                 const Value.absent(),
             Value<bool> discordPresence = const Value.absent(),
             Value<bool> endlessPlayback = const Value.absent(),
@@ -5517,6 +5588,7 @@ class $$PreferencesTableTableTableManager extends RootTableManager<
             themeMode: themeMode,
             audioSourceId: audioSourceId,
             youtubeClientEngine: youtubeClientEngine,
+            youtubeClientEngines: youtubeClientEngines,
             discordPresence: discordPresence,
             endlessPlayback: endlessPlayback,
             enableConnect: enableConnect,

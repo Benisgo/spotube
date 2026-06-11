@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:media_kit/media_kit.dart';
 import 'package:smtc_windows/smtc_windows.dart';
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/provider/audio_player/audio_player.dart';
@@ -33,6 +34,7 @@ class WindowsAudioService {
           ),
         ) {
     smtc.setPlaybackStatus(PlaybackStatus.stopped);
+
     final buttonStream = smtc.buttonPressStream.listen((event) {
       switch (event) {
         case PressedButton.play:
@@ -53,6 +55,18 @@ class WindowsAudioService {
         default:
           break;
       }
+    });
+
+    final shuffleRequestStream = smtc.shuffleChangeStream.listen((enabled) {
+      audioPlayer.setShuffle(enabled);
+    });
+
+    final repeatRequestStream = smtc.repeatModeChangeStream.listen((mode) {
+      audioPlayer.setLoopMode(switch (mode) {
+        RepeatMode.none => PlaylistMode.none,
+        RepeatMode.track => PlaylistMode.single,
+        RepeatMode.list => PlaylistMode.loop,
+      });
     });
 
     final playerStateStream =
@@ -117,8 +131,24 @@ class WindowsAudioService {
       }
     });
 
+    // Sync app shuffle/repeat state to SMTC when it changes
+    ref.listen(audioPlayerProvider, (prev, next) {
+      if (prev?.shuffled != next.shuffled) {
+        smtc.setShuffleEnabled(next.shuffled);
+      }
+      if (prev?.loopMode != next.loopMode) {
+        smtc.setRepeatMode(switch (next.loopMode) {
+          PlaylistMode.none => RepeatMode.none,
+          PlaylistMode.single => RepeatMode.track,
+          PlaylistMode.loop => RepeatMode.list,
+        });
+      }
+    });
+
     subscriptions.addAll([
       buttonStream,
+      shuffleRequestStream,
+      repeatRequestStream,
       playerStateStream,
       positionStream,
       durationStream,
@@ -126,14 +156,30 @@ class WindowsAudioService {
   }
 
   Future<void> addTrack(SpotubeTrackObject track) async {
+    final thumbnail = track.album.images.isNotEmpty
+        ? track.album.images.asUrlString(
+            placeholder: ImagePlaceholder.albumArt,
+          )
+        : null;
+
     await smtc.updateMetadata(
       MusicMetadata(
         title: track.name,
         albumArtist: track.artists.firstOrNull?.name ?? "Unknown",
         artist: track.artists.asString(),
         album: track.album.name,
+        thumbnail: thumbnail,
       ),
     );
+
+    // Sync current shuffle/repeat state
+    final state = ref.read(audioPlayerProvider);
+    await smtc.setShuffleEnabled(state.shuffled);
+    await smtc.setRepeatMode(switch (state.loopMode) {
+      PlaylistMode.none => RepeatMode.none,
+      PlaylistMode.single => RepeatMode.track,
+      PlaylistMode.loop => RepeatMode.list,
+    });
   }
 
   void dispose() {

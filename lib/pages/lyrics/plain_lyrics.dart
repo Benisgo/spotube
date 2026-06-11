@@ -12,6 +12,10 @@ import 'package:spotube/components/shimmers/shimmer_lyrics.dart';
 import 'package:spotube/extensions/constrains.dart';
 import 'package:spotube/extensions/context.dart';
 
+import 'package:spotube/components/shimmers/shimmer_lyrics.dart';
+import 'package:spotube/extensions/constrains.dart';
+import 'package:spotube/extensions/context.dart';
+
 import 'package:spotube/provider/audio_player/audio_player.dart';
 import 'package:spotube/provider/lyrics/synced.dart';
 import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
@@ -20,10 +24,12 @@ class PlainLyrics extends HookConsumerWidget {
   final PaletteColor palette;
   final bool? isModal;
   final int defaultTextZoom;
+  final bool showControls;
   const PlainLyrics({
     required this.palette,
     this.isModal,
     this.defaultTextZoom = 100,
+    this.showControls = true,
     super.key,
   });
 
@@ -136,15 +142,16 @@ class PlainLyrics extends HookConsumerWidget {
             ),
           ],
         ),
-        Align(
-          alignment: Alignment.bottomRight,
-          child: ZoomControls(
-            value: textZoomLevel.value,
-            onChanged: (value) => textZoomLevel.value = value,
-            min: 50,
-            max: 200,
+        if (showControls)
+          Align(
+            alignment: Alignment.bottomRight,
+            child: ZoomControls(
+              value: textZoomLevel.value,
+              onChanged: (value) => textZoomLevel.value = value,
+              min: 50,
+              max: 200,
+            ),
           ),
-        ),
       ],
     );
   }

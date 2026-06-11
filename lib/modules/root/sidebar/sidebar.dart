@@ -10,6 +10,8 @@ import 'package:spotube/extensions/context.dart';
 import 'package:spotube/modules/root/sidebar/sidebar_footer.dart';
 
 import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
+import 'package:spotube/provider/custom_theme/custom_theme_provider.dart';
+import 'package:spotube/provider/audio_player/audio_player.dart';
 
 class Sidebar extends HookConsumerWidget {
   final Widget child;
@@ -55,10 +57,34 @@ class Sidebar extends HookConsumerWidget {
       for (final tile in sidebarTileList)
         NavigationItem(
           key: ValueKey(tile.id),
-          label: mediaQuery.lgAndUp ? Text(tile.title) : null,
+          label: mediaQuery.lgAndUp
+              ? Text(
+                  tile.title,
+                  style: tile.id == selectedTile?.id
+                      ? TextStyle(
+                          shadows: [
+                            Shadow(
+                              color: colorScheme.primary.withValues(alpha: 0.5),
+                              blurRadius: 10,
+                            )
+                          ],
+                        )
+                      : null,
+                )
+              : null,
           child: Tooltip(
             tooltip: TooltipContainer(child: Text(tile.title)).call,
-            child: Icon(tile.icon),
+            child: Icon(
+              tile.icon,
+              shadows: tile.id == selectedTile?.id
+                  ? [
+                      Shadow(
+                        color: colorScheme.primary.withValues(alpha: 0.8),
+                        blurRadius: 12,
+                      )
+                    ]
+                  : null,
+            ),
           ),
         ),
     ];
@@ -67,10 +93,34 @@ class Sidebar extends HookConsumerWidget {
       for (final tile in sidebarLibraryTileList)
         NavigationItem(
           key: ValueKey(tile.id),
-          label: mediaQuery.lgAndUp ? Text(tile.title) : null,
+          label: mediaQuery.lgAndUp
+              ? Text(
+                  tile.title,
+                  style: tile.id == selectedTile?.id
+                      ? TextStyle(
+                          shadows: [
+                            Shadow(
+                              color: colorScheme.primary.withValues(alpha: 0.5),
+                              blurRadius: 10,
+                            )
+                          ],
+                        )
+                      : null,
+                )
+              : null,
           child: Tooltip(
             tooltip: TooltipContainer(child: Text(tile.title)).call,
-            child: Icon(tile.icon),
+            child: Icon(
+              tile.icon,
+              shadows: tile.id == selectedTile?.id
+                  ? [
+                      Shadow(
+                        color: colorScheme.primary.withValues(alpha: 0.8),
+                        blurRadius: 12,
+                      )
+                    ]
+                  : null,
+            ),
           ),
         ),
     ];
@@ -105,47 +155,62 @@ class Sidebar extends HookConsumerWidget {
       ),
     ];
 
+    final customTheme = ref.watch(customThemeProvider);
+    final activeTrack = ref.watch(audioPlayerProvider.select((value) => value.activeTrack));
+    final hasBackgroundImage = customTheme.enabled &&
+        customTheme.useNowPlayingCoverBackground &&
+        activeTrack?.album.images.isNotEmpty == true;
+
+    final sidebarWidget = Column(
+      children: [
+        Expanded(
+          child: mediaQuery.lgAndUp
+              ? NavigationSidebar(
+                  selectedKey:
+                      selectedTile != null ? ValueKey(selectedTile.id) : null,
+                  header: sidebarHeader,
+                  footer: sidebarFooter,
+                  onSelected: (key) {
+                    if (key case final ValueKey<String> valueKey) {
+                      final tile = tileList.firstWhere(
+                        (tile) => tile.id == valueKey.value,
+                      );
+                      context.navigateTo(tile.route);
+                    }
+                  },
+                  children: navigationButtons,
+                )
+              : NavigationRail(
+                  alignment: NavigationRailAlignment.start,
+                  selectedKey:
+                      selectedTile != null ? ValueKey(selectedTile.id) : null,
+                  footer: const [SidebarFooter()],
+                  onSelected: (key) {
+                    if (key case final ValueKey<String> valueKey) {
+                      final tile = tileList.firstWhere(
+                        (tile) => tile.id == valueKey.value,
+                      );
+                      context.navigateTo(tile.route);
+                    }
+                  },
+                  children: navigationButtons,
+                ),
+        ),
+        if (mediaQuery.lgAndUp) const Gap(130) else const Gap(65),
+      ],
+    );
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Column(
-          children: [
-            Expanded(
-              child: mediaQuery.lgAndUp
-                  ? NavigationSidebar(
-                      selectedKey:
-                          selectedTile != null ? ValueKey(selectedTile.id) : null,
-                      header: sidebarHeader,
-                      footer: sidebarFooter,
-                      onSelected: (key) {
-                        if (key case final ValueKey<String> valueKey) {
-                          final tile = tileList.firstWhere(
-                            (tile) => tile.id == valueKey.value,
-                          );
-                          context.navigateTo(tile.route);
-                        }
-                      },
-                      children: navigationButtons,
-                    )
-                  : NavigationRail(
-                      alignment: NavigationRailAlignment.start,
-                      selectedKey:
-                          selectedTile != null ? ValueKey(selectedTile.id) : null,
-                      footer: const [SidebarFooter()],
-                      onSelected: (key) {
-                        if (key case final ValueKey<String> valueKey) {
-                          final tile = tileList.firstWhere(
-                            (tile) => tile.id == valueKey.value,
-                          );
-                          context.navigateTo(tile.route);
-                        }
-                      },
-                      children: navigationButtons,
-                    ),
-            ),
-            if (mediaQuery.lgAndUp) const Gap(130) else const Gap(65),
-          ],
-        ),
+        hasBackgroundImage
+            ? SurfaceCard(
+                surfaceBlur: 20,
+                padding: EdgeInsets.zero,
+                borderRadius: BorderRadius.zero,
+                child: sidebarWidget,
+              )
+            : sidebarWidget,
         const VerticalDivider(),
         Expanded(child: child),
       ],

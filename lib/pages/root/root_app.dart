@@ -61,6 +61,7 @@ class RootAppPage extends HookConsumerWidget {
       child: SafeArea(
         top: false,
         child: Scaffold(
+          backgroundColor: backgroundImage != null ? Colors.transparent : null,
           footers: const [
             BottomPlayer(),
             SpotubeNavigationBar(),
@@ -72,7 +73,16 @@ class RootAppPage extends HookConsumerWidget {
                 padding: MediaQuery.paddingOf(context)
                     .copyWith(bottom: 100 * context.theme.scaling),
               ),
-              child: const AutoRouter(),
+              child: Theme(
+                data: Theme.of(context).copyWith(
+                  colorScheme: () => Theme.of(context).colorScheme.copyWith(
+                    background: backgroundImage != null
+                        ? () => Colors.transparent
+                        : null,
+                  ),
+                ),
+                child: const AutoRouter(),
+              ),
             ),
           ),
         ),
@@ -84,22 +94,39 @@ class RootAppPage extends HookConsumerWidget {
       children: [
         ColoredBox(color: backgroundColor),
         if (backgroundImage != null)
-          Opacity(
-            opacity: customTheme.backgroundImageOpacity,
-            child: ImageFiltered(
-              imageFilter: ImageFilter.blur(
-                sigmaX: customTheme.backgroundImageBlur,
-                sigmaY: customTheme.backgroundImageBlur,
-              ),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  image: DecorationImage(
-                    image: UniversalImage.imageProvider(backgroundImage),
-                    fit: BoxFit.cover,
+          Stack(
+            fit: StackFit.expand,
+            children: [
+              Opacity(
+                opacity: customTheme.backgroundImageOpacity,
+                child: ImageFiltered(
+                  imageFilter: ImageFilter.blur(
+                    sigmaX: customTheme.backgroundImageBlur,
+                    sigmaY: customTheme.backgroundImageBlur,
+                  ),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      image: DecorationImage(
+                        image: UniversalImage.imageProvider(backgroundImage),
+                        fit: BoxFit.cover,
+                      ),
+                    ),
                   ),
                 ),
               ),
-            ),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      backgroundColor.withValues(alpha: 0.5),
+                      backgroundColor.withValues(alpha: 0.85),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
         scaffold,
       ],

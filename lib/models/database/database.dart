@@ -3,6 +3,7 @@ library database;
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:collection/collection.dart';
 import 'package:drift/drift.dart';
 import 'package:drift/remote.dart';
 import 'package:encrypt/encrypt.dart';
@@ -20,8 +21,10 @@ import 'package:flutter/widgets.dart' hide Table, Key, View;
 import 'package:spotube/modules/settings/color_scheme_picker_dialog.dart';
 import 'package:drift/native.dart';
 import 'package:spotube/services/logger/logger.dart';
+import 'package:spotube/services/youtube_engine/invidious_engine.dart';
 import 'package:spotube/services/youtube_engine/newpipe_engine.dart';
 import 'package:spotube/services/youtube_engine/android_yt_dlp_engine.dart';
+import 'package:spotube/services/youtube_engine/verome_engine.dart';
 import 'package:spotube/services/youtube_engine/youtube_explode_engine.dart';
 import 'package:spotube/services/youtube_engine/yt_dlp_engine.dart';
 import 'package:spotube/utils/platform.dart';
@@ -74,7 +77,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 16;
+  int get schemaVersion => 17;
 
   @override
   MigrationStrategy get migration {
@@ -333,6 +336,16 @@ class AppDatabase extends _$AppDatabase {
           await customStatement(
             "ALTER TABLE preferences_table "
             "ADD COLUMN handle_spotify_links INTEGER NOT NULL DEFAULT 1",
+          ).catchError((error, stackTrace) {
+            if (!error.toString().contains('duplicate column name')) {
+              throw error;
+            }
+          });
+        }
+        if (from < 17 && to >= 17) {
+          await customStatement(
+            "ALTER TABLE preferences_table "
+            "ADD COLUMN youtube_client_engines TEXT NOT NULL DEFAULT '[]'",
           ).catchError((error, stackTrace) {
             if (!error.toString().contains('duplicate column name')) {
               throw error;

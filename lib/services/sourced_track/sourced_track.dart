@@ -600,27 +600,6 @@ class SourcedTrack extends BasicSourcedTrack {
 
     if (current.siblings.isEmpty) {
       current = await current.copyWithSibling();
-      if (current.url != null) return current;
-    }
-
-    final triedSourceIds = <String>{current.info.id};
-
-    while (current.url == null) {
-      final nextSibling = current.siblings.firstWhereOrNull(
-        (sibling) => !triedSourceIds.contains(sibling.id),
-      );
-
-      if (nextSibling == null) {
-        return current;
-      }
-
-      triedSourceIds.add(nextSibling.id);
-      final swapped = await current.swapWithSibling(nextSibling);
-      if (swapped == null) {
-        return current;
-      }
-
-      current = swapped;
     }
 
     return current;
@@ -810,15 +789,24 @@ class SourcedTrack extends BasicSourcedTrack {
         return source;
       }
 
-      final res = await globalDio.head(
-        source.url,
-        options:
-            Options(validateStatus: (status) => status != null && status < 500),
-      );
+      try {
+        final res = await globalDio.head(
+          source.url,
+          options: Options(
+            headers: {
+              "user-agent": "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.6367.83 Mobile Safari/537.36",
+              "referer": "https://www.youtube.com/",
+            },
+            validateStatus: (status) => status != null && status < 500,
+          ),
+        );
 
-      if (res.statusCode! < 400) {
-        _markValidated(source.url);
-        return source;
+        if (res.statusCode! < 400) {
+          _markValidated(source.url);
+          return source;
+        }
+      } catch (e) {
+        // Validation failed due to network error, treat as invalid stream
       }
 
       _validatedStreams.remove(source.url);

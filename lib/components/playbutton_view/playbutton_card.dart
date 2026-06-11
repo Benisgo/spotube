@@ -17,6 +17,8 @@ class PlaybuttonCard extends StatelessWidget {
   final bool isLoading;
   final String title;
   final bool isOwner;
+  final bool isPinned;
+  final void Function()? onPinPressed;
 
   const PlaybuttonCard({
     required this.isPlaying,
@@ -27,6 +29,8 @@ class PlaybuttonCard extends StatelessWidget {
     this.onAddToQueuePressed,
     this.onTap,
     this.isOwner = false,
+    this.isPinned = false,
+    this.onPinPressed,
     this.imageUrl,
     this.image,
     super.key,
@@ -83,7 +87,7 @@ class PlaybuttonCard extends StatelessWidget {
                         scale: (states.contains(WidgetState.hovered) ||
                                     kIsMobile) &&
                                 !isLoading
-                            ? 1
+                            ? 1.1
                             : 0.7,
                         child: AnimatedOpacity(
                           duration: const Duration(milliseconds: 300),
@@ -107,7 +111,7 @@ class PlaybuttonCard extends StatelessWidget {
                                 kIsMobile ||
                                 isPlaying ||
                                 isLoading
-                            ? 1
+                            ? 1.1
                             : 0.7,
                         child: AnimatedOpacity(
                           duration: const Duration(milliseconds: 150),
@@ -146,6 +150,28 @@ class PlaybuttonCard extends StatelessWidget {
                     size: ButtonSize.small,
                   ),
                   child: Icon(SpotubeIcons.user),
+                ),
+              ),
+            if (onPinPressed != null)
+              Positioned(
+                left: 5,
+                top: 5,
+                child: StatedWidget.builder(
+                  builder: (context, states) => AnimatedOpacity(
+                    duration: const Duration(milliseconds: 200),
+                    opacity: isPinned || states.contains(WidgetState.hovered) || kIsMobile ? 1 : 0,
+                    child: IconButton.secondary(
+                      onPressed: onPinPressed,
+                      size: ButtonSize.small,
+                      icon: Tooltip(
+                        tooltip: TooltipContainer(child: Text(isPinned ? "Unpin" : "Pin")).call,
+                        child: Icon(
+                          isPinned ? SpotubeIcons.pinOn : SpotubeIcons.pinOff,
+                          color: isPinned ? context.theme.colorScheme.primary : null,
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ),
           ],

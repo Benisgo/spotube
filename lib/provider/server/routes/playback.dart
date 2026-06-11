@@ -17,6 +17,7 @@ import 'package:spotube/provider/audio_player/state.dart';
 import 'package:spotube/provider/server/sourced_track_provider.dart';
 import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
 import 'package:spotube/services/audio_player/audio_player.dart';
+import 'package:spotube/services/youtube_engine/youtube_explode_engine.dart';
 import 'package:spotube/services/logger/logger.dart';
 import 'package:spotube/services/youtube_engine/android_yt_dlp_engine.dart';
 import 'package:spotube/utils/platform.dart';
@@ -65,8 +66,20 @@ class ServerPlaybackRoutes {
   }
 
   bool _isPlaybackRequestRelevant(String requestedUri) {
-    return requestedUri == audioPlayer.currentSource ||
-        requestedUri == audioPlayer.nextSource;
+    try {
+      final trackId = Uri.parse(requestedUri).pathSegments.last;
+      
+      if (playlist.activeTrack?.id == trackId) return true;
+      
+      if (playlist.currentIndex >= 0 && playlist.currentIndex + 1 < playlist.tracks.length) {
+        if (playlist.tracks[playlist.currentIndex + 1].id == trackId) return true;
+      }
+      
+      // Fallback: If it's anywhere in the queue, allow it to prevent race conditions during batch loads
+      if (playlist.tracks.any((t) => t.id == trackId)) return true;
+    } catch (_) {}
+    
+    return false;
   }
 
   void _ensurePlaybackRequestRelevant(String requestedUri) {
@@ -204,7 +217,7 @@ class ServerPlaybackRoutes {
     final contentLength = totalLength == 0 ? 0 : (end - start + 1);
 
     return {
-      "content-type": ["audio/${track.qualityPreset!.name}"],
+      "content-type": ["audio/${track.qualityPreset?.name ?? 'mp4'}"],
       "content-length": ["$contentLength"],
       "accept-ranges": ["bytes"],
       "connection": ["close"],
@@ -213,13 +226,13 @@ class ServerPlaybackRoutes {
     };
   }
 
-  bool _shouldBypassStreamingProxy(SourcedTrack track) => kIsDesktop;
+  bool _shouldBypassStreamingProxy(SourcedTrack track) => false;
 
   Future<String> _getTrackCacheFilePath(SourcedTrack track) async {
     return join(
       await UserPreferencesNotifier.getMusicCacheDir(),
       ServiceUtils.sanitizeFilename(
-        '${track.query.name} - ${track.query.artists.map((d) => d.name).join(",")} (${track.info.id}).${track.qualityPreset!.getFileExtension()}',
+        '${track.query.name} - ${track.query.artists.map((d) => d.name).join(",")} (${track.info.id}).${track.qualityPreset?.getFileExtension() ?? "m4a"}',
       ),
     );
   }
@@ -389,19 +402,60 @@ class ServerPlaybackRoutes {
       );
     }
 
+    if (url.contains("local=true")) {
+      return dio_lib.Response(
+        statusCode: 200,
+        requestOptions: RequestOptions(path: url),
+        headers: Headers.fromMap({
+          "content-type": [url.contains("itag=251") ? "audio/webm" : "audio/mp4"],
+          "accept-ranges": ["bytes"],
+          "connection": ["close"],
+        }),
+      );
+    }
+
     final options = Options(
       headers: {
-        "user-agent": _randomUserAgent,
+        "user-agent": "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.6367.83 Mobile Safari/537.36",
+        "referer": "https://www.youtube.com/",
         "Cache-Control": "max-age=3600",
         "Connection": "close",
         "host": Uri.parse(url).host,
+        "accept-encoding": "identity",
       },
       validateStatus: (status) => status! < 400,
     );
 
-    final res = await dio.head(url, options: options);
-
-    return res;
+    try {
+      final res = await dio.head(url, options: options);
+      return res;
+    } catch (e) {
+      try {
+        final fallbackEngine = YouTubeExplodeEngine();
+        final manifest = await fallbackEngine.getStreamManifest(track.info.id);
+        if (manifest.audioOnly.isNotEmpty) {
+           final fallbackStreams = manifest.audioOnly.toList();
+           fallbackStreams.sort((a, b) => b.bitrate.bitsPerSecond.compareTo(a.bitrate.bitsPerSecond));
+           final fallbackUrl = fallbackStreams.first.url.toString();
+           
+           final fallbackOptions = Options(
+             headers: {
+               "user-agent": "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.6367.83 Mobile Safari/537.36",
+               "referer": "https://www.youtube.com/",
+               "Cache-Control": "max-age=3600",
+               "Connection": "close",
+               "host": Uri.parse(fallbackUrl).host,
+             },
+             validateStatus: (status) => status! < 400,
+           );
+           
+           final res = await dio.head(fallbackUrl, options: fallbackOptions);
+           return res;
+        }
+      } catch (_) {}
+      
+      rethrow;
+    }
   }
 
   Future<dio_lib.Response> streamTrack(
@@ -469,6 +523,9 @@ class ServerPlaybackRoutes {
     try {
       activeTrack = await _resolvePlayableTrack(track, requestedUri);
     } catch (e, stack) {
+      if (e is StateError && e.message.toString().startsWith("Stale playback request:")) {
+        rethrow;
+      }
       PlaybackStartTrace.failTrack(
         track.query.id,
         'server.stream_route.resolve_failed',
@@ -533,6 +590,7 @@ class ServerPlaybackRoutes {
             ...ytDlpOrFallbackHeaders(sourceUrl),
             "referer": "https://www.youtube.com/",
             "host": Uri.parse(sourceUrl).host,
+            "accept-encoding": "identity",
           },
           responseType: ResponseType.stream,
           validateStatus: (_) => true,
@@ -554,95 +612,108 @@ class ServerPlaybackRoutes {
       );
     }
 
-    dio_lib.Response<ResponseBody> res;
-    try {
-      PlaybackStartTrace.markTrack(
-        activeTrack.query.id,
-        'server.upstream_fetch.start',
-        data: {'host': Uri.parse(url).host},
-      );
-      res = await fetchStream(url);
-      PlaybackStartTrace.markTrack(
-        activeTrack.query.id,
-        'server.upstream_fetch.connected',
-        data: {'statusCode': res.statusCode ?? 0},
-      );
-    } catch (e, stack) {
-      if (e is! DioException || !CancelToken.isCancel(e)) {
-        AppLogger.reportError(e, stack);
-      }
-
-      final notifier =
-          ref.read(sourcedTrackProvider(activeTrack.query).notifier);
+    dio_lib.Response<ResponseBody>? tempRes;
+    final triedSiblingIds = <String>{activeTrack.info.id};
+    final notifier = ref.read(sourcedTrackProvider(activeTrack.query).notifier);
+    
+    int maxAttempts = activeTrack.siblings.length + 2; 
+    
+    for (int attempt = 0; attempt < maxAttempts; attempt++) {
       _ensurePlaybackRequestRelevant(requestedUri);
-      try {
-        activeTrack = await _resolvePlayableTrack(
-          await notifier.refreshStreamingUrl(),
-          requestedUri,
-        );
-      } catch (resolveError, resolveStack) {
-        _markStreamFailure(activeTrack);
-        AppLogger.reportError(resolveError, resolveStack);
-        rethrow;
-      }
-      url = activeTrack.url!;
+      
       try {
         PlaybackStartTrace.markTrack(
           activeTrack.query.id,
-          'server.upstream_fetch.retry_start',
+          'server.upstream_fetch.start',
           data: {'host': Uri.parse(url).host},
         );
-        res = await fetchStream(url);
+        tempRes = await fetchStream(url);
         PlaybackStartTrace.markTrack(
           activeTrack.query.id,
-          'server.upstream_fetch.retry_connected',
-          data: {'statusCode': res.statusCode ?? 0},
+          'server.upstream_fetch.connected',
+          data: {'statusCode': tempRes.statusCode ?? 0},
         );
-      } catch (retryError, retryStack) {
-        PlaybackStartTrace.failTrack(
-          activeTrack.query.id,
-          'server.upstream_fetch.retry_failed',
-          data: {'error': retryError.toString()},
-        );
-        if (retryError is! DioException || !CancelToken.isCancel(retryError)) {
-          _markStreamFailure(activeTrack);
-          AppLogger.reportError(retryError, retryStack);
+        
+        if (tempRes.statusCode == 200 || tempRes.statusCode == 206) {
+          break; // Success!
         }
-        rethrow;
+      } catch (e, stack) {
+        if (e is DioException) {
+          if (CancelToken.isCancel(e)) {
+            rethrow;
+          }
+          if (e.error is HttpException && e.error.toString().contains("Connection closed")) {
+            _trace("Upstream connection closed prematurely for uri=$requestedUri");
+            tempRes = null;
+          } else {
+            AppLogger.reportError(e, stack);
+          }
+        } else {
+          AppLogger.reportError(e, stack);
+        }
+      }
+      
+      _ensurePlaybackRequestRelevant(requestedUri);
+      
+      try {
+        if (attempt == 0) {
+          activeTrack = await _resolvePlayableTrack(
+            await notifier.refreshStreamingUrl(),
+            requestedUri,
+          );
+        } else {
+          final nextSibling = activeTrack.siblings.firstWhereOrNull(
+            (sibling) => !triedSiblingIds.contains(sibling.id),
+          );
+          if (nextSibling == null) break;
+          triedSiblingIds.add(nextSibling.id);
+          
+          activeTrack = await _resolvePlayableTrack(
+            await notifier.swapWithSibling(nextSibling),
+            requestedUri,
+          );
+        }
+        url = activeTrack.url!;
+      } catch (resolveError, resolveStack) {
+         if (resolveError is StateError && resolveError.message.toString().startsWith("Stale playback request:")) {
+           rethrow;
+         }
+         AppLogger.reportError(resolveError, resolveStack);
       }
     }
-
-    if (res.statusCode != 200) {
-      _trace(
-        "upstream non-200 uri=$requestedUri track=${activeTrack.query.id} status=${res.statusCode}",
-      );
-      final notifier = ref.read(sourcedTrackProvider(activeTrack.query).notifier);
-      _ensurePlaybackRequestRelevant(requestedUri);
+    
+    if (tempRes == null || (tempRes.statusCode != 200 && tempRes.statusCode != 206)) {
+      _markStreamFailure(activeTrack);
+      
+      bool fallbackSuccess = false;
       try {
-        activeTrack = await _resolvePlayableTrack(
-          await notifier.refreshStreamingUrl(),
-          requestedUri,
-        );
-      } catch (resolveError, resolveStack) {
-        _markStreamFailure(activeTrack);
-        AppLogger.reportError(resolveError, resolveStack);
-        rethrow;
-      }
-      url = activeTrack.url!;
-      try {
-        res = await fetchStream(url);
-        if (res.statusCode != 200) {
-          _markStreamFailure(activeTrack);
-          throw StateError("Stream ${activeTrack.query.id} returned ${res.statusCode} after retry");
+        final fallbackEngine = YouTubeExplodeEngine();
+        final manifest = await fallbackEngine.getStreamManifest(activeTrack.info.id);
+        if (manifest.audioOnly.isNotEmpty) {
+           final fallbackStreams = manifest.audioOnly.toList();
+           fallbackStreams.sort((a, b) => b.bitrate.bitsPerSecond.compareTo(a.bitrate.bitsPerSecond));
+           url = fallbackStreams.first.url.toString();
+           tempRes = await fetchStream(url);
+           if (tempRes != null && (tempRes.statusCode == 200 || tempRes.statusCode == 206)) {
+             _clearStreamFailure(activeTrack);
+             fallbackSuccess = true;
+           }
         }
-      } catch (retryError, retryStack) {
-        _markStreamFailure(activeTrack);
-        AppLogger.reportError(retryError, retryStack);
-        rethrow;
+      } catch (fallbackError, fallbackStack) {
+        if (fallbackError is DioException && CancelToken.isCancel(fallbackError)) {
+          rethrow;
+        }
+        AppLogger.reportError(fallbackError, fallbackStack);
+      }
+      
+      if (!fallbackSuccess) {
+        throw StateError("Stream ${activeTrack.query.id} returned ${tempRes?.statusCode} after retrying all siblings");
       }
     }
 
     _clearStreamFailure(activeTrack);
+    
+    final dio_lib.Response<ResponseBody> res = tempRes!;
 
     _trace(
       "upstream response uri=$requestedUri track=${activeTrack.query.id} status=${res.statusCode} contentType=${res.headers.value('content-type')}",
@@ -684,7 +755,9 @@ class ServerPlaybackRoutes {
       res.data!.stream,
     );
 
-    final effectiveTrackCacheFile = trackCacheFile;
+    final effectiveTrackCacheFile = userPreferences.cacheMusic
+        ? File(await _getTrackCacheFilePath(activeTrack))
+        : null;
     if (effectiveTrackCacheFile == null) {
       res.data?.stream = upstream;
       return res;
@@ -716,10 +789,10 @@ class ServerPlaybackRoutes {
         _trace("cache finalize uri=$requestedUri track=${track.query.id}");
         await trackPartialCacheFile.rename(effectiveTrackCacheFile.path);
 
-        if (track.qualityPreset!.getFileExtension() == "weba") return;
+        if (activeTrack.qualityPreset?.getFileExtension() == "weba") return;
 
         final imageBytes = await ServiceUtils.downloadImage(
-          track.query.album.images.asUrlString(
+          activeTrack.query.album.images.asUrlString(
             placeholder: ImagePlaceholder.albumArt,
             index: 1,
           ),
@@ -727,7 +800,7 @@ class ServerPlaybackRoutes {
 
         await MetadataGod.writeMetadata(
           file: effectiveTrackCacheFile.path,
-          metadata: track.query.toMetadata(
+          metadata: activeTrack.query.toMetadata(
             imageBytes: imageBytes,
             fileLength: fileLength,
           ),
@@ -828,11 +901,19 @@ class ServerPlaybackRoutes {
         "stream track returned uri=${request.requestedUri} track=$trackId status=${res.statusCode}",
       );
 
+      final safeHeaders = <String, Object>{};
+      res.headers.map.forEach((k, v) {
+        final lowerK = k.toLowerCase();
+        if (lowerK != 'transfer-encoding' && lowerK != 'content-encoding') {
+          safeHeaders[k] = v.join(',');
+        }
+      });
+
       if (res.data is ResponseBody) {
         return Response(
           res.statusCode!,
           body: (res.data as ResponseBody).stream,
-          headers: res.headers.map,
+          headers: safeHeaders,
         );
       }
 
@@ -840,21 +921,27 @@ class ServerPlaybackRoutes {
         return Response(
           res.statusCode!,
           body: res.data as Stream<List<int>>,
-          headers: res.headers.map,
+          headers: safeHeaders,
         );
       }
 
       return Response(
         res.statusCode!,
         body: res.data,
-        headers: res.headers.map,
+        headers: safeHeaders,
       );
     } on StateError catch (e) {
       if (e.message.toString().startsWith("Stale playback request:")) {
         return Response(410);
       }
+      if (e.message.toString().startsWith("No playable source found")) {
+        return Response.notFound("No playable source found");
+      }
       rethrow;
     } catch (e, stack) {
+      if (e is DioException && CancelToken.isCancel(e)) {
+        return Response(499);
+      }
       AppLogger.reportError(e, stack);
       return Response.internalServerError();
     }

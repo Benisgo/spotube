@@ -40,6 +40,7 @@ class SyncedLyricsNotifier
               "Spotube v${packageInfo.version} (https://github.com/KRTirtho/spotube)"
         },
         responseType: ResponseType.json,
+        validateStatus: (_) => true,
       ),
     );
 

@@ -10,15 +10,19 @@ import 'package:spotube/collections/spotube_icons.dart';
 import 'package:spotube/components/fallbacks/error_box.dart';
 import 'package:spotube/components/fallbacks/no_default_metadata_plugin.dart';
 import 'package:spotube/components/titlebar/titlebar.dart';
+import 'package:spotube/extensions/constrains.dart';
 import 'package:spotube/extensions/context.dart';
 import 'package:spotube/extensions/string.dart';
 import 'package:spotube/hooks/controllers/use_shadcn_text_editing_controller.dart';
+import 'package:spotube/models/database/database.dart';
+import 'package:spotube/modules/connect/connect_device.dart';
 import 'package:spotube/pages/search/tabs/albums.dart';
 import 'package:spotube/pages/search/tabs/all.dart';
 import 'package:spotube/pages/search/tabs/artists.dart';
 import 'package:spotube/pages/search/tabs/playlists.dart';
 import 'package:spotube/pages/search/tabs/tracks.dart';
 import 'package:spotube/provider/metadata_plugin/search/all.dart';
+import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
 import 'package:spotube/services/kv_store/kv_store.dart';
 import 'package:auto_route/auto_route.dart';
 import 'package:spotube/services/metadata/errors/exceptions.dart';
@@ -37,6 +41,12 @@ class SearchPage extends HookConsumerWidget {
   Widget build(BuildContext context, ref) {
     final controller = useShadcnTextEditingController();
     final focusNode = useFocusNode();
+    final mediaQuery = MediaQuery.of(context);
+    final layoutMode =
+        ref.watch(userPreferencesProvider.select((s) => s.layoutMode));
+
+    final showMobileHeader = layoutMode == LayoutMode.compact ||
+        (mediaQuery.smAndDown && layoutMode == LayoutMode.adaptive);
 
     final searchTerm = ref.watch(searchTermStateProvider);
     final searchChipSnapshot = ref.watch(metadataPluginSearchChipsProvider);
@@ -79,8 +89,24 @@ class SearchPage extends HookConsumerWidget {
         bottom: false,
         child: Scaffold(
           headers: [
-            if (kTitlebarVisible)
-              const TitleBar(automaticallyImplyLeading: false, height: 30)
+            if (kTitlebarVisible && !showMobileHeader)
+              const TitleBar(automaticallyImplyLeading: false, height: 30),
+            if (showMobileHeader)
+              TitleBar(
+                showWindowButtons: false,
+                automaticallyImplyLeading: false,
+                title: Text(context.l10n.search, textAlign: TextAlign.center),
+                trailing: [
+                  const ConnectDeviceButton(),
+                  const Gap(8),
+                  IconButton.ghost(
+                    icon: const Icon(SpotubeIcons.settings, size: 20),
+                    onPressed: () =>
+                        context.navigateTo(const SettingsRoute()),
+                  ),
+                  const Gap(8),
+                ],
+              ),
           ],
           child: Builder(builder: (context) {
             if (searchChipSnapshot.error

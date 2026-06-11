@@ -27,6 +27,8 @@ final pendingPlaybackTrackIdProvider = StateProvider<String?>((ref) => null);
 class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
   BlackListNotifier get _blacklist => ref.read(blacklistProvider.notifier);
   String? _lastPersistedPlaylistSignature;
+  int _playlistOperationId = 0;
+  bool _isBatchAdding = false;
 
   bool _isExpectedBackgroundPrefetchSkip(Object error) {
     final message = error.toString().toLowerCase();
@@ -309,10 +311,16 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
           final tracks =
               playlist.medias.map((e) => SpotubeMedia.media(e).track).toList();
 
-          state = state.copyWith(
-            tracks: tracks,
-            currentIndex: playlist.index,
-          );
+          if (!_isBatchAdding) {
+            state = state.copyWith(
+              tracks: tracks,
+              currentIndex: playlist.index,
+            );
+          } else {
+            state = state.copyWith(
+              currentIndex: playlist.index,
+            );
+          }
           if (state.activeTrack != null) {
             PlaybackStartTrace.markTrack(
               state.activeTrack!.id,
@@ -329,12 +337,14 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
           }
           _prefetchAdjacentSources();
 
-          await _updatePlayerState(
-            AudioPlayerStateTableCompanion(
-              currentIndex: Value(state.currentIndex),
-              tracks: Value(state.tracks),
-            ),
-          );
+          if (!_isBatchAdding) {
+            await _updatePlayerState(
+              AudioPlayerStateTableCompanion(
+                currentIndex: Value(state.currentIndex),
+                tracks: Value(state.tracks),
+              ),
+            );
+          }
         } catch (e, stack) {
           AppLogger.reportError(e, stack);
         }
@@ -460,22 +470,32 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
       tracks: [...addableTracks, ...state.tracks],
     );
 
-    for (int i = 0; i < addableTracks.length; i++) {
-      final track = addableTracks.elementAt(i);
+    _playlistOperationId++;
+    final currentOperationId = _playlistOperationId;
+    _isBatchAdding = true;
 
-      await audioPlayer.addTrackAt(
-        SpotubeMedia(track),
-        max(state.currentIndex, 0) + i + 1,
-      );
+    try {
+      for (int i = 0; i < addableTracks.length; i++) {
+        if (_playlistOperationId != currentOperationId) break;
+        final track = addableTracks.elementAt(i);
+
+        await audioPlayer.addTrackAt(
+          SpotubeMedia(track),
+          max(state.currentIndex, 0) + i + 1,
+        );
+      }
+    } finally {
+      if (_playlistOperationId == currentOperationId) {
+        _isBatchAdding = false;
+        await _updatePlayerState(
+          AudioPlayerStateTableCompanion(
+            tracks: Value(state.tracks),
+            currentIndex: Value(max(state.currentIndex, 0)),
+            positionMs: const Value(0),
+          ),
+        );
+      }
     }
-
-    await _updatePlayerState(
-      AudioPlayerStateTableCompanion(
-        tracks: Value(state.tracks),
-        currentIndex: Value(max(state.currentIndex, 0)),
-        positionMs: const Value(0),
-      ),
-    );
   }
 
   Future<void> addTrack(SpotubeTrackObject track) async {
@@ -547,17 +567,27 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
       tracks: [...state.tracks, ...tracks],
     );
 
-    for (final track in tracks) {
-      await audioPlayer.addTrack(SpotubeMedia(track));
-    }
+    _playlistOperationId++;
+    final currentOperationId = _playlistOperationId;
+    _isBatchAdding = true;
 
-    await _updatePlayerState(
-      AudioPlayerStateTableCompanion(
-        tracks: Value(state.tracks),
-        currentIndex: Value(max(state.currentIndex, 0)),
-        positionMs: const Value(0),
-      ),
-    );
+    try {
+      for (final track in tracks) {
+        if (_playlistOperationId != currentOperationId) break;
+        await audioPlayer.addTrack(SpotubeMedia(track));
+      }
+    } finally {
+      if (_playlistOperationId == currentOperationId) {
+        _isBatchAdding = false;
+        await _updatePlayerState(
+          AudioPlayerStateTableCompanion(
+            tracks: Value(state.tracks),
+            currentIndex: Value(max(state.currentIndex, 0)),
+            positionMs: const Value(0),
+          ),
+        );
+      }
+    }
   }
 
   Future<void> removeTrack(String trackId) async {
@@ -621,6 +651,8 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
     int initialIndex = 0,
     bool autoPlay = false,
   }) async {
+    _playlistOperationId++;
+    _isBatchAdding = false;
     _assertAllowedTracks(tracks);
     final targetTrack =
         tracks.isEmpty ? null : tracks[initialIndex.clamp(0, tracks.length - 1)];
@@ -696,6 +728,8 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
   }
 
   Future<void> swapActiveSource() async {
+    _playlistOperationId++;
+    _isBatchAdding = false;
     if (state.tracks.isEmpty || state.activeTrack is! SpotubeFullTrackObject) {
       return;
     }
@@ -754,6 +788,8 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
   }
 
   Future<void> stop() async {
+    _playlistOperationId++;
+    _isBatchAdding = false;
     state = state.copyWith(
       tracks: [],
       currentIndex: -1,

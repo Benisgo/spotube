@@ -46,7 +46,7 @@ class PlayerOverlayCollapsedSection extends HookConsumerWidget {
     final shouldShow = useState(true);
 
     ref.listen(navigationPanelHeight, (_, height) {
-      shouldShow.value = height.ceil() == 50;
+      shouldShow.value = height.ceil() == 75;
     });
 
     return AnimatedSwitcher(
@@ -70,6 +70,11 @@ class PlayerOverlayCollapsedSection extends HookConsumerWidget {
                             child: GestureDetector(
                               onTap: () {
                                 panelController.open();
+                              },
+                              onVerticalDragEnd: (details) {
+                                if (details.primaryVelocity != null && details.primaryVelocity! < -100) {
+                                  panelController.open();
+                                }
                               },
                               child: Container(
                                 width: double.infinity,

@@ -67,6 +67,12 @@ class PlayerControls extends HookConsumerWidget {
     final buttonSize =
         kIsMobile ? const ButtonSize(1.5) : const ButtonSize(1.2);
 
+    final glowController = useAnimationController(
+      duration: const Duration(milliseconds: 1500),
+    )..repeat(reverse: true);
+
+    final glowAnimation = useAnimation(glowController);
+
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
       onTap: () {
@@ -215,24 +221,41 @@ class PlayerControls extends HookConsumerWidget {
                             : context.l10n.resume_playback,
                       ),
                     ).call,
-                    child: IconButton.primary(
-                      size: buttonSize,
-                      shape: ButtonShape.circle,
-                      icon: isFetchingActiveTrack
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(),
-                            )
-                          : Icon(
-                              playing ? SpotubeIcons.pause : SpotubeIcons.play,
-                            ),
-                      onPressed: isFetchingActiveTrack
-                          ? null
-                          : Actions.handler<PlayPauseIntent>(
-                              context,
-                              PlayPauseIntent(ref),
-                            ),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        boxShadow: playing
+                            ? [
+                                BoxShadow(
+                                  color: theme.colorScheme.primary.withValues(
+                                    alpha: (0.3 + (0.2 * glowAnimation)).toDouble(),
+                                  ),
+                                  blurRadius: 10 + (10 * glowAnimation),
+                                  spreadRadius: 2 + (4 * glowAnimation),
+                                )
+                              ]
+                            : [],
+                      ),
+                      child: IconButton.primary(
+                        size: buttonSize,
+                        shape: ButtonShape.circle,
+                        icon: isFetchingActiveTrack
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(),
+                              )
+                            : Icon(
+                                playing ? SpotubeIcons.pause : SpotubeIcons.play,
+                              ),
+                        onPressed: isFetchingActiveTrack
+                            ? null
+                            : Actions.handler<PlayPauseIntent>(
+                                context,
+                                PlayPauseIntent(ref),
+                              ),
+                      ),
                     ),
                   ),
                   Tooltip(

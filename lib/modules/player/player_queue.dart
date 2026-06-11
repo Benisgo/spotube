@@ -309,55 +309,51 @@ class PlayerQueue extends HookConsumerWidget {
                                 }
                               }
 
-                              return AutoScrollTag(
+                              final canDrag = !isSearching.value &&
+                                  searchText.value.isEmpty &&
+                                  !selectionMode.value;
+
+                              return ReorderableDragStartListener(
                                 key: ValueKey<int>(i),
-                                controller: controller,
                                 index: i,
-                                child: TrackTile(
-                                  playlist: playlist,
+                                enabled: canDrag,
+                                child: AutoScrollTag(
+                                  key: ValueKey('scroll_$i'),
+                                  controller: controller,
                                   index: i,
-                                  track: track,
-                                  compact: true,
-                                  isFetchingActiveTrack: isFetchingActiveTrack,
-                                  selectionMode: selectionMode.value,
-                                  selected:
-                                      selectedTrackIds.value.contains(track.id),
-                                  onChanged: selectionMode.value
-                                      ? (_) => toggleSelection(track.id)
-                                      : null,
-                                  onTap: () async {
-                                    if (selectionMode.value) {
-                                      toggleSelection(track.id);
-                                      return;
-                                    }
-                                    if (playlist.activeTrack?.id == track.id) {
-                                      return;
-                                    }
-                                    await onJump(track);
-                                  },
-                                  onLongPress: () {
-                                    if (!selectionMode.value) {
-                                      selectionMode.value = true;
-                                      selectedTrackIds.value = {track.id};
-                                    } else {
-                                      toggleSelection(track.id);
-                                    }
-                                  },
-                                  leadingActions: [
-                                    if (!isSearching.value &&
-                                        searchText.value.isEmpty &&
-                                        !selectionMode.value)
-                                      Padding(
-                                        padding:
-                                            const EdgeInsets.only(left: 8.0),
-                                        child: ReorderableDragStartListener(
-                                          index: i,
-                                          child: const Icon(
-                                            SpotubeIcons.dragHandle,
-                                          ),
-                                        ),
-                                      ),
-                                  ],
+                                  child: TrackTile(
+                                    playlist: playlist,
+                                    index: i,
+                                    track: track,
+                                    compact: true,
+                                    isFetchingActiveTrack:
+                                        isFetchingActiveTrack,
+                                    selectionMode: selectionMode.value,
+                                    selected: selectedTrackIds.value
+                                        .contains(track.id),
+                                    onChanged: selectionMode.value
+                                        ? (_) => toggleSelection(track.id)
+                                        : null,
+                                    onTap: () async {
+                                      if (selectionMode.value) {
+                                        toggleSelection(track.id);
+                                        return;
+                                      }
+                                      if (playlist.activeTrack?.id ==
+                                          track.id) {
+                                        return;
+                                      }
+                                      await onJump(track);
+                                    },
+                                    onLongPress: () {
+                                      if (!selectionMode.value) {
+                                        selectionMode.value = true;
+                                        selectedTrackIds.value = {track.id};
+                                      } else {
+                                        toggleSelection(track.id);
+                                      }
+                                    },
+                                  ),
                                 ),
                               );
                             },

@@ -58,8 +58,11 @@ class CustomThemeDialog extends HookConsumerWidget {
 
     return AlertDialog(
       title: const Text("Custom theme").large(),
-      content: SizedBox(
-        width: 720,
+      content: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: 500,
+          maxHeight: MediaQuery.of(context).size.height * 0.65,
+        ),
         child: SingleChildScrollView(
           child: material.Column(
             crossAxisAlignment: CrossAxisAlignment.start,

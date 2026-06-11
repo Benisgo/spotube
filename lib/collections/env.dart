@@ -29,19 +29,19 @@ abstract class Env {
 
   @EnviedField(
     varName: "APP_UPDATE_REPOSITORY",
-    defaultValue: "KRTirtho/spotube",
+    defaultValue: "Benisgo/spotube",
   )
   static final String updateRepository = _Env.updateRepository;
 
   @EnviedField(
     varName: "APP_DOWNLOAD_URL",
-    defaultValue: "https://spotube.krtirtho.dev/downloads",
+    defaultValue: "https://github.com/Benisgo/spotube/releases/latest",
   )
   static final String downloadUrl = _Env.downloadUrl;
 
   @EnviedField(
     varName: "APP_NIGHTLY_DOWNLOAD_URL",
-    defaultValue: "https://spotube.krtirtho.dev/downloads/nightly",
+    defaultValue: "https://github.com/Benisgo/spotube/releases/tag/nightly",
   )
   static final String nightlyDownloadUrl = _Env.nightlyDownloadUrl;
 

@@ -406,7 +406,7 @@ export class SpotubeRoom {
   }
 
   private promoteSuggestion(suggestionId?: string) {
-    if (!this.stateValue || !this.stateValue.communityQueueEnabled) return;
+    if (!this.stateValue) return;
 
     const suggestion =
       suggestionId == null
@@ -486,7 +486,6 @@ export class SpotubeRoom {
         data.loopMode ?? this.stateValue.loopMode;
       this.stateValue.shuffle =
         data.shuffle ?? this.stateValue.shuffle;
-      this.reconcileCommunityQueue();
       await this.bump();
     }
 
@@ -515,7 +514,6 @@ export class SpotubeRoom {
             : this.stateValue.activeSource;
       this.stateValue.positionMs =
         (data as { positionMs?: number }).positionMs ?? this.stateValue.positionMs;
-      this.reconcileCommunityQueue();
       await this.bump();
     }
 
@@ -564,7 +562,6 @@ export class SpotubeRoom {
       const data = message.data as { enabled?: boolean };
       if (typeof data.enabled === "boolean") {
         this.stateValue.communityQueueEnabled = data.enabled;
-        this.reconcileCommunityQueue();
         await this.bump();
       }
     }
@@ -572,6 +569,7 @@ export class SpotubeRoom {
     if (
       message.type === "suggestion:add" &&
       this.allowed(memberId, "suggestTracks") &&
+      this.stateValue.communityQueueEnabled &&
       message.data &&
       typeof message.data === "object"
     ) {
@@ -588,7 +586,6 @@ export class SpotubeRoom {
         voteCount: 1,
         voterIds: [memberId],
       });
-      this.reconcileCommunityQueue();
       await this.bump();
     }
 
@@ -610,7 +607,6 @@ export class SpotubeRoom {
 
       suggestion.voterIds = [...suggestion.voterIds, memberId];
       suggestion.voteCount = suggestion.voterIds.length;
-      this.reconcileCommunityQueue();
       await this.bump();
     }
 
@@ -638,6 +634,33 @@ export class SpotubeRoom {
       const data = message.data as { suggestionId?: string };
       this.promoteSuggestion(data.suggestionId);
       await this.bump();
+    }
+
+    if (
+      message.type === "kick" &&
+      this.allowed(memberId, "manageMembers") &&
+      message.data &&
+      typeof message.data === "object"
+    ) {
+      const data = message.data as { memberId?: string };
+      if (data.memberId && data.memberId !== memberId) {
+        const member = this.stateValue.members[data.memberId];
+        if (member && member.role !== "host") {
+          delete this.stateValue.members[data.memberId];
+          this.stateValue.suggestions = this.stateValue.suggestions.filter(
+            (entry) => entry.suggestedBy !== data.memberId,
+          );
+          
+          for (const [socket, id] of this.sockets.entries()) {
+            if (id === data.memberId) {
+              socket.send(JSON.stringify({ type: "ended" }));
+              socket.close(1008, "Kicked");
+              this.sockets.delete(socket);
+            }
+          }
+          await this.bump();
+        }
+      }
     }
 
     if (message.type === "leave") {

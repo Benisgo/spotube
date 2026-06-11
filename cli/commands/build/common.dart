@@ -36,7 +36,7 @@ mixin BuildCommandCommonSteps on Command {
   Future<void> bootstrap() async {
     await dotEnvFile.create(recursive: true);
 
-    final repository = CliEnv.githubRepository ?? "KRTirtho/spotube";
+    final repository = CliEnv.githubRepository ?? "Benisgo/spotube";
     final serverUrl = CliEnv.githubServerUrl ?? "https://github.com";
     final releasesUrl = "$serverUrl/$repository/releases/latest";
     final nightlyUrl = "$serverUrl/$repository/releases/tag/nightly";

@@ -327,7 +327,8 @@ class _SuggestionsSection extends HookConsumerWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             const Text("Suggestions"),
-            if (session.can(MultiSessionPermission.suggestTracks))
+            if (snapshot?.communityQueueEnabled == true &&
+                session.can(MultiSessionPermission.suggestTracks))
               Button.ghost(
                 onPressed: () async {
                   final track = await showDialog<SpotubeFullTrackObject>(

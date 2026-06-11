@@ -97,7 +97,8 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
 
   List<String> _memberSignatures(List<MultiSessionMember> members) {
     return members
-        .map((member) => "${member.id}:${member.role}:${member.preset.name}")
+        .map((member) =>
+            "${member.id}:${member.role}:${member.preset.name}:${member.permissions.values.join(",")}")
         .toList(growable: false);
   }
 
@@ -156,6 +157,21 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
       final nextIds = next.tracks.map((track) => track.id).join(",");
       if (previousIds != nextIds ||
           previous?.currentIndex != next.currentIndex) {
+            
+        final localTrackIds =
+            next.tracks.map((track) => track.id).toList(growable: false);
+        final remoteTrackIds = _queueIds(state.snapshot?.queue ?? const []);
+        final activeIndex = state.snapshot?.activeTrackId == null
+            ? 0
+            : remoteTrackIds.indexOf(state.snapshot!.activeTrackId!);
+        final index = activeIndex < 0 ? 0 : activeIndex;
+
+        final isSnapshotSync =
+            _stringListEquality.equals(localTrackIds, remoteTrackIds) &&
+                next.currentIndex == index;
+
+        if (isSnapshotSync) return;
+
         if (previousIds != nextIds) {
           final previousTrackIds =
               previous?.tracks.map((track) => track.id).toSet() ?? <String>{};
@@ -595,7 +611,15 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
       final localTracks =
           localState.tracks.whereType<SpotubeFullTrackObject>().toList();
       final remoteTrackIds = _queueIds(snapshot.queue);
-      if (remoteTrackIds.isEmpty) return;
+      if (remoteTrackIds.isEmpty) {
+        if (localTracks.isNotEmpty) {
+          await ref.read(audioPlayerProvider.notifier).load(
+                const [],
+                autoPlay: false,
+              );
+        }
+        return;
+      }
 
       final activeIndex = snapshot.activeTrackId == null
           ? 0

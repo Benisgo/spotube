@@ -155,6 +155,16 @@ class AppLogger {
     }
   }
 
+  static void agentDebug(
+    String location,
+    String message,
+    Map<String, dynamic> data, {
+    String hypothesisId = 'A',
+    String runId = 'post-fix',
+  }) {
+    if (!kDebugMode) return;
+    log.d('[agentDebug:$location] $message | data: $data');
+  }
 
   static void trace(String message) {
     if (!kReleaseMode) return;

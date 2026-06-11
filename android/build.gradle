@@ -12,7 +12,17 @@ allprojects {
     }
 }
 
-rootProject.buildDir = '../build'
+// Workaround for Flutter Gradle Plugin bug on Windows paths with spaces
+def buildPath = new File(rootProject.projectDir.parentFile, "build").absolutePath
+if (System.getProperty("os.name").toLowerCase().contains("windows") && buildPath.contains(" ")) {
+    new File(buildPath).mkdirs()
+    def process = "cmd /c for %I in (\"${buildPath}\") do @echo %~sI".execute()
+    process.waitFor()
+    rootProject.buildDir = process.text.trim()
+} else {
+    rootProject.buildDir = '../build'
+}
+
 subprojects {
     project.buildDir = "${rootProject.buildDir}/${project.name}"
 }

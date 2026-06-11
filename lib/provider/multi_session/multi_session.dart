@@ -629,7 +629,7 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
       final localTracks =
           localState.tracks.whereType<SpotubeFullTrackObject>().toList();
       final remoteTrackIds = _queueIds(snapshot.queue);
-      final isMyQueue = snapshot.lastQueueUpdateBy == session.memberId;
+      final isMyQueue = snapshot.lastQueueUpdateBy == state.memberId;
 
       if (remoteTrackIds.isEmpty && !isMyQueue) {
         if (localTracks.isNotEmpty) {

@@ -287,6 +287,7 @@ class MultiSessionRoomSnapshot {
   final List<MultiSessionMember> members;
   final List<MultiSessionSuggestion> suggestions;
   final bool communityQueueEnabled;
+  final String? lastQueueUpdateBy;
 
   const MultiSessionRoomSnapshot({
     required this.roomId,
@@ -302,6 +303,7 @@ class MultiSessionRoomSnapshot {
     required this.members,
     required this.suggestions,
     required this.communityQueueEnabled,
+    this.lastQueueUpdateBy,
   });
 
   factory MultiSessionRoomSnapshot.fromJson(Map<String, dynamic> json) {
@@ -337,6 +339,7 @@ class MultiSessionRoomSnapshot {
           )
           .toList(),
       communityQueueEnabled: json["communityQueueEnabled"] != false,
+      lastQueueUpdateBy: json["lastQueueUpdateBy"] as String?,
     );
   }
 }

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
@@ -33,6 +34,7 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
   int _connectionGeneration = 0;
   int? _lastObservedPositionMs;
   DateTime? _lastObservedAt;
+  final Set<String> _failedSessionTracks = {};
 
   void _debugTrace(String message) {
     if (!kDebugMode) return;
@@ -219,7 +221,20 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
       }
     });
 
+    final errorSubscription = audioPlayer.errorStream.listen((error) {
+      if (!state.connected || _canControlPlayback) return;
+      final playerState = ref.read(audioPlayerProvider);
+      final currentTrackId = playerState.activeTrack?.id;
+      if (currentTrackId != null) {
+        _failedSessionTracks.add(currentTrackId);
+        if (audioPlayer.isPlaying) {
+          audioPlayer.pause();
+        }
+      }
+    });
+
     _positionTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!state.isHost) return;
       if (!_canControlPlayback) return;
       _rememberObservedPosition(audioPlayer.position);
       sendPlayback();
@@ -228,6 +243,7 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
     ref.onDispose(() {
       playingSubscription.cancel();
       positionSubscription.cancel();
+      errorSubscription.cancel();
       _positionTimer?.cancel();
       _reconnectTimer?.cancel();
       _subscription?.cancel();
@@ -602,6 +618,8 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
 
   Future<void> _applySnapshot(MultiSessionRoomSnapshot snapshot) async {
     if (_closingRoom || _intentionalDisconnect) return;
+    if (_applyingRemote) return;
+
     _debugTrace(
       'snapshot:apply seq=${snapshot.sequence} queue=${snapshot.queue.length} code=${snapshot.code}',
     );
@@ -611,7 +629,9 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
       final localTracks =
           localState.tracks.whereType<SpotubeFullTrackObject>().toList();
       final remoteTrackIds = _queueIds(snapshot.queue);
-      if (remoteTrackIds.isEmpty) {
+      final isMyQueue = snapshot.lastQueueUpdateBy == session.memberId;
+
+      if (remoteTrackIds.isEmpty && !isMyQueue) {
         if (localTracks.isNotEmpty) {
           await ref.read(audioPlayerProvider.notifier).load(
                 const [],
@@ -621,17 +641,28 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
         return;
       }
 
-      final activeIndex = snapshot.activeTrackId == null
-          ? 0
-          : remoteTrackIds.indexOf(snapshot.activeTrackId!);
-
       final localTrackIds =
           localTracks.map((track) => track.id).toList(growable: false);
+
+      final targetIndex = isMyQueue
+          ? localTrackIds.indexOf(snapshot.activeTrackId ?? "")
+          : remoteTrackIds.indexOf(snapshot.activeTrackId ?? "");
+      final activeIndex = snapshot.activeTrackId == null ? 0 : targetIndex;
+
       final index = activeIndex < 0 ? 0 : activeIndex;
       final activeTrackChanged =
           localState.activeTrack?.id != snapshot.activeTrackId;
+          
+      if (snapshot.activeTrackId != null &&
+          _failedSessionTracks.contains(snapshot.activeTrackId)) {
+        if (audioPlayer.isPlaying) {
+          await audioPlayer.pause();
+        }
+        return;
+      }
+
       final queueIdsChanged =
-          !_stringListEquality.equals(localTrackIds, remoteTrackIds);
+          !isMyQueue && !_stringListEquality.equals(localTrackIds, remoteTrackIds);
       final indexChanged = localState.currentIndex != index;
 
       if (queueIdsChanged) {
@@ -797,11 +828,16 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
   void sendQueue() {
     unawaited(() async {
       final playerState = ref.read(audioPlayerProvider);
+      final tracks =
+          playerState.tracks.whereType<SpotubeFullTrackObject>().toList();
+      final activeIndex = playerState.currentIndex;
+
+      final start = math.max(0, activeIndex - 10);
+      final end = math.min(tracks.length, start + 100);
+      final slicedTracks = tracks.sublist(start, end);
+
       _send("queue", {
-        "queue": playerState.tracks
-            .whereType<SpotubeFullTrackObject>()
-            .map((track) => track.toJson())
-            .toList(),
+        "queue": slicedTracks.map((track) => track.toJson()).toList(),
         "activeTrackId": playerState.activeTrack?.id,
         "activeSource": await _activeSourcePayload(),
         "positionMs": audioPlayer.position.inMilliseconds,

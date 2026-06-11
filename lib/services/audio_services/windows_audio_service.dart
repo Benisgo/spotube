@@ -15,6 +15,7 @@ class WindowsAudioService {
 
   final subscriptions = <StreamSubscription>[];
   Duration _lastReportedPosition = Duration.zero;
+  DateTime _lastReportedAt = DateTime.now();
   bool _updatingPosition = false;
   Duration _lastReportedDuration = Duration.zero;
   bool _updatingDuration = false;
@@ -80,9 +81,11 @@ class WindowsAudioService {
         switch (state) {
           case AudioPlaybackState.playing:
             await smtc.setPlaybackStatus(PlaybackStatus.playing);
+            _lastReportedAt = DateTime.now();
             break;
           case AudioPlaybackState.paused:
             await smtc.setPlaybackStatus(PlaybackStatus.paused);
+            _lastReportedAt = DateTime.now();
             break;
           case AudioPlaybackState.stopped:
             await smtc.setPlaybackStatus(PlaybackStatus.stopped);
@@ -100,8 +103,14 @@ class WindowsAudioService {
     });
 
     final positionStream = audioPlayer.positionStream.listen((pos) async {
-      if (_updatingPosition ||
-          (pos - _lastReportedPosition).inMilliseconds.abs() < 1000) {
+      if (_updatingPosition) return;
+      
+      final now = DateTime.now();
+      final expectedPos = audioPlayer.isPlaying
+          ? _lastReportedPosition + now.difference(_lastReportedAt)
+          : _lastReportedPosition;
+
+      if ((pos - expectedPos).inMilliseconds.abs() < 1500) {
         return;
       }
 
@@ -109,6 +118,7 @@ class WindowsAudioService {
       try {
         await smtc.setPosition(pos);
         _lastReportedPosition = pos;
+        _lastReportedAt = now;
       } finally {
         _updatingPosition = false;
       }

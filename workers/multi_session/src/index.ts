@@ -44,6 +44,7 @@ type RoomState = {
   members: Record<string, Member>;
   suggestions: Suggestion[];
   communityQueueEnabled: boolean;
+  lastQueueUpdateBy: string | null;
 };
 
 const customPermissions = {
@@ -227,6 +228,7 @@ export class SpotubeRoom {
         },
         suggestions: [],
         communityQueueEnabled: true,
+        lastQueueUpdateBy: hostId,
       };
       await this.persist();
       await this.scheduleIdleCleanup();
@@ -440,6 +442,7 @@ export class SpotubeRoom {
       : -1;
     const insertionIndex = Math.max(activeIndex, 0) + 1;
     this.stateValue.queue.splice(insertionIndex, 0, nextTrack);
+    this.stateValue.lastQueueUpdateBy = "worker";
   }
 
   private reconcileCommunityQueue() {
@@ -500,9 +503,10 @@ export class SpotubeRoom {
         activeTrackId?: string | null;
         activeSource?: Record<string, unknown> | null;
       };
-      this.stateValue.queue = Array.isArray(data.queue)
-        ? data.queue
-        : this.stateValue.queue;
+      if (Array.isArray(data.queue)) {
+        this.stateValue.queue = data.queue.slice(0, 100);
+        this.stateValue.lastQueueUpdateBy = memberId;
+      }
       const previousActiveTrackId = this.stateValue.activeTrackId;
       this.stateValue.activeTrackId =
         data.activeTrackId ?? this.stateValue.activeTrackId;

@@ -1,11 +1,14 @@
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 import 'package:shadcn_flutter/shadcn_flutter_extension.dart';
 import 'package:spotube/collections/spotube_icons.dart';
 import 'package:spotube/components/image/universal_image.dart';
 import 'package:spotube/extensions/context.dart';
 import 'package:spotube/extensions/string.dart';
+import 'package:spotube/models/multi_session/multi_session.dart';
+import 'package:spotube/provider/multi_session/multi_session.dart';
 
-class PlaybuttonTile extends StatelessWidget {
+class PlaybuttonTile extends ConsumerWidget {
   final void Function()? onTap;
   final void Function()? onPlaybuttonPressed;
   final void Function()? onAddToQueuePressed;
@@ -40,9 +43,15 @@ class PlaybuttonTile extends StatelessWidget {
         );
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final cleanDescription = description?.unescapeHtml().cleanHtml() ?? "";
     final scale = context.theme.scaling;
+
+    final multiSession = ref.watch(multiSessionProvider);
+    final canControlPlayback = !multiSession.connected ||
+        multiSession.can(MultiSessionPermission.controlPlayback);
+    final canEditQueue = !multiSession.connected ||
+        multiSession.can(MultiSessionPermission.editQueue);
 
     return Button(
       leading: imageUrl != null
@@ -76,7 +85,8 @@ class PlaybuttonTile extends StatelessWidget {
         children: [
           if (onPinPressed != null)
             Tooltip(
-              tooltip: TooltipContainer(child: Text(isPinned ? "Unpin" : "Pin")).call,
+              tooltip: TooltipContainer(child: Text(isPinned ? "Unpin" : "Pin"))
+                  .call,
               child: IconButton.outline(
                 icon: Icon(
                   isPinned ? SpotubeIcons.pinOn : SpotubeIcons.pinOff,
@@ -86,29 +96,30 @@ class PlaybuttonTile extends StatelessWidget {
               ),
             ),
           if (onPinPressed != null) const Gap(8),
-          Tooltip(
-            tooltip: TooltipContainer(child: Text(context.l10n.add_to_queue)).call,
-            child: IconButton.outline(
-              icon: const Icon(SpotubeIcons.queueAdd),
-              onPressed: onAddToQueuePressed,
-              enabled: !isLoading,
+          if (canEditQueue)
+            Tooltip(
+              tooltip:
+                  TooltipContainer(child: Text(context.l10n.add_to_queue)).call,
+              child: IconButton.outline(
+                icon: const Icon(SpotubeIcons.queueAdd),
+                onPressed: onAddToQueuePressed,
+                enabled: !isLoading,
+              ),
             ),
-          ),
-          const Gap(8),
-          Tooltip(
-            tooltip: TooltipContainer(child: Text(context.l10n.play)).call,
-            child: IconButton.secondary(
-              icon: switch ((isLoading, isPlaying)) {
-                (true, _) => const CircularProgressIndicator(
-                    size: 22,
-                  ),
-                (false, false) => const Icon(SpotubeIcons.play),
-                (false, true) => const Icon(SpotubeIcons.pause)
-              },
-              onPressed: onPlaybuttonPressed,
-              enabled: !isLoading,
+          if (canEditQueue) const Gap(8),
+          if (canControlPlayback)
+            Tooltip(
+              tooltip: TooltipContainer(child: Text(context.l10n.play)).call,
+              child: IconButton.secondary(
+                icon: switch ((isLoading, isPlaying)) {
+                  (true, _) => const CircularProgressIndicator(size: 22),
+                  (false, false) => const Icon(SpotubeIcons.play),
+                  (false, true) => const Icon(SpotubeIcons.pause),
+                },
+                onPressed: onPlaybuttonPressed,
+                enabled: !isLoading,
+              ),
             ),
-          ),
         ],
       ),
       enabled: !isLoading,

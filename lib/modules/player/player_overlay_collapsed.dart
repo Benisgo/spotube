@@ -4,10 +4,12 @@ import 'package:shadcn_flutter/shadcn_flutter.dart';
 import 'package:sliding_up_panel/sliding_up_panel.dart';
 import 'package:spotube/collections/intents.dart';
 import 'package:spotube/collections/spotube_icons.dart';
+import 'package:spotube/models/multi_session/multi_session.dart';
 import 'package:spotube/modules/player/player_track_details.dart';
 import 'package:spotube/modules/root/spotube_navigation_bar.dart';
 import 'package:spotube/provider/audio_player/audio_player.dart';
 import 'package:spotube/provider/audio_player/querying_track_info.dart';
+import 'package:spotube/provider/multi_session/multi_session.dart';
 import 'package:spotube/services/audio_player/audio_player.dart';
 
 class PlayerOverlayCollapsedSection extends HookConsumerWidget {
@@ -25,6 +27,11 @@ class PlayerOverlayCollapsedSection extends HookConsumerWidget {
     final isFetchingActiveTrack = ref.watch(queryingTrackInfoProvider);
     final playing =
         useStream(audioPlayer.playingStream).data ?? audioPlayer.isPlaying;
+
+    final multiSession = ref.watch(multiSessionProvider);
+    final isListener = multiSession.connected &&
+        !multiSession.can(MultiSessionPermission.controlPlayback);
+    final displayPlaying = playing && !multiSession.locallyMuted;
 
     final theme = Theme.of(context);
 
@@ -72,7 +79,8 @@ class PlayerOverlayCollapsedSection extends HookConsumerWidget {
                                 panelController.open();
                               },
                               onVerticalDragEnd: (details) {
-                                if (details.primaryVelocity != null && details.primaryVelocity! < -100) {
+                                if (details.primaryVelocity != null &&
+                                    details.primaryVelocity! < -100) {
                                   panelController.open();
                                 }
                               },
@@ -88,23 +96,24 @@ class PlayerOverlayCollapsedSection extends HookConsumerWidget {
                           ),
                           Row(
                             children: [
-                              IconButton.ghost(
-                                icon: const Icon(SpotubeIcons.skipBack),
-                                onPressed: isFetchingActiveTrack
-                                    ? null
-                                    : () {
-                                        if (audioPlayer.position.inSeconds >
-                                            10) {
-                                          audioPlayer.seek(Duration.zero);
-                                          return;
-                                        }
-                                        if (!audioPlayer.canSkipToPrevious) {
-                                          showNoPreviousTrackToast();
-                                          return;
-                                        }
-                                        audioPlayer.skipToPrevious();
-                                      },
-                              ),
+                              if (!isListener)
+                                IconButton.ghost(
+                                  icon: const Icon(SpotubeIcons.skipBack),
+                                  onPressed: isFetchingActiveTrack
+                                      ? null
+                                      : () {
+                                          if (audioPlayer.position.inSeconds >
+                                              10) {
+                                            audioPlayer.seek(Duration.zero);
+                                            return;
+                                          }
+                                          if (!audioPlayer.canSkipToPrevious) {
+                                            showNoPreviousTrackToast();
+                                            return;
+                                          }
+                                          audioPlayer.skipToPrevious();
+                                        },
+                                ),
                               Consumer(
                                 builder: (context, ref, _) {
                                   return IconButton.ghost(
@@ -115,7 +124,7 @@ class PlayerOverlayCollapsedSection extends HookConsumerWidget {
                                             child: CircularProgressIndicator(),
                                           )
                                         : Icon(
-                                            playing
+                                            displayPlaying
                                                 ? SpotubeIcons.pause
                                                 : SpotubeIcons.play,
                                           ),
@@ -126,12 +135,13 @@ class PlayerOverlayCollapsedSection extends HookConsumerWidget {
                                   );
                                 },
                               ),
-                              IconButton.ghost(
-                                icon: const Icon(SpotubeIcons.skipForward),
-                                onPressed: isFetchingActiveTrack
-                                    ? null
-                                    : audioPlayer.skipToNext,
-                              ),
+                              if (!isListener)
+                                IconButton.ghost(
+                                  icon: const Icon(SpotubeIcons.skipForward),
+                                  onPressed: isFetchingActiveTrack
+                                      ? null
+                                      : audioPlayer.skipToNext,
+                                ),
                               const Gap(5),
                             ],
                           ),

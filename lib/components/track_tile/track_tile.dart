@@ -6,6 +6,7 @@ import 'package:shadcn_flutter/shadcn_flutter.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 import 'package:spotube/collections/routes.gr.dart';
 import 'package:spotube/collections/spotube_icons.dart';
+import 'package:spotube/components/dialogs/track_preview_dialog.dart';
 import 'package:spotube/components/hover_builder.dart';
 import 'package:spotube/components/image/universal_image.dart';
 import 'package:spotube/components/links/artist_link.dart';
@@ -15,10 +16,12 @@ import 'package:spotube/components/ui/button_tile.dart';
 import 'package:spotube/extensions/constrains.dart';
 import 'package:spotube/extensions/duration.dart';
 import 'package:spotube/models/metadata/metadata.dart';
+import 'package:spotube/models/multi_session/multi_session.dart';
 import 'package:spotube/provider/audio_player/audio_player.dart';
 import 'package:spotube/provider/audio_player/querying_track_info.dart';
 import 'package:spotube/provider/audio_player/state.dart';
 import 'package:spotube/provider/blacklist_provider.dart';
+import 'package:spotube/provider/multi_session/multi_session.dart';
 import 'package:spotube/utils/platform.dart';
 
 final isBlacklistedProvider =
@@ -33,7 +36,6 @@ final isBlacklistedProvider =
 final _overlay = ValueNotifier<OverlayCompleter<dynamic>?>(null);
 
 class TrackTile extends HookConsumerWidget {
-  /// [index] will not be shown if null
   final int? index;
   final SpotubeTrackObject track;
   final bool selected;
@@ -46,7 +48,6 @@ class TrackTile extends HookConsumerWidget {
   final AudioPlayerState playlist;
   final bool compact;
   final bool isFetchingActiveTrack;
-
   final List<Widget>? leadingActions;
 
   const TrackTile({
@@ -75,17 +76,16 @@ class TrackTile extends HookConsumerWidget {
         ref.watch(audioPlayerProvider.select((value) => value.activeTrack?.id));
     final isPlaying = activeTrackId == track.id;
     final pendingPlaybackTrackId = ref.watch(pendingPlaybackTrackIdProvider);
-    final isPendingPlayback =
-        pendingPlaybackTrackId == track.id && playlist.activeTrack?.id != track.id;
+    final isPendingPlayback = pendingPlaybackTrackId == track.id &&
+        playlist.activeTrack?.id != track.id;
     final isTrackQuerying =
         isFetchingActiveTrack || ref.watch(trackQueryingInfoProvider(track));
     final isSelected = isPlaying || isPendingPlayback;
-
-    // Treat either explicit selectionMode or presence of onChanged as selection
-    // context. Some lists enable selection by providing `onChanged` without
-    // toggling a dedicated `selectionMode` flag (e.g. playlists), so we must
-    // disable inner navigation in both cases.
     final effectiveSelection = selectionMode || onChanged != null;
+
+    final multiSession = ref.watch(multiSessionProvider);
+    final isListener = multiSession.connected &&
+        !multiSession.can(MultiSessionPermission.controlPlayback);
 
     return LayoutBuilder(builder: (context, constrains) {
       return Listener(
@@ -109,6 +109,13 @@ class TrackTile extends HookConsumerWidget {
             selected: isSelected,
             onPressed: () async {
               if (isBlackListed) return;
+              if (isListener) {
+                await showDialog<void>(
+                  context: context,
+                  builder: (context) => TrackPreviewDialog(track: track),
+                );
+                return;
+              }
               await onTap?.call();
             },
             onLongPress: onLongPress,
@@ -176,15 +183,16 @@ class TrackTile extends HookConsumerWidget {
                     Positioned.fill(
                       child: Center(
                         child: Skeleton.ignore(
-                            child: AnimatedSwitcher(
+                          child: AnimatedSwitcher(
                             duration: const Duration(milliseconds: 300),
                             child: switch ((
                               isPlaying,
                               isTrackQuerying,
                               isHovering,
-                              isPendingPlayback
+                              isPendingPlayback,
                             )) {
-                              (true, true, _, _) || (_, _, _, true) =>
+                              (true, true, _, _) ||
+                              (_, _, _, true) =>
                                 const SizedBox(
                                   width: 26,
                                   height: 26,
@@ -215,36 +223,37 @@ class TrackTile extends HookConsumerWidget {
                   child: AbsorbPointer(
                     absorbing: selectionMode,
                     child: switch (track) {
-                    SpotubeLocalTrackObject() => Text(
-                        track.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    _ => Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Flexible(
-                child: Button(
-                style: ButtonVariance.link.copyWith(
-                padding: (context, states, value) =>
-                  EdgeInsets.zero,
-                ),
-                onPressed: effectiveSelection
-                  ? null
-                  : () {
-                    context
-                      .navigateTo(TrackRoute(trackId: track.id));
-                  },
-                              child: Text(
-                                track.name,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                      SpotubeLocalTrackObject() => Text(
+                          track.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      _ => Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Flexible(
+                              child: Button(
+                                style: ButtonVariance.link.copyWith(
+                                  padding: (context, states, value) =>
+                                      EdgeInsets.zero,
+                                ),
+                                onPressed: effectiveSelection
+                                    ? null
+                                    : () {
+                                        context.navigateTo(
+                                          TrackRoute(trackId: track.id),
+                                        );
+                                      },
+                                child: Text(
+                                  track.name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-                  },
+                          ],
+                        ),
+                    },
                   ),
                 ),
                 if (constrains.mdAndUp) ...[
@@ -274,7 +283,7 @@ class TrackTile extends HookConsumerWidget {
                                   push: true,
                                   overflow: TextOverflow.ellipsis,
                                 ),
-                              )
+                              ),
                           },
                   ),
                 ],

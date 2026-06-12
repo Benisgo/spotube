@@ -20,24 +20,9 @@ import 'package:spotube/services/audio_player/audio_player.dart';
 import 'package:spotube/services/youtube_engine/youtube_explode_engine.dart';
 import 'package:spotube/services/logger/logger.dart';
 import 'package:spotube/services/youtube_engine/android_yt_dlp_engine.dart';
-import 'package:spotube/utils/platform.dart';
 import 'package:spotube/services/logger/playback_start_trace.dart';
 import 'package:spotube/services/sourced_track/sourced_track.dart';
 import 'package:spotube/utils/service_utils.dart';
-import 'package:youtube_explode_dart/youtube_explode_dart.dart';
-
-final _deviceClients = Set.unmodifiable({
-  YoutubeApiClient.ios,
-  YoutubeApiClient.android,
-  YoutubeApiClient.mweb,
-  YoutubeApiClient.safari,
-});
-
-String? get _randomUserAgent => _deviceClients
-    .elementAt(
-      Random().nextInt(_deviceClients.length),
-    )
-    .payload["context"]["client"]["userAgent"];
 
 class ServerPlaybackRoutes {
   static const _streamFailureCooldown = Duration(seconds: 8);
@@ -68,17 +53,27 @@ class ServerPlaybackRoutes {
   bool _isPlaybackRequestRelevant(String requestedUri) {
     try {
       final trackId = Uri.parse(requestedUri).pathSegments.last;
-      
-      if (playlist.activeTrack?.id == trackId) return true;
-      
-      if (playlist.currentIndex >= 0 && playlist.currentIndex + 1 < playlist.tracks.length) {
-        if (playlist.tracks[playlist.currentIndex + 1].id == trackId) return true;
+
+      final activeTrackId = playlist.activeTrack?.id;
+      if (activeTrackId == trackId) return true;
+
+      // Allow the first queue item during initial loads before media_kit has
+      // promoted it to the active track.
+      if (playlist.currentIndex < 0 &&
+          playlist.tracks.isNotEmpty &&
+          playlist.tracks.first.id == trackId) {
+        return true;
       }
-      
-      // Fallback: If it's anywhere in the queue, allow it to prevent race conditions during batch loads
-      if (playlist.tracks.any((t) => t.id == trackId)) return true;
+
+      // Only allow next-track preloading while playback is actively running.
+      if (audioPlayer.isPlaying &&
+          playlist.currentIndex >= 0 &&
+          playlist.currentIndex + 1 < playlist.tracks.length &&
+          playlist.tracks[playlist.currentIndex + 1].id == trackId) {
+        return true;
+      }
     } catch (_) {}
-    
+
     return false;
   }
 
@@ -694,7 +689,7 @@ class ServerPlaybackRoutes {
            fallbackStreams.sort((a, b) => b.bitrate.bitsPerSecond.compareTo(a.bitrate.bitsPerSecond));
            url = fallbackStreams.first.url.toString();
            tempRes = await fetchStream(url);
-           if (tempRes != null && (tempRes.statusCode == 200 || tempRes.statusCode == 206)) {
+           if (tempRes.statusCode == 200 || tempRes.statusCode == 206) {
              _clearStreamFailure(activeTrack);
              fallbackSuccess = true;
            }

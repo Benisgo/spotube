@@ -287,6 +287,8 @@ class MultiSessionRoomSnapshot {
   final List<MultiSessionMember> members;
   final List<MultiSessionSuggestion> suggestions;
   final bool communityQueueEnabled;
+  final bool autoAcceptSuggestedTracks;
+  final bool discordJoinEnabled;
   final String? lastQueueUpdateBy;
 
   const MultiSessionRoomSnapshot({
@@ -303,6 +305,8 @@ class MultiSessionRoomSnapshot {
     required this.members,
     required this.suggestions,
     required this.communityQueueEnabled,
+    required this.autoAcceptSuggestedTracks,
+    required this.discordJoinEnabled,
     this.lastQueueUpdateBy,
   });
 
@@ -339,6 +343,8 @@ class MultiSessionRoomSnapshot {
           )
           .toList(),
       communityQueueEnabled: json["communityQueueEnabled"] != false,
+      autoAcceptSuggestedTracks: json["autoAcceptSuggestedTracks"] == true,
+      discordJoinEnabled: json["discordJoinEnabled"] == true,
       lastQueueUpdateBy: json["lastQueueUpdateBy"] as String?,
     );
   }
@@ -352,6 +358,8 @@ class MultiSessionState {
   final MultiSessionRoomSnapshot? snapshot;
   final bool connected;
   final bool connecting;
+  final bool locallyPaused;
+  final bool previewSilenced;
   final String? error;
   final MultiSessionInvite? pendingInvite;
   final MultiSessionUiNotice? notice;
@@ -364,6 +372,8 @@ class MultiSessionState {
     this.snapshot,
     this.connected = false,
     this.connecting = false,
+    this.locallyPaused = false,
+    this.previewSilenced = false,
     this.error,
     this.pendingInvite,
     this.notice,
@@ -381,6 +391,8 @@ class MultiSessionState {
   bool can(MultiSessionPermission permission) {
     return isHost || currentMember?.permissions[permission] == true;
   }
+
+  bool get locallyMuted => locallyPaused || previewSilenced;
 
   MultiSessionSuggestion? get topSuggestion {
     final suggestions =
@@ -402,6 +414,8 @@ class MultiSessionState {
     MultiSessionRoomSnapshot? snapshot,
     bool? connected,
     bool? connecting,
+    bool? locallyPaused,
+    bool? previewSilenced,
     String? error,
     MultiSessionInvite? pendingInvite,
     MultiSessionUiNotice? notice,
@@ -412,6 +426,8 @@ class MultiSessionState {
   }) {
     if (clearRoom) {
       return MultiSessionState(
+        locallyPaused: false,
+        previewSilenced: false,
         error: clearError ? null : error,
         pendingInvite: clearInvite ? null : pendingInvite ?? this.pendingInvite,
         notice: clearNotice ? null : notice ?? this.notice,
@@ -426,6 +442,8 @@ class MultiSessionState {
       snapshot: snapshot ?? this.snapshot,
       connected: connected ?? this.connected,
       connecting: connecting ?? this.connecting,
+      locallyPaused: locallyPaused ?? this.locallyPaused,
+      previewSilenced: previewSilenced ?? this.previewSilenced,
       error: clearError ? null : error ?? this.error,
       pendingInvite: clearInvite ? null : pendingInvite ?? this.pendingInvite,
       notice: clearNotice ? null : notice ?? this.notice,

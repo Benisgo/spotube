@@ -4,10 +4,13 @@ import 'package:shadcn_flutter/shadcn_flutter.dart';
 import 'package:shadcn_flutter/shadcn_flutter_extension.dart';
 import 'package:spotube/collections/routes.dart';
 import 'package:spotube/collections/spotube_icons.dart';
+import 'package:spotube/components/dialogs/track_preview_dialog.dart';
 import 'package:spotube/components/ui/button_tile.dart';
 import 'package:spotube/extensions/constrains.dart';
 import 'package:spotube/extensions/context.dart';
 import 'package:spotube/models/metadata/metadata.dart';
+import 'package:spotube/models/multi_session/multi_session.dart';
+import 'package:spotube/provider/multi_session/multi_session.dart';
 import 'package:spotube/provider/track_options/track_options_provider.dart';
 
 /// [track] must be a [SpotubeFullTrackObject] or [SpotubeLocalTrackObject]
@@ -45,6 +48,17 @@ class TrackOptions extends HookConsumerWidget {
       :downloadTask
     ) = ref.watch(trackOptionsStateProvider(track));
     final isLocalTrack = track is SpotubeLocalTrackObject;
+
+    final multiSession = ref.watch(multiSessionProvider);
+    final notifier = ref.read(multiSessionProvider.notifier);
+    final canEditQueue = !multiSession.connected ||
+        multiSession.can(MultiSessionPermission.editQueue);
+    final canSuggestTracks = track is SpotubeFullTrackObject &&
+        multiSession.connected &&
+        (multiSession.snapshot?.communityQueueEnabled ?? false) &&
+        multiSession.can(MultiSessionPermission.suggestTracks);
+    final canPreviewInRoom = multiSession.connected &&
+        !multiSession.can(MultiSessionPermission.controlPlayback);
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -89,34 +103,67 @@ class TrackOptions extends HookConsumerWidget {
               ],
             ),
           ),
+        if (canPreviewInRoom)
+          ButtonTile(
+            style: ButtonVariance.menu,
+            onPressed: () async {
+              await showDialog<void>(
+                context: rootNavigatorKey.currentContext!,
+                builder: (context) => TrackPreviewDialog(track: track),
+              );
+              onTapItem?.call();
+            },
+            leading: const Icon(SpotubeIcons.play),
+            title: const Text("Preview"),
+          ),
         if (!isInQueue) ...[
-          ButtonTile(
-            style: ButtonVariance.menu,
-            onPressed: () async {
-              await trackOptionActions.action(
-                rootNavigatorKey.currentContext!,
-                TrackOptionValue.addToQueue,
-                playlistId,
-              );
-              onTapItem?.call();
-            },
-            leading: const Icon(SpotubeIcons.queueAdd),
-            title: Text(context.l10n.add_to_queue),
-          ),
-          ButtonTile(
-            style: ButtonVariance.menu,
-            onPressed: () async {
-              await trackOptionActions.action(
-                rootNavigatorKey.currentContext!,
-                TrackOptionValue.playNext,
-                playlistId,
-              );
-              onTapItem?.call();
-            },
-            leading: const Icon(SpotubeIcons.lightning),
-            title: Text(context.l10n.play_next),
-          ),
-        ] else
+          if (canEditQueue)
+            ButtonTile(
+              style: ButtonVariance.menu,
+              onPressed: () async {
+                await trackOptionActions.action(
+                  rootNavigatorKey.currentContext!,
+                  TrackOptionValue.addToQueue,
+                  playlistId,
+                );
+                onTapItem?.call();
+              },
+              leading: const Icon(SpotubeIcons.queueAdd),
+              title: Text(context.l10n.add_to_queue),
+            ),
+          if (canEditQueue)
+            ButtonTile(
+              style: ButtonVariance.menu,
+              onPressed: () async {
+                await trackOptionActions.action(
+                  rootNavigatorKey.currentContext!,
+                  TrackOptionValue.playNext,
+                  playlistId,
+                );
+                onTapItem?.call();
+              },
+              leading: const Icon(SpotubeIcons.lightning),
+              title: Text(context.l10n.play_next),
+            ),
+          if (canSuggestTracks)
+            ButtonTile(
+              style: ButtonVariance.menu,
+              onPressed: () async {
+                notifier.suggestTrack(track as SpotubeFullTrackObject);
+                showToast(
+                  context: rootNavigatorKey.currentContext!,
+                  builder: (context, overlay) {
+                    return SurfaceCard(
+                      child: Text("Track suggested!").small(),
+                    );
+                  },
+                );
+                onTapItem?.call();
+              },
+              leading: const Icon(SpotubeIcons.add),
+              title: const Text("Suggest Track"),
+            ),
+        ] else if (canEditQueue)
           ButtonTile(
             style: ButtonVariance.menu,
             onPressed: () async {

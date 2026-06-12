@@ -4,6 +4,7 @@ import 'package:flutter_discord_rpc/flutter_discord_rpc.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/provider/audio_player/audio_player.dart';
+import 'package:spotube/provider/multi_session/multi_session.dart';
 import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
 import 'package:spotube/services/audio_player/audio_player.dart';
 import 'package:spotube/services/logger/logger.dart';
@@ -108,6 +109,14 @@ class DiscordNotifier extends AsyncNotifier<void> {
             label: "Listen on Spotube",
             url: track.externalUri,
           ),
+          if (ref.read(multiSessionProvider).connected &&
+              ref.read(multiSessionProvider).snapshot?.discordJoinEnabled ==
+                  true &&
+              ref.read(multiSessionProvider.notifier).inviteUri != null)
+            RPCButton(
+              label: "Join Listening Room",
+              url: ref.read(multiSessionProvider.notifier).inviteUri.toString(),
+            ),
         ],
         timestamps: RPCTimestamps(
           start: isPlaying

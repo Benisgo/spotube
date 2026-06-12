@@ -18,10 +18,12 @@ import 'package:spotube/extensions/constrains.dart';
 import 'package:spotube/extensions/context.dart';
 import 'package:spotube/hooks/controllers/use_auto_scroll_controller.dart';
 import 'package:spotube/models/metadata/metadata.dart';
+import 'package:spotube/models/multi_session/multi_session.dart';
 import 'package:spotube/modules/player/player_queue_actions.dart';
 import 'package:spotube/provider/audio_player/audio_player.dart';
 import 'package:spotube/provider/audio_player/querying_track_info.dart';
 import 'package:spotube/provider/audio_player/state.dart';
+import 'package:spotube/provider/multi_session/multi_session.dart';
 
 class PlayerQueue extends HookConsumerWidget {
   final bool floating;
@@ -58,14 +60,16 @@ class PlayerQueue extends HookConsumerWidget {
 
     final controller = useAutoScrollController();
     final searchText = useState('');
-
     final selectionMode = useState(false);
     final selectedTrackIds = useState(<String>{});
-
     final isSearching = useState(false);
 
     final tracks = playlist.tracks;
     final isFetchingActiveTrack = ref.watch(queryingTrackInfoProvider);
+
+    final multiSession = ref.watch(multiSessionProvider);
+    final canEditQueue = !multiSession.connected ||
+        multiSession.can(MultiSessionPermission.editQueue);
 
     final filteredTracks = useMemoized(
       () {
@@ -78,7 +82,7 @@ class PlayerQueue extends HookConsumerWidget {
                     '${e.name} - ${e.artists.asString()}',
                     searchText.value,
                   ),
-                  e
+                  e,
                 ))
             .sorted((a, b) => b.$1.compareTo(a.$1))
             .where((e) => e.$1 > 50)
@@ -116,7 +120,7 @@ class PlayerQueue extends HookConsumerWidget {
                   }
                   isSearching.value = false;
                   searchText.value = '';
-                }
+                },
               },
               child: Column(
                 children: [
@@ -133,7 +137,7 @@ class PlayerQueue extends HookConsumerWidget {
                               isSearching.value = false;
                               searchText.value = '';
                             },
-                          )
+                          ),
                       ],
                       surfaceBlur: 0,
                       surfaceOpacity: 0,
@@ -151,7 +155,7 @@ class PlayerQueue extends HookConsumerWidget {
                             selectedTrackIds.value = {};
                             selectionMode.value = false;
                           },
-                        )
+                        ),
                       ],
                       title: SizedBox(
                         height: 30,
@@ -202,22 +206,24 @@ class PlayerQueue extends HookConsumerWidget {
                                   }
                                 },
                               ),
-                              ButtonTile(
-                                style: const ButtonStyle.ghost(),
-                                leading: const Icon(SpotubeIcons.trash),
-                                title: Text(context.l10n.remove_from_queue),
-                                onPressed: () async {
-                                  final ids = selectedTrackIds.value.toList();
-                                  close();
-                                  if (ids.isEmpty) return;
-                                  await Future.wait(
-                                      ids.map((id) => onRemove(id)));
-                                  if (context.mounted) {
-                                    selectedTrackIds.value = {};
-                                    selectionMode.value = false;
-                                  }
-                                },
-                              ),
+                              if (canEditQueue)
+                                ButtonTile(
+                                  style: const ButtonStyle.ghost(),
+                                  leading: const Icon(SpotubeIcons.trash),
+                                  title: Text(context.l10n.remove_from_queue),
+                                  onPressed: () async {
+                                    final ids = selectedTrackIds.value.toList();
+                                    close();
+                                    if (ids.isEmpty) return;
+                                    await Future.wait(
+                                      ids.map((id) => onRemove(id)),
+                                    );
+                                    if (context.mounted) {
+                                      selectedTrackIds.value = {};
+                                      selectionMode.value = false;
+                                    }
+                                  },
+                                ),
                               const Gap(12),
                             ],
                           ),
@@ -251,18 +257,19 @@ class PlayerQueue extends HookConsumerWidget {
                           ),
                         if (!isSearching.value) ...[
                           const SizedBox(width: 10),
-                          Tooltip(
-                            tooltip: TooltipContainer(
-                                    child: Text(context.l10n.clear_all))
-                                .call,
-                            child: IconButton.outline(
-                              icon: const Icon(SpotubeIcons.playlistRemove),
-                              onPressed: () {
-                                onStop();
-                                closeDrawer(context);
-                              },
+                          if (canEditQueue)
+                            Tooltip(
+                              tooltip: TooltipContainer(
+                                child: Text(context.l10n.clear_all),
+                              ).call,
+                              child: IconButton.outline(
+                                icon: const Icon(SpotubeIcons.playlistRemove),
+                                onPressed: () {
+                                  onStop();
+                                  closeDrawer(context);
+                                },
+                              ),
                             ),
-                          ),
                           const Gap(5),
                           if (mediaQuery.smAndDown)
                             const BackButton(icon: SpotubeIcons.angleDown),
@@ -309,7 +316,8 @@ class PlayerQueue extends HookConsumerWidget {
                                 }
                               }
 
-                              final canDrag = !isSearching.value &&
+                              final canDrag = canEditQueue &&
+                                  !isSearching.value &&
                                   searchText.value.isEmpty &&
                                   !selectionMode.value;
 
@@ -346,6 +354,7 @@ class PlayerQueue extends HookConsumerWidget {
                                       await onJump(track);
                                     },
                                     onLongPress: () {
+                                      if (!canEditQueue) return;
                                       if (!selectionMode.value) {
                                         selectionMode.value = true;
                                         selectedTrackIds.value = {track.id};
@@ -380,7 +389,7 @@ class PlayerQueue extends HookConsumerWidget {
               );
             },
           ),
-        )
+        ),
       ],
     );
   }

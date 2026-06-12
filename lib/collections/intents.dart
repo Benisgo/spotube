@@ -5,9 +5,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:spotube/collections/routes.dart';
 import 'package:spotube/collections/routes.gr.dart';
+import 'package:spotube/models/multi_session/multi_session.dart';
 import 'package:spotube/modules/player/player_controls.dart';
 import 'package:spotube/provider/audio_player/audio_player.dart';
 import 'package:spotube/provider/audio_player/querying_track_info.dart';
+import 'package:spotube/provider/multi_session/multi_session.dart';
 import 'package:spotube/services/audio_player/audio_player.dart';
 import 'package:spotube/utils/platform.dart';
 
@@ -21,6 +23,15 @@ class PlayPauseAction extends Action<PlayPauseIntent> {
   invoke(intent) async {
     if (PlayerControls.focusNode.canRequestFocus) {
       PlayerControls.focusNode.requestFocus();
+    }
+
+    final multiSession = intent.ref.read(multiSessionProvider);
+    if (multiSession.connected &&
+        !multiSession.can(MultiSessionPermission.controlPlayback)) {
+      await intent.ref
+          .read(multiSessionProvider.notifier)
+          .toggleLocalPlaybackPaused();
+      return null;
     }
 
     if (!audioPlayer.isPlaying) {

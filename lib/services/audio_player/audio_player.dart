@@ -79,6 +79,7 @@ abstract class AudioPlayerInterface {
   bool _isCrossfading = false;
   bool _crossfadePreloadEnabled = false;
   bool _resumeAfterCompletedAdvancePending = false;
+  bool _suppressCompletedAdvanceRecovery = false;
   int? _completedAdvanceOriginIndex;
   Timer? _completedAdvanceTimer;
   Timer? _crossfadeTimer;
@@ -294,8 +295,12 @@ abstract class AudioPlayerInterface {
       player.stream.completed.listen((event) {
         if (_isActivePlayer(isPrimary) && event && !_isCrossfading) {
           _completedAdvanceOriginIndex = _currentIndex;
-          _resumeAfterCompletedAdvancePending = _nextIndexFrom(_currentIndex) != null;
-          _scheduleCompletedAdvanceRecovery();
+          _resumeAfterCompletedAdvancePending =
+              !_suppressCompletedAdvanceRecovery &&
+                  _nextIndexFrom(_currentIndex) != null;
+          if (!_suppressCompletedAdvanceRecovery) {
+            _scheduleCompletedAdvanceRecovery();
+          }
           _completedStreamController.add(null);
         }
       }),
@@ -628,7 +633,7 @@ abstract class AudioPlayerInterface {
     await oldActive.setVolume(0);
 
     _isCrossfading = false;
-      await _prepareInactivePlayer();
+    await _prepareInactivePlayer();
   }
 
   /// Whether the current platform supports the audioplayers plugin
@@ -693,6 +698,16 @@ abstract class AudioPlayerInterface {
   bool get canSkipToPrevious => _previousIndexFrom(_currentIndex) != null;
 
   bool get isCrossfading => _isCrossfading;
+
+  void setSuppressCompletedAdvanceRecovery(bool suppress) {
+    _suppressCompletedAdvanceRecovery = suppress;
+    if (suppress) {
+      _resumeAfterCompletedAdvancePending = false;
+      _completedAdvanceOriginIndex = null;
+      _completedAdvanceTimer?.cancel();
+      _completedAdvanceTimer = null;
+    }
+  }
 
   Future<bool> startCrossfadeToNext(Duration duration) async {
     await _ensureSecondaryPlayer();

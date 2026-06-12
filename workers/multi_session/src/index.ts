@@ -44,6 +44,8 @@ type RoomState = {
   members: Record<string, Member>;
   suggestions: Suggestion[];
   communityQueueEnabled: boolean;
+  autoAcceptSuggestedTracks: boolean;
+  discordJoinEnabled: boolean;
   lastQueueUpdateBy: string | null;
 };
 
@@ -228,6 +230,8 @@ export class SpotubeRoom {
         },
         suggestions: [],
         communityQueueEnabled: true,
+        autoAcceptSuggestedTracks: false,
+        discordJoinEnabled: false,
         lastQueueUpdateBy: hostId,
       };
       await this.persist();
@@ -558,14 +562,31 @@ export class SpotubeRoom {
     }
 
     if (
-      message.type === "communityQueue" &&
+      message.type === "roomSettings" &&
       this.allowed(memberId, "editQueue") &&
       message.data &&
       typeof message.data === "object"
     ) {
-      const data = message.data as { enabled?: boolean };
-      if (typeof data.enabled === "boolean") {
-        this.stateValue.communityQueueEnabled = data.enabled;
+      const data = message.data as {
+        communityQueueEnabled?: boolean;
+        autoAcceptSuggestedTracks?: boolean;
+        discordJoinEnabled?: boolean;
+      };
+      let changed = false;
+      if (typeof data.communityQueueEnabled === "boolean") {
+        this.stateValue.communityQueueEnabled = data.communityQueueEnabled;
+        changed = true;
+      }
+      if (typeof data.autoAcceptSuggestedTracks === "boolean") {
+        this.stateValue.autoAcceptSuggestedTracks =
+          data.autoAcceptSuggestedTracks;
+        changed = true;
+      }
+      if (typeof data.discordJoinEnabled === "boolean") {
+        this.stateValue.discordJoinEnabled = data.discordJoinEnabled;
+        changed = true;
+      }
+      if (changed) {
         await this.bump();
       }
     }
@@ -590,6 +611,9 @@ export class SpotubeRoom {
         voteCount: 1,
         voterIds: [memberId],
       });
+      if (this.stateValue.autoAcceptSuggestedTracks) {
+        this.promoteSuggestion();
+      }
       await this.bump();
     }
 

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
 
@@ -32,10 +31,18 @@ class AppLogger {
   static Future<void> _traceWriteQueue = Future.value();
   static Future<void> _criticalWriteQueue = Future.value();
   static int _traceBacklog = 0;
+  static bool debugTelemetryEnabled = false;
 
   static initialize(bool verbose) {
+    debugTelemetryEnabled = verbose;
     log = Logger(
-      level: kDebugMode || (verbose && kReleaseMode) ? Level.all : Level.info,
+      level: verbose ? Level.all : Level.info,
+      printer: kDebugMode
+          ? SimplePrinter(
+              printTime: true,
+              colors: false,
+            )
+          : PrettyPrinter(),
     );
   }
 
@@ -162,7 +169,7 @@ class AppLogger {
     String hypothesisId = 'A',
     String runId = 'post-fix',
   }) {
-    if (!kDebugMode) return;
+    if (!kDebugMode || !debugTelemetryEnabled) return;
     log.d('[agentDebug:$location] $message | data: $data');
   }
 

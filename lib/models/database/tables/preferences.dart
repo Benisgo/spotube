@@ -69,8 +69,8 @@ class YoutubeClientEnginesConverter
     try {
       final List<dynamic> list = jsonDecode(fromDb);
       return list
-          .map((e) => YoutubeClientEngine.values
-              .firstWhereOrNull((v) => v.name == e))
+          .map((e) =>
+              YoutubeClientEngine.values.firstWhereOrNull((v) => v.name == e))
           .nonNulls
           .toList();
     } catch (_) {
@@ -171,13 +171,12 @@ class PreferencesTable extends Table {
       localLibraryLocation: [],
       themeMode: ThemeMode.system,
       audioSourceId: null,
-      youtubeClientEngine: kIsIOS
-          ? YoutubeClientEngine.youtubeExplode
-          : YoutubeClientEngine.newPipe,
+      youtubeClientEngine: YoutubeClientEngine.invidious,
       youtubeClientEngines: [
-        kIsIOS
-            ? YoutubeClientEngine.youtubeExplode
-            : YoutubeClientEngine.newPipe
+        YoutubeClientEngine.invidious,
+        YoutubeClientEngine.ytDlp,
+        YoutubeClientEngine.verome,
+        YoutubeClientEngine.newPipe,
       ],
       discordPresence: true,
       endlessPlayback: true,

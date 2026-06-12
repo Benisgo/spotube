@@ -11,7 +11,9 @@ import 'package:spotube/components/track_presentation/use_action_callbacks.dart'
 import 'package:spotube/components/track_presentation/use_is_user_playlist.dart';
 import 'package:spotube/extensions/constrains.dart';
 import 'package:spotube/extensions/context.dart';
+import 'package:spotube/models/multi_session/multi_session.dart';
 import 'package:spotube/modules/playlist/playlist_create_dialog.dart';
+import 'package:spotube/provider/multi_session/multi_session.dart';
 
 class TrackPresentationTopSection extends HookConsumerWidget {
   const TrackPresentationTopSection({super.key});
@@ -33,55 +35,65 @@ class TrackPresentationTopSection extends HookConsumerWidget {
     final (:isLoading, :isActive, :onPlay, :onShuffle, :onAddToQueue) =
         useActionCallbacks(ref);
 
+    final multiSession = ref.watch(multiSessionProvider);
+    final canControlPlayback = !multiSession.connected ||
+        multiSession.can(MultiSessionPermission.controlPlayback);
+    final canEditQueue = !multiSession.connected ||
+        multiSession.can(MultiSessionPermission.editQueue);
+
     final playbackActions = Row(
       spacing: 8 * scale,
       children: [
-        Tooltip(
-          tooltip: TooltipContainer(
-            child: Text(context.l10n.shuffle_playlist),
-          ).call,
-          child: IconButton.secondary(
-            icon: isLoading
-                ? const Center(
-                    child:
-                        CircularProgressIndicator(onSurface: false, size: 20),
-                  )
-                : const Icon(SpotubeIcons.shuffle),
-            enabled: !isLoading && !isActive,
-            onPressed: onShuffle,
-          ),
-        ),
-        if (mediaQuery.width <= 320)
+        if (canControlPlayback)
           Tooltip(
             tooltip: TooltipContainer(
-              child: Text(context.l10n.add_to_queue),
+              child: Text(context.l10n.shuffle_playlist),
             ).call,
             child: IconButton.secondary(
-              icon: const Icon(SpotubeIcons.queueAdd),
+              icon: isLoading
+                  ? const Center(
+                      child:
+                          CircularProgressIndicator(onSurface: false, size: 20),
+                    )
+                  : const Icon(SpotubeIcons.shuffle),
+              enabled: !isLoading && !isActive,
+              onPressed: onShuffle,
+            ),
+          ),
+        if (canEditQueue)
+          if (mediaQuery.width <= 320)
+            Tooltip(
+              tooltip: TooltipContainer(
+                child: Text(context.l10n.add_to_queue),
+              ).call,
+              child: IconButton.secondary(
+                icon: const Icon(SpotubeIcons.queueAdd),
+                enabled: !isLoading && !isActive,
+                onPressed: onAddToQueue,
+              ),
+            )
+          else
+            Button.secondary(
+              leading: const Icon(SpotubeIcons.add),
               enabled: !isLoading && !isActive,
               onPressed: onAddToQueue,
+              child: Text(context.l10n.queue),
             ),
-          )
-        else
-          Button.secondary(
-            leading: const Icon(SpotubeIcons.add),
+        if (canControlPlayback)
+          Button.primary(
+            alignment: Alignment.center,
+            leading: switch ((isActive, isLoading)) {
+              (true, false) => const Icon(SpotubeIcons.pause),
+              (false, true) => const Center(
+                  child: CircularProgressIndicator(onSurface: true, size: 18),
+                ),
+              _ => const Icon(SpotubeIcons.play),
+            },
+            onPressed: onPlay,
             enabled: !isLoading && !isActive,
-            onPressed: onAddToQueue,
-            child: Text(context.l10n.queue),
+            child:
+                isActive ? Text(context.l10n.pause) : Text(context.l10n.play),
           ),
-        Button.primary(
-          alignment: Alignment.center,
-          leading: switch ((isActive, isLoading)) {
-            (true, false) => const Icon(SpotubeIcons.pause),
-            (false, true) => const Center(
-                child: CircularProgressIndicator(onSurface: true, size: 18),
-              ),
-            _ => const Icon(SpotubeIcons.play),
-          },
-          onPressed: onPlay,
-          enabled: !isLoading && !isActive,
-          child: isActive ? Text(context.l10n.pause) : Text(context.l10n.play),
-        ),
       ],
     );
 

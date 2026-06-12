@@ -13,6 +13,7 @@ import 'package:spotube/models/multi_session/multi_session.dart';
 import 'package:spotube/provider/metadata_plugin/core/user.dart';
 import 'package:spotube/provider/metadata_plugin/search/tracks.dart';
 import 'package:spotube/provider/multi_session/multi_session.dart';
+import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
 import 'package:auto_route/auto_route.dart';
 
 @RoutePage()
@@ -34,6 +35,7 @@ class MultiSessionPage extends HookConsumerWidget {
     final members = snapshot?.members ?? const <MultiSessionMember>[];
     final invite = session.pendingInvite;
     final inviteDialogKey = useRef<String?>(null);
+    final preferences = ref.watch(userPreferencesProvider);
 
     Future<void> joinFromInput() async {
       final value = codeController.text.trim();
@@ -87,7 +89,9 @@ class MultiSessionPage extends HookConsumerWidget {
                 Button.primary(
                   onPressed: () => Navigator.of(context).pop(true),
                   child: Text(
-                    shouldLeaveCurrentRoom ? "Leave current & join" : "Join room",
+                    shouldLeaveCurrentRoom
+                        ? "Leave current & join"
+                        : "Join room",
                   ),
                 ),
               ],
@@ -238,6 +242,34 @@ class MultiSessionPage extends HookConsumerWidget {
                               ),
                             ],
                           ),
+                        if (isConnectedRoom &&
+                            session.can(MultiSessionPermission.editQueue))
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text("Auto accept suggested tracks"),
+                              Switch(
+                                value: snapshot?.autoAcceptSuggestedTracks ??
+                                    false,
+                                onChanged: sessionNotifier
+                                    .setAutoAcceptSuggestedTracksEnabled,
+                              ),
+                            ],
+                          ),
+                        if (isConnectedRoom &&
+                            session.can(MultiSessionPermission.editQueue) &&
+                            preferences.discordPresence)
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text("Allow joining through Discord"),
+                              Switch(
+                                value: snapshot?.discordJoinEnabled ?? false,
+                                onChanged:
+                                    sessionNotifier.setDiscordJoinEnabled,
+                              ),
+                            ],
+                          ),
                         if (isConnectedRoom)
                           _SuggestionsSection(
                             session: session,
@@ -371,13 +403,12 @@ class _SuggestionsSection extends HookConsumerWidget {
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
                       Button.ghost(
-                        onPressed: suggestion.voterIds
-                                .contains(session.memberId)
-                            ? null
-                            : () => notifier.voteSuggestion(suggestion.id),
+                        onPressed:
+                            suggestion.voterIds.contains(session.memberId)
+                                ? null
+                                : () => notifier.voteSuggestion(suggestion.id),
                         leading: const Icon(SpotubeIcons.heart),
-                        child:
-                            Text("Upvote (${suggestion.voteCount})"),
+                        child: Text("Upvote (${suggestion.voteCount})"),
                       ),
                       if (session.can(MultiSessionPermission.editQueue))
                         Button.ghost(
@@ -449,9 +480,7 @@ class _MemberTile extends ConsumerWidget {
                   MultiSessionMemberPreset.dj,
                   MultiSessionMemberPreset.coHost,
                 ])
-                  (member.preset == preset
-                          ? Button.secondary
-                          : Button.outline)(
+                  (member.preset == preset ? Button.secondary : Button.outline)(
                     onPressed: () =>
                         notifier.setMemberPreset(member.id, preset),
                     child: Text(preset.label),
@@ -479,8 +508,9 @@ class _MemberTile extends ConsumerWidget {
                 ),
                 _PermissionSwitch(
                   label: "Vote",
-                  value: member.permissions[MultiSessionPermission.voteTracks] ==
-                      true,
+                  value:
+                      member.permissions[MultiSessionPermission.voteTracks] ==
+                          true,
                   onChanged: (value) => notifier.setMemberPermissions(
                     member.id,
                     {MultiSessionPermission.voteTracks: value},
@@ -488,9 +518,8 @@ class _MemberTile extends ConsumerWidget {
                 ),
                 _PermissionSwitch(
                   label: "Queue",
-                  value:
-                      member.permissions[MultiSessionPermission.editQueue] ==
-                          true,
+                  value: member.permissions[MultiSessionPermission.editQueue] ==
+                      true,
                   onChanged: (value) => notifier.setMemberPermissions(
                     member.id,
                     {MultiSessionPermission.editQueue: value},
@@ -498,8 +527,8 @@ class _MemberTile extends ConsumerWidget {
                 ),
                 _PermissionSwitch(
                   label: "Playback",
-                  value: member
-                          .permissions[MultiSessionPermission.controlPlayback] ==
+                  value: member.permissions[
+                          MultiSessionPermission.controlPlayback] ==
                       true,
                   onChanged: (value) => notifier.setMemberPermissions(
                     member.id,
@@ -600,8 +629,7 @@ class _SuggestTrackDialog extends HookConsumerWidget {
                                   .join(", "),
                             ),
                             trailing: Button.ghost(
-                              onPressed: () =>
-                                  Navigator.of(context).pop(track),
+                              onPressed: () => Navigator.of(context).pop(track),
                               child: const Text("Suggest"),
                             ),
                           );

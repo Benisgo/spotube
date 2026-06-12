@@ -26,7 +26,7 @@ class PlaybackStartTrace {
     required String trigger,
     Map<String, Object?> data = const {},
   }) {
-    if (!kDebugMode) return '';
+    if (!kDebugMode || !AppLogger.debugTelemetryEnabled) return '';
 
     final now = DateTime.now();
     final attempt = _PlaybackStartAttempt(
@@ -57,7 +57,7 @@ class PlaybackStartTrace {
     String phase, {
     Map<String, Object?> data = const {},
   }) {
-    if (!kDebugMode) return;
+    if (!kDebugMode || !AppLogger.debugTelemetryEnabled) return;
     final attemptId = _activeAttemptByTrack[trackId];
     if (attemptId == null) return;
     markAttempt(attemptId, phase, data: data);
@@ -68,7 +68,9 @@ class PlaybackStartTrace {
     String phase, {
     Map<String, Object?> data = const {},
   }) {
-    if (!kDebugMode || attemptId.isEmpty) return;
+    if (!kDebugMode || !AppLogger.debugTelemetryEnabled || attemptId.isEmpty) {
+      return;
+    }
     final attempt = _attemptsById[attemptId];
     if (attempt == null || attempt.completed) return;
     _emit(attempt, phase, data: data);
@@ -79,7 +81,7 @@ class PlaybackStartTrace {
     String phase, {
     Map<String, Object?> data = const {},
   }) {
-    if (!kDebugMode) return;
+    if (!kDebugMode || !AppLogger.debugTelemetryEnabled) return;
     final attemptId = _activeAttemptByTrack[trackId];
     if (attemptId == null) return;
     completeAttempt(attemptId, phase, data: data);
@@ -90,7 +92,9 @@ class PlaybackStartTrace {
     String phase, {
     Map<String, Object?> data = const {},
   }) {
-    if (!kDebugMode || attemptId.isEmpty) return;
+    if (!kDebugMode || !AppLogger.debugTelemetryEnabled || attemptId.isEmpty) {
+      return;
+    }
     final attempt = _attemptsById[attemptId];
     if (attempt == null || attempt.completed) return;
     _emit(attempt, phase, data: data);

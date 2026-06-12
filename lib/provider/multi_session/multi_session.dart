@@ -15,6 +15,7 @@ import 'package:spotube/provider/server/sourced_track_provider.dart';
 import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
 import 'package:spotube/services/audio_player/audio_player.dart';
 import 'package:spotube/services/device_info/device_info.dart';
+import 'package:spotube/services/kv_store/kv_store.dart';
 import 'package:spotube/services/logger/logger.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/status.dart' as status;
@@ -34,7 +35,11 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
   int _connectionGeneration = 0;
   int? _lastObservedPositionMs;
   DateTime? _lastObservedAt;
+  double? _preMuteVolume;
   final Set<String> _failedSessionTracks = {};
+  MultiSessionRoomSnapshot? _pendingSnapshot;
+  MultiSessionRoomSnapshot? _lastAppliedSnapshot;
+  bool _snapshotPumpRunning = false;
 
   void _debugTrace(String message) {
     if (!kDebugMode) return;
@@ -85,6 +90,24 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
       !_applyingRemote &&
       state.can(MultiSessionPermission.editQueue);
 
+  Future<void> _syncLocalMuteState() async {
+    final shouldMute = state.locallyMuted;
+
+    if (shouldMute) {
+      _preMuteVolume ??= audioPlayer.volume > 0 ? audioPlayer.volume : null;
+      if (audioPlayer.volume > 0) {
+        await audioPlayer.setVolume(0);
+      }
+      return;
+    }
+
+    final restoreVolume = _preMuteVolume ?? KVStoreService.volume;
+    _preMuteVolume = null;
+    if ((audioPlayer.volume - restoreVolume).abs() > 0.001) {
+      await audioPlayer.setVolume(restoreVolume);
+    }
+  }
+
   void _rememberObservedPosition(Duration position) {
     _lastObservedPositionMs = position.inMilliseconds;
     _lastObservedAt = DateTime.now();
@@ -120,6 +143,8 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
         previous.activeSource?.id == next.activeSource?.id &&
         previous.playing == next.playing &&
         previous.communityQueueEnabled == next.communityQueueEnabled &&
+        previous.autoAcceptSuggestedTracks == next.autoAcceptSuggestedTracks &&
+        previous.discordJoinEnabled == next.discordJoinEnabled &&
         _stringListEquality.equals(
             _queueIds(previous.queue), _queueIds(next.queue)) &&
         _stringListEquality.equals(
@@ -130,6 +155,51 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
           _suggestionSignatures(previous.suggestions),
           _suggestionSignatures(next.suggestions),
         );
+  }
+
+  bool _isTrivialPositionTick(
+    MultiSessionRoomSnapshot previous,
+    MultiSessionRoomSnapshot next,
+  ) {
+    return _isPlaybackOnlySnapshotUpdate(previous, next) &&
+        previous.playing == next.playing &&
+        previous.loopMode == next.loopMode &&
+        previous.shuffle == next.shuffle &&
+        previous.activeSource?.id == next.activeSource?.id;
+  }
+
+  bool _canSkipTrivialSnapshotApply(MultiSessionRoomSnapshot snapshot) {
+    final localState = ref.read(audioPlayerProvider);
+    final localActiveTrackId = localState.activeTrack?.id;
+    final activeTrackId = snapshot.activeTrackId;
+    if (localActiveTrackId != activeTrackId) return false;
+
+    final localTrackIds =
+        localState.tracks.map((track) => track.id).toList(growable: false);
+    final remoteTrackIds = _queueIds(snapshot.queue);
+    if (!_stringListEquality.equals(localTrackIds, remoteTrackIds)) {
+      return false;
+    }
+
+    final targetIndex = activeTrackId == null
+        ? 0
+        : remoteTrackIds.indexOf(activeTrackId);
+    final index = targetIndex < 0 ? 0 : targetIndex;
+    if (localState.currentIndex != index) return false;
+
+    if (audioPlayer.isPlaying != snapshot.playing) return false;
+    if (audioPlayer.loopMode.name != snapshot.loopMode) return false;
+    if (audioPlayer.isShuffled != snapshot.shuffle) return false;
+
+    final lastApplied = _lastAppliedSnapshot;
+    if (lastApplied?.activeTrackId != activeTrackId ||
+        lastApplied?.activeSource?.id != snapshot.activeSource?.id) {
+      return false;
+    }
+
+    final localPositionMs = audioPlayer.position.inMilliseconds;
+    final driftMs = (snapshot.positionMs - localPositionMs).abs();
+    return driftMs < _remoteSeekThresholdMs;
   }
 
   Future<Map<String, dynamic>?> _activeSourcePayload() async {
@@ -152,6 +222,15 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
 
   @override
   MultiSessionState build() {
+    listenSelf((previous, next) {
+      audioPlayer.setSuppressCompletedAdvanceRecovery(
+        next.connected && !next.can(MultiSessionPermission.controlPlayback),
+      );
+      if (previous?.locallyMuted != next.locallyMuted) {
+        unawaited(_syncLocalMuteState());
+      }
+    });
+
     ref.listen(audioPlayerProvider, (previous, next) {
       if (!_canEditQueue) return;
 
@@ -159,7 +238,6 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
       final nextIds = next.tracks.map((track) => track.id).join(",");
       if (previousIds != nextIds ||
           previous?.currentIndex != next.currentIndex) {
-            
         final localTrackIds =
             next.tracks.map((track) => track.id).toList(growable: false);
         final remoteTrackIds = _queueIds(state.snapshot?.queue ?? const []);
@@ -227,9 +305,11 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
       final currentTrackId = playerState.activeTrack?.id;
       if (currentTrackId != null) {
         _failedSessionTracks.add(currentTrackId);
-        if (audioPlayer.isPlaying) {
-          audioPlayer.pause();
-        }
+        _pushNotice("Track failed to load - playback paused",
+            destructive: true);
+      }
+      if (audioPlayer.isPlaying) {
+        audioPlayer.pause();
       }
     });
 
@@ -525,6 +605,9 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
     _reconnectTimer?.cancel();
     _closingRoom = false;
     _intentionalDisconnect = false;
+    _pendingSnapshot = null;
+    _lastAppliedSnapshot = null;
+    _snapshotPumpRunning = false;
     await _subscription?.cancel();
     await _channel?.sink.close(status.goingAway);
 
@@ -609,11 +692,57 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
     final previousSnapshot = state.snapshot;
     final isPlaybackOnlyUpdate = previousSnapshot != null &&
         _isPlaybackOnlySnapshotUpdate(previousSnapshot, snapshot);
+    final isTrivialPositionTick = previousSnapshot != null &&
+        _isTrivialPositionTick(previousSnapshot, snapshot);
+    final playbackStateChanged = previousSnapshot != null &&
+        (previousSnapshot.playing != snapshot.playing ||
+            previousSnapshot.loopMode != snapshot.loopMode ||
+            previousSnapshot.shuffle != snapshot.shuffle);
 
-    if (!isPlaybackOnlyUpdate || state.code != snapshot.code) {
+    if (!isPlaybackOnlyUpdate ||
+        state.code != snapshot.code ||
+        playbackStateChanged) {
       state = state.copyWith(snapshot: snapshot, code: snapshot.code);
     }
-    await _applySnapshot(snapshot);
+
+    if (isTrivialPositionTick && _canSkipTrivialSnapshotApply(snapshot)) {
+      _lastAppliedSnapshot = snapshot;
+      _rememberObservedPosition(Duration(milliseconds: snapshot.positionMs));
+      return;
+    }
+
+    _queueSnapshotApply(snapshot);
+  }
+
+  void _queueSnapshotApply(MultiSessionRoomSnapshot snapshot) {
+    if ((_pendingSnapshot?.sequence ?? -1) < snapshot.sequence) {
+      _pendingSnapshot = snapshot;
+    }
+
+    if (_snapshotPumpRunning) return;
+
+    _snapshotPumpRunning = true;
+    unawaited(_drainSnapshotQueue());
+  }
+
+  Future<void> _drainSnapshotQueue() async {
+    try {
+      while (true) {
+        final snapshot = _pendingSnapshot;
+        _pendingSnapshot = null;
+        if (snapshot == null) break;
+        await _applySnapshot(snapshot);
+      }
+    } finally {
+      _snapshotPumpRunning = false;
+      if (_pendingSnapshot != null &&
+          !_closingRoom &&
+          !_intentionalDisconnect &&
+          !_snapshotPumpRunning) {
+        _snapshotPumpRunning = true;
+        unawaited(_drainSnapshotQueue());
+      }
+    }
   }
 
   Future<void> _applySnapshot(MultiSessionRoomSnapshot snapshot) async {
@@ -634,9 +763,9 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
       if (remoteTrackIds.isEmpty && !isMyQueue) {
         if (localTracks.isNotEmpty) {
           await ref.read(audioPlayerProvider.notifier).load(
-                const [],
-                autoPlay: false,
-              );
+            const [],
+            autoPlay: false,
+          );
         }
         return;
       }
@@ -652,7 +781,13 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
       final index = activeIndex < 0 ? 0 : activeIndex;
       final activeTrackChanged =
           localState.activeTrack?.id != snapshot.activeTrackId;
-          
+
+      if (activeTrackChanged) {
+        _failedSessionTracks.removeWhere(
+          (trackId) => trackId != snapshot.activeTrackId,
+        );
+      }
+
       if (snapshot.activeTrackId != null &&
           _failedSessionTracks.contains(snapshot.activeTrackId)) {
         if (audioPlayer.isPlaying) {
@@ -661,9 +796,14 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
         return;
       }
 
-      final queueIdsChanged =
-          !isMyQueue && !_stringListEquality.equals(localTrackIds, remoteTrackIds);
+      final queueIdsChanged = !isMyQueue &&
+          !_stringListEquality.equals(localTrackIds, remoteTrackIds);
       final indexChanged = localState.currentIndex != index;
+      final shouldSyncActiveSource = queueIdsChanged ||
+          indexChanged ||
+          activeTrackChanged ||
+          _lastAppliedSnapshot?.activeTrackId != snapshot.activeTrackId ||
+          _lastAppliedSnapshot?.activeSource?.id != snapshot.activeSource?.id;
 
       if (queueIdsChanged) {
         final tracks = snapshot.queue
@@ -678,20 +818,17 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
               autoPlay: snapshot.playing,
             );
       } else if (indexChanged) {
-        final medias = audioPlayer.playlist.medias;
-        if (medias.isNotEmpty && index < medias.length) {
-          await audioPlayer.openPlaylist(
-            medias,
-            initialIndex: index,
-            autoPlay: snapshot.playing,
-          );
+        final playlistLength = audioPlayer.playlist.medias.length;
+        if (playlistLength > 0 && index < playlistLength) {
+          await audioPlayer.jumpTo(index);
         }
       }
 
       final postLoadState = ref.read(audioPlayerProvider);
       final activeTrack = postLoadState.activeTrack;
       final activeSource = snapshot.activeSource;
-      if (activeTrack is SpotubeFullTrackObject &&
+      if (shouldSyncActiveSource &&
+          activeTrack is SpotubeFullTrackObject &&
           activeSource != null &&
           activeTrack.id == snapshot.activeTrackId) {
         final sourcedTrack =
@@ -735,6 +872,7 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
       if (audioPlayer.isShuffled != snapshot.shuffle) {
         await audioPlayer.setShuffle(snapshot.shuffle);
       }
+      _lastAppliedSnapshot = snapshot;
     } catch (e, stack) {
       AppLogger.reportError(e, stack);
     } finally {
@@ -745,6 +883,22 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
   void _send(String type, Object? data) {
     if (_closingRoom || !state.connected) return;
     _channel?.sink.add(encodeRoomEvent(type, data));
+  }
+
+  Future<void> setLocalPlaybackPaused(bool paused) async {
+    if (!state.connected || state.can(MultiSessionPermission.controlPlayback)) {
+      return;
+    }
+
+    state = state.copyWith(locallyPaused: paused);
+  }
+
+  Future<void> toggleLocalPlaybackPaused() async {
+    await setLocalPlaybackPaused(!state.locallyPaused);
+  }
+
+  Future<void> setPreviewSilenced(bool silenced) async {
+    state = state.copyWith(previewSilenced: silenced);
   }
 
   void _disposeConnection() {
@@ -797,6 +951,9 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
     _reconnectTimer?.cancel();
     _closingRoom = true;
     _intentionalDisconnect = true;
+    _pendingSnapshot = null;
+    _lastAppliedSnapshot = null;
+    _snapshotPumpRunning = false;
     final previousState = state;
     state = endedByHost
         ? const MultiSessionState(error: "Room ended")
@@ -914,7 +1071,33 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
     _pushNotice(
       "Community queue ${enabled ? "enabled" : "disabled"} by $_actorName",
     );
-    _send("communityQueue", {"enabled": enabled});
+    _send("roomSettings", {"communityQueueEnabled": enabled});
+  }
+
+  void setAutoAcceptSuggestedTracksEnabled(bool enabled) {
+    if (!_guardPermission(
+      MultiSessionPermission.editQueue,
+      "edit the queue",
+    )) {
+      return;
+    }
+    _pushNotice(
+      "Auto accept suggested tracks ${enabled ? "enabled" : "disabled"} by $_actorName",
+    );
+    _send("roomSettings", {"autoAcceptSuggestedTracks": enabled});
+  }
+
+  void setDiscordJoinEnabled(bool enabled) {
+    if (!_guardPermission(
+      MultiSessionPermission.editQueue,
+      "edit room settings",
+    )) {
+      return;
+    }
+    _pushNotice(
+      "Discord room joining ${enabled ? "enabled" : "disabled"} by $_actorName",
+    );
+    _send("roomSettings", {"discordJoinEnabled": enabled});
   }
 
   void suggestTrack(SpotubeFullTrackObject track) {

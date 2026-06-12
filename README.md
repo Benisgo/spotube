@@ -24,13 +24,13 @@ This fork is a heavily enhanced version of upstream Spotube, packed with major q
 - **Optimistic State Management**: UI toggles (like saving tracks) now update instantly for a snappier feel.
 - **Experimental Scoring System**: A new track scoring system available in settings.
 
-### ⚙️ Streaming Resilience & Engine Updates
+### ⚙️ Streaming & Engine Updates
 - **yt-dlp Integration & Fallbacks**: Support for yt-dlp workers, yt-dlp authentication, and automatic in-app downloading of yt-dlp. Added NewPipe as a fallback.
 - **Smart Engine Priority System**: A configurable YouTube engine priority and fallback system (e.g., automatically swaps from Invidious to YouTubeExplode on 403 errors).
 - **Proactive Track Prefetching**: Earlier source prefetching for current and upcoming queue items to guarantee seamless playback.
 - **Android Streaming Proxy**: Bypasses 403 blocks on Android by proxying streams through Dart using real yt-dlp and browser headers.
 
-### 🐛 Major Bug Fixes
+### 🐛 Bug Fixes
 - **Library Fixes**: Fixed missing playlist cover images, playlists inside folders not showing, and rendering bugs on the Artists and Albums pages.
 - **Android Background Services**: Fixed `MainActivity` to properly extend `AudioServiceActivity` so method channels and background audio function reliably.
 - **Windows Build Environment**: Dynamically resolves the critical Flutter Gradle Plugin path-escaping bug on Windows using native 8.3 short paths.

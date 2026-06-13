@@ -130,6 +130,9 @@ class SpotubeAudioPlayer extends AudioPlayerInterface
     );
     await _primaryPlayer.setVolume(_targetVolume * 100);
     await _primaryPlayer.reapplyNormalizationIfNeeded();
+    if (kIsWindows && autoPlay) {
+      await _primaryPlayer.primeWindowsPipeline();
+    }
     await _prepareInactivePlayer();
     _isPlaying = autoPlay;
     _emitPlaybackSnapshot(includePlaylist: true);

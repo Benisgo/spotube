@@ -25,10 +25,10 @@
     android:extractNativeLibs="true"
     android:requestLegacyExternalStorage="true"
     android:usesCleartextTraffic="true">
-    <!-- Enable Impeller -->
-    <!-- <meta-data
+    <!-- Enable Impeller (works on Android API 29+; older devices auto-fallback to Skia) -->
+    <meta-data
       android:name="io.flutter.embedding.android.EnableImpeller"
-      android:value="false" /> -->
+      android:value="true" />
 
     <activity
       android:name="oss.krtirtho.spotube.MainActivity"

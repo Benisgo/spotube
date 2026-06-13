@@ -206,12 +206,14 @@ class PlayerView extends HookConsumerWidget {
                     Expanded(
                       flex: 7,
                       child: Center(
-                        child: _AlbumArtSwipeArea(
-                          currentAlbumArt: currentAlbumArt,
-                          nextAlbumArt: nextAlbumArt,
-                          prevAlbumArt: prevAlbumArt,
-                          onSwipeLeft: () => audioPlayer.skipToNext(),
-                          onSwipeRight: () => audioPlayer.skipToPrevious(),
+                        child: RepaintBoundary(
+                          child: _AlbumArtSwipeArea(
+                            currentAlbumArt: currentAlbumArt,
+                            nextAlbumArt: nextAlbumArt,
+                            prevAlbumArt: prevAlbumArt,
+                            onSwipeLeft: () => audioPlayer.skipToNext(),
+                            onSwipeRight: () => audioPlayer.skipToPrevious(),
+                          ),
                         ),
                       ),
                     ),
@@ -294,7 +296,9 @@ class PlayerView extends HookConsumerWidget {
                               ],
                             ),
                             const SizedBox(height: 6),
-                            const PlayerControls(),
+                            const RepaintBoundary(
+                              child: PlayerControls(),
+                            ),
                             const SizedBox(height: 10),
                             const PlayerActions(
                               mainAxisAlignment:
@@ -314,12 +318,14 @@ class PlayerView extends HookConsumerWidget {
                     padding: const EdgeInsets.all(8.0),
                     child: Column(
                       children: [
-                        _AlbumArtSwipeArea(
-                          currentAlbumArt: currentAlbumArt,
-                          nextAlbumArt: nextAlbumArt,
-                          prevAlbumArt: prevAlbumArt,
-                          onSwipeLeft: () => audioPlayer.skipToNext(),
-                          onSwipeRight: () => audioPlayer.skipToPrevious(),
+                        RepaintBoundary(
+                          child: _AlbumArtSwipeArea(
+                            currentAlbumArt: currentAlbumArt,
+                            nextAlbumArt: nextAlbumArt,
+                            prevAlbumArt: prevAlbumArt,
+                            onSwipeLeft: () => audioPlayer.skipToNext(),
+                            onSwipeRight: () => audioPlayer.skipToPrevious(),
+                          ),
                         ),
                         const SizedBox(height: 40),
                         Container(
@@ -375,18 +381,20 @@ class PlayerView extends HookConsumerWidget {
                         Padding(
                           padding:
                               const EdgeInsets.symmetric(horizontal: 16),
-                          child: Consumer(builder: (context, ref, _) {
-                            final volume = ref.watch(volumeProvider);
-                            return VolumeSlider(
-                              fullWidth: true,
-                              value: volume,
-                              onChanged: (value) {
-                                ref
-                                    .read(volumeProvider.notifier)
-                                    .setVolume(value);
-                              },
-                            );
-                          }),
+                          child: RepaintBoundary(
+                            child: Consumer(builder: (context, ref, _) {
+                              final volume = ref.watch(volumeProvider);
+                              return VolumeSlider(
+                                fullWidth: true,
+                                value: volume,
+                                onChanged: (value) {
+                                  ref
+                                      .read(volumeProvider.notifier)
+                                      .setVolume(value);
+                                },
+                              );
+                            }),
+                          ),
                         ),
                         const Gap(25),
                         OutlineBadge(

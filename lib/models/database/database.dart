@@ -24,6 +24,7 @@ import 'package:spotube/services/logger/logger.dart';
 import 'package:spotube/services/youtube_engine/invidious_engine.dart';
 import 'package:spotube/services/youtube_engine/newpipe_engine.dart';
 import 'package:spotube/services/youtube_engine/android_yt_dlp_engine.dart';
+import 'package:spotube/services/youtube_engine/innertube_engine.dart';
 import 'package:spotube/services/youtube_engine/verome_engine.dart';
 import 'package:spotube/services/youtube_engine/youtube_explode_engine.dart';
 import 'package:spotube/services/youtube_engine/yt_dlp_engine.dart';
@@ -77,7 +78,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 17;
+  int get schemaVersion => 18;
 
   @override
   MigrationStrategy get migration {
@@ -346,6 +347,16 @@ class AppDatabase extends _$AppDatabase {
           await customStatement(
             "ALTER TABLE preferences_table "
             "ADD COLUMN youtube_client_engines TEXT NOT NULL DEFAULT '[]'",
+          ).catchError((error, stackTrace) {
+            if (!error.toString().contains('duplicate column name')) {
+              throw error;
+            }
+          });
+        }
+        if (from < 18 && to >= 18) {
+          await customStatement(
+            "ALTER TABLE preferences_table "
+            "ADD COLUMN enable_fast_playback INTEGER NOT NULL DEFAULT 0",
           ).catchError((error, stackTrace) {
             if (!error.toString().contains('duplicate column name')) {
               throw error;

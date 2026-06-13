@@ -287,6 +287,27 @@ class UserPreferencesNotifier extends Notifier<PreferencesTableData> {
       PreferencesTableCompanion(handleSpotifyLinks: Value(enabled)),
     );
   }
+
+  void setEnableFastPlayback(bool enabled) {
+    final currentEngines = List<YoutubeClientEngine>.from(
+      state.youtubeClientEngines,
+    );
+
+    if (enabled) {
+      if (!currentEngines.contains(YoutubeClientEngine.innerTube)) {
+        currentEngines.insert(0, YoutubeClientEngine.innerTube);
+      }
+    } else {
+      currentEngines.remove(YoutubeClientEngine.innerTube);
+    }
+
+    setData(
+      PreferencesTableCompanion(
+        enableFastPlayback: Value(enabled),
+        youtubeClientEngines: Value(currentEngines),
+      ),
+    );
+  }
 }
 
 final userPreferencesProvider =

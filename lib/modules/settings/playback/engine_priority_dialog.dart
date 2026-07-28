@@ -37,65 +37,73 @@ class EnginePriorityDialog extends HookConsumerWidget {
       title: const Text('YouTube Engine Priority'),
       content: SizedBox(
         width: 400,
-        height: 350,
-        child: material.Material(
-          color: material.Colors.transparent,
-          child: material.ReorderableListView(
-            buildDefaultDragHandles: false,
-            onReorder: (oldIndex, newIndex) {
-              if (oldIndex < newIndex) newIndex -= 1;
-              final list = orderedEngines.toList();
-              final item = list.removeAt(oldIndex);
-              list.insert(newIndex, item);
-
-              enginesState.value =
-                  list.where((e) => enginesState.value.contains(e)).toList();
-            },
-            children: [
-              for (int i = 0; i < orderedEngines.length; i++)
-                material.ReorderableDragStartListener(
-                  key: ValueKey(orderedEngines[i]),
-                  index: i,
-                  child: material.ListTile(
-                    title: Text(orderedEngines[i].label),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Switch(
-                          value: enginesState.value.contains(orderedEngines[i]),
-                          onChanged: (val) async {
-                            final list = enginesState.value.toList();
-                            if (val) {
-                              if (orderedEngines[i] == YoutubeClientEngine.ytDlp) {
-                                final isInstalled = kIsAndroid
-                                    ? await AndroidYtDlpEngine.isInstalled()
-                                    : await YtDlpBinary.ensureAvailable(
-                                        downloadIfMissing: false);
-                                if (!isInstalled && context.mounted) {
-                                  final hasInstalled = await showDialog<bool>(
-                                    context: context,
-                                    builder: (context) =>
-                                        YouTubeEngineNotInstalledDialog(
-                                            engine: orderedEngines[i]),
-                                  );
-                                  if (hasInstalled != true) return;
-                                }
-                              }
-                              list.add(orderedEngines[i]);
-                            } else {
-                              list.remove(orderedEngines[i]);
-                            }
-                            enginesState.value = list;
-                          },
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final itemCount = orderedEngines.length;
+            final contentHeight =
+                (itemCount * 72.0).clamp(200.0, constraints.maxHeight * 0.7);
+            return SizedBox(
+              height: contentHeight,
+              child: material.Material(
+                color: material.Colors.transparent,
+                child: material.ReorderableListView(
+                  buildDefaultDragHandles: false,
+                  onReorder: (oldIndex, newIndex) {
+                    if (oldIndex < newIndex) newIndex -= 1;
+                    final list = orderedEngines.toList();
+                    final item = list.removeAt(oldIndex);
+                    list.insert(newIndex, item);
+                    enginesState.value =
+                        list.where((e) => enginesState.value.contains(e)).toList();
+                  },
+                  children: [
+                    for (int i = 0; i < orderedEngines.length; i++)
+                      material.ReorderableDragStartListener(
+                        key: ValueKey(orderedEngines[i]),
+                        index: i,
+                        child: material.ListTile(
+                          title: Text(orderedEngines[i].label),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Switch(
+                                value: enginesState.value.contains(orderedEngines[i]),
+                                onChanged: (val) async {
+                                  final list = enginesState.value.toList();
+                                  if (val) {
+                                    if (orderedEngines[i] == YoutubeClientEngine.ytDlp) {
+                                      final isInstalled = kIsAndroid
+                                          ? await AndroidYtDlpEngine.isInstalled()
+                                          : await YtDlpBinary.ensureAvailable(
+                                              downloadIfMissing: false);
+                                      if (!isInstalled && context.mounted) {
+                                        final hasInstalled = await showDialog<bool>(
+                                          context: context,
+                                          builder: (context) =>
+                                              YouTubeEngineNotInstalledDialog(
+                                                  engine: orderedEngines[i]),
+                                        );
+                                        if (hasInstalled != true) return;
+                                      }
+                                    }
+                                    list.add(orderedEngines[i]);
+                                  } else {
+                                    list.remove(orderedEngines[i]);
+                                  }
+                                  enginesState.value = list;
+                                },
+                              ),
+                              const Gap(16),
+                              const Icon(material.Icons.drag_handle),
+                            ],
+                          ),
                         ),
-                        const Gap(16),
-                        const Icon(material.Icons.drag_handle),
-                      ],
-                    ),
-                  ),
+                      ),
+                  ],
                 ),
-            ],
-          ),
+              ),
+            );
+          },
         ),
       ),
       actions: [

@@ -1,10 +1,9 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:shadcn_flutter/shadcn_flutter.dart' as shad;
 import 'package:spotube/services/youtube_engine/youtube_engine.dart';
 import 'package:spotube/services/youtube_engine/innertube_engine.dart';
 import 'package:spotube/services/youtube_engine/invidious_engine.dart';
@@ -22,7 +21,6 @@ class _EngineTestResult {
   final bool success;
   final Duration elapsed;
   final String? detail;
-
   const _EngineTestResult({
     required this.engineName,
     required this.testName,
@@ -36,7 +34,6 @@ class _EngineTester {
   final String name;
   final YouTubeEngine Function() factory;
   final bool Function() isAvailable;
-
   const _EngineTester({
     required this.name,
     required this.factory,
@@ -101,30 +98,15 @@ class DebugEngineTestPage extends HookConsumerWidget {
     Future<void> _testAll() async {
       final videoId = videoIdController.text.trim();
       if (videoId.isEmpty) return;
-
       final testers = _allTesters().where((t) => t.isAvailable()).toList();
       final newResults = <_EngineTestResult>[];
       results.value = [];
-
       for (final tester in testers) {
         running.value = {...running.value, tester.name};
-
-        // Test getVideo + getStreamManifest individually
-        await _runTest(
-          tester,
-          'getVideo',
-          videoId,
-          newResults,
-          (engine) => engine.getVideo(videoId),
-        );
-        await _runTest(
-          tester,
-          'getStreamManifest',
-          videoId,
-          newResults,
-          (engine) => engine.getStreamManifest(videoId),
-        );
-
+        await _runTest(tester, 'getVideo', videoId, newResults,
+            (engine) => engine.getVideo(videoId));
+        await _runTest(tester, 'getStreamManifest', videoId, newResults,
+            (engine) => engine.getStreamManifest(videoId));
         running.value = running.value.difference({tester.name});
         results.value = List.of(newResults);
       }
@@ -133,34 +115,21 @@ class DebugEngineTestPage extends HookConsumerWidget {
     Future<void> _testSingle(_EngineTester tester) async {
       final videoId = videoIdController.text.trim();
       if (videoId.isEmpty) return;
-
       running.value = {...running.value, tester.name};
       final newResults = List<_EngineTestResult>.of(results.value);
-
-      await _runTest(
-        tester,
-        'getVideo',
-        videoId,
-        newResults,
-        (engine) => engine.getVideo(videoId),
-      );
-      await _runTest(
-        tester,
-        'getStreamManifest',
-        videoId,
-        newResults,
-        (engine) => engine.getStreamManifest(videoId),
-      );
-
+      await _runTest(tester, 'getVideo', videoId, newResults,
+          (engine) => engine.getVideo(videoId));
+      await _runTest(tester, 'getStreamManifest', videoId, newResults,
+          (engine) => engine.getStreamManifest(videoId));
       running.value = running.value.difference({tester.name});
       results.value = newResults;
     }
 
-    return shad.Scaffold(
-      appBar: shad.AppBar(
+    return Scaffold(
+      appBar: AppBar(
         title: const Text('YouTube Engine Tester'),
         actions: [
-          shad.Button(
+          TextButton(
             onPressed: running.value.isNotEmpty ? null : _testAll,
             child: const Text('Test All'),
           ),
@@ -173,19 +142,19 @@ class DebugEngineTestPage extends HookConsumerWidget {
             child: Row(
               children: [
                 Expanded(
-                  child: shad.TextField(
+                  child: TextField(
                     controller: videoIdController,
-                    decoration: const shad.InputDecoration(
-                      label: Text('Video ID or URL'),
-                      hint: 'e.g. dQw4w9WgXcQ',
+                    decoration: const InputDecoration(
+                      labelText: 'Video ID or URL',
+                      hintText: 'e.g. dQw4w9WgXcQ',
+                      border: OutlineInputBorder(),
                     ),
                   ),
                 ),
                 const SizedBox(width: 8),
-                shad.Button(
+                TextButton(
                   onPressed: () {
                     final text = videoIdController.text.trim();
-                    // Extract video ID from URL if needed
                     if (text.contains('youtube.com/watch?v=')) {
                       final uri = Uri.tryParse(text);
                       if (uri != null) {
@@ -234,9 +203,8 @@ class DebugEngineTestPage extends HookConsumerWidget {
     final engine = tester.factory();
     final stopwatch = Stopwatch()..start();
     try {
-      final result = await testFn(engine).timeout(
-        const Duration(seconds: 15),
-      );
+      final result =
+          await testFn(engine).timeout(const Duration(seconds: 15));
       stopwatch.stop();
       results.add(_EngineTestResult(
         engineName: tester.name,
@@ -265,7 +233,6 @@ class _EngineCard extends StatelessWidget {
   final List<_EngineTestResult> results;
   final bool isRunning;
   final VoidCallback onTest;
-
   const _EngineCard({
     required this.tester,
     required this.results,
@@ -275,7 +242,8 @@ class _EngineCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return shad.Card(
+    final theme = Theme.of(context);
+    return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -285,18 +253,17 @@ class _EngineCard extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: Text(
-                    tester.name,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
+                  child: Text(tester.name,
+                      style: theme.textTheme.titleMedium),
                 ),
                 if (isRunning)
-                  const shad.CircularProgressIndicator(
-                    strokeWidth: 2,
-                    size: 20,
+                  const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
                   ),
                 const SizedBox(width: 8),
-                shad.Button(
+                TextButton(
                   onPressed: isRunning ? null : onTest,
                   child: const Text('Test'),
                 ),
@@ -306,9 +273,9 @@ class _EngineCard extends StatelessWidget {
             if (results.isEmpty)
               Text(
                 'Not tested yet',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.mutedForeground,
-                    ),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                ),
               ),
             for (final result in results)
               Padding(
@@ -316,29 +283,24 @@ class _EngineCard extends StatelessWidget {
                 child: Row(
                   children: [
                     Icon(
-                      result.success
-                          ? Icons.check_circle
-                          : Icons.error,
+                      result.success ? Icons.check_circle : Icons.error,
                       size: 16,
-                      color: result.success
-                          ? Colors.green
-                          : Colors.red,
+                      color: result.success ? Colors.green : Colors.red,
                     ),
                     const SizedBox(width: 8),
                     Text(
                       '${result.testName} (${result.elapsed.inMilliseconds}ms)',
-                      style: Theme.of(context).textTheme.bodySmall,
+                      style: theme.textTheme.bodySmall,
                     ),
                     if (result.detail != null) ...[
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           result.detail!,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .mutedForeground,
-                              ),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurface
+                                .withValues(alpha: 0.5),
+                          ),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),

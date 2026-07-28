@@ -33,8 +33,8 @@ class VeromeEngine implements YouTubeEngine {
 
   @override
   Future<Video> getVideo(String videoId) async {
-    final response =
-        await _dio.get('$_instance/api/stream', queryParameters: {'id': videoId});
+    final response = await _dio
+        .get('$_instance/api/stream', queryParameters: {'id': videoId});
     _checkResponse(response);
     final data = response.data as Map<String, dynamic>;
     final meta = data['metadata'] as Map<String, dynamic>?;
@@ -44,8 +44,8 @@ class VeromeEngine implements YouTubeEngine {
 
   @override
   Future<StreamManifest> getStreamManifest(String videoId) async {
-    final response =
-        await _dio.get('$_instance/api/stream', queryParameters: {'id': videoId});
+    final response = await _dio
+        .get('$_instance/api/stream', queryParameters: {'id': videoId});
     _checkResponse(response);
     final data = response.data as Map<String, dynamic>;
 
@@ -61,8 +61,8 @@ class VeromeEngine implements YouTubeEngine {
   Future<(Video, StreamManifest)> getVideoWithStreamInfo(
     String videoId,
   ) async {
-    final response =
-        await _dio.get('$_instance/api/stream', queryParameters: {'id': videoId});
+    final response = await _dio
+        .get('$_instance/api/stream', queryParameters: {'id': videoId});
     _checkResponse(response);
     final data = response.data as Map<String, dynamic>;
     final meta = data['metadata'] as Map<String, dynamic>?;
@@ -125,7 +125,7 @@ class VeromeEngine implements YouTubeEngine {
       VideoId(videoId),
       item['title'] as String? ?? '',
       channel?['name'] as String? ?? '',
-       _parseChannelId(channel?['id'] as String?),
+      _parseChannelId(channel?['id'] as String?),
       null,
       '',
       null,
@@ -133,7 +133,7 @@ class VeromeEngine implements YouTubeEngine {
       _parseDuration(item['duration'] as String?),
       ThumbnailSet(videoId),
       [],
-      Engagement(0, null, null),
+      const Engagement(0, null, null),
       true,
     );
   }
@@ -164,9 +164,8 @@ class VeromeEngine implements YouTubeEngine {
     final bitrateStr = (stream['bitrate'] as String?) ?? '0';
     final bitrate = int.tryParse(bitrateStr) ?? 0;
 
-    final urlStr = (stream['url'] as String?) ??
-        (stream['directUrl'] as String?) ??
-        '';
+    final urlStr =
+        (stream['url'] as String?) ?? (stream['directUrl'] as String?) ?? '';
 
     return AudioOnlyStreamInfo(
       VideoId(videoId),

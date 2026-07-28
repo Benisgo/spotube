@@ -1,6 +1,5 @@
 import 'package:dio/dio.dart';
 import 'package:spotube/services/youtube_engine/verome_engine.dart';
-import 'package:spotube/services/youtube_engine/invidious_engine.dart';
 
 void main() async {
   final verome = VeromeEngine();

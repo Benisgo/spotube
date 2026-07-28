@@ -2,9 +2,10 @@ import 'package:dio/dio.dart';
 
 void main() async {
   final dio = Dio();
-  final url = 'https://inv.thepixora.com/api/v1/search';
+  const url = 'https://inv.thepixora.com/api/v1/search';
   try {
-    final res = await dio.get(url, queryParameters: {'q': 'bluff', 'type': 'video'});
+    final res =
+        await dio.get(url, queryParameters: {'q': 'bluff', 'type': 'video'});
     if (res.data is List) {
       print("Search returned \${(res.data as List).length} results");
       if ((res.data as List).isNotEmpty) {

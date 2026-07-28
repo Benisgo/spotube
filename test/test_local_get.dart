@@ -3,7 +3,7 @@ import 'package:dio/dio.dart';
 void main() async {
   final dio = Dio();
   
-  final invUrl = 'https://inv.thepixora.com/latest_version?id=sELM9aIKHiw&itag=251&local=true';
+  const invUrl = 'https://inv.thepixora.com/latest_version?id=sELM9aIKHiw&itag=251&local=true';
   print('Testing GET $invUrl');
   
   try {

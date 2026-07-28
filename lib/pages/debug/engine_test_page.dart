@@ -95,7 +95,7 @@ class DebugEngineTestPage extends HookConsumerWidget {
     final results = useState<List<_EngineTestResult>>(const []);
     final running = useState<Set<String>>({});
 
-    Future<void> _testAll() async {
+    Future<void> testAll() async {
       final videoId = videoIdController.text.trim();
       if (videoId.isEmpty) return;
       final testers = _allTesters().where((t) => t.isAvailable()).toList();
@@ -112,7 +112,7 @@ class DebugEngineTestPage extends HookConsumerWidget {
       }
     }
 
-    Future<void> _testSingle(_EngineTester tester) async {
+    Future<void> testSingle(_EngineTester tester) async {
       final videoId = videoIdController.text.trim();
       if (videoId.isEmpty) return;
       running.value = {...running.value, tester.name};
@@ -130,7 +130,7 @@ class DebugEngineTestPage extends HookConsumerWidget {
         title: const Text('YouTube Engine Tester'),
         actions: [
           TextButton(
-            onPressed: running.value.isNotEmpty ? null : _testAll,
+            onPressed: running.value.isNotEmpty ? null : testAll,
             child: const Text('Test All'),
           ),
         ],
@@ -183,7 +183,7 @@ class DebugEngineTestPage extends HookConsumerWidget {
                         .where((r) => r.engineName == tester.name)
                         .toList(),
                     isRunning: running.value.contains(tester.name),
-                    onTest: () => _testSingle(tester),
+                    onTest: () => testSingle(tester),
                   ),
               ],
             ),
@@ -203,8 +203,7 @@ class DebugEngineTestPage extends HookConsumerWidget {
     final engine = tester.factory();
     final stopwatch = Stopwatch()..start();
     try {
-      final result =
-          await testFn(engine).timeout(const Duration(seconds: 15));
+      final result = await testFn(engine).timeout(const Duration(seconds: 15));
       stopwatch.stop();
       results.add(_EngineTestResult(
         engineName: tester.name,
@@ -253,8 +252,7 @@ class _EngineCard extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: Text(tester.name,
-                      style: theme.textTheme.titleMedium),
+                  child: Text(tester.name, style: theme.textTheme.titleMedium),
                 ),
                 if (isRunning)
                   const SizedBox(

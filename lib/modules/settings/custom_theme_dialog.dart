@@ -97,7 +97,7 @@ class CustomThemeDialog extends HookConsumerWidget {
                 ),
               ),
               const Gap(16),
-              Text("Surfaces").semiBold(),
+              const Text("Surfaces").semiBold(),
               const Gap(8),
               Text(
                 "Adjust the strength of cards, sheets, and translucent UI.",
@@ -152,11 +152,12 @@ class CustomThemeDialog extends HookConsumerWidget {
                 divisions: 50,
                 trailing: "${draft.value.backgroundImageBlur.round()} px",
                 onChanged: (value) {
-                  draft.value = draft.value.copyWith(backgroundImageBlur: value);
+                  draft.value =
+                      draft.value.copyWith(backgroundImageBlur: value);
                 },
               ),
               const Gap(20),
-              Text("Theme colors").semiBold(),
+              const Text("Theme colors").semiBold(),
               const Gap(8),
               Text(
                 "Use the picker or a hex code for the core UI colors.",
@@ -211,8 +212,7 @@ class CustomThemeDialog extends HookConsumerWidget {
                     label: "Secondary",
                     value: draft.value.secondaryColor,
                     onChanged: (color) {
-                      draft.value =
-                          draft.value.copyWith(secondaryColor: color);
+                      draft.value = draft.value.copyWith(secondaryColor: color);
                     },
                   ),
                   buildColorField(

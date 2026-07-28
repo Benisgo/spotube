@@ -154,7 +154,7 @@ class TrackOptions extends HookConsumerWidget {
                   context: rootNavigatorKey.currentContext!,
                   builder: (context, overlay) {
                     return SurfaceCard(
-                      child: Text("Track suggested!").small(),
+                      child: const Text("Track suggested!").small(),
                     );
                   },
                 );

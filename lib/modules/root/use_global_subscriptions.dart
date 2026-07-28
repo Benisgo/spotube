@@ -206,7 +206,7 @@ void useGlobalSubscriptions(WidgetRef ref) {
     String? lastPlaybackError;
     DateTime? lastPlaybackErrorAt;
     int consecutiveErrorSkips = 0;
-    DateTime? _lastFallbackToastAt;
+    DateTime? lastFallbackToastAt;
 
     String? buildFriendlyPlaybackError(String rawError) {
       final lower = rawError.toLowerCase();
@@ -346,12 +346,12 @@ void useGlobalSubscriptions(WidgetRef ref) {
       FallbackYouTubeEngine.fallbackNotifier.stream.listen((message) {
         if (!context.mounted) return;
         // Rate-limit engine fallback toasts to avoid spam cascades
-        if (_lastFallbackToastAt != null &&
-            DateTime.now().difference(_lastFallbackToastAt!).inMilliseconds <
+        if (lastFallbackToastAt != null &&
+            DateTime.now().difference(lastFallbackToastAt!).inMilliseconds <
                 2000) {
           return;
         }
-        _lastFallbackToastAt = DateTime.now();
+        lastFallbackToastAt = DateTime.now();
         showInformationalToast(message);
       }),
     ];

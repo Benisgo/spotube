@@ -9,17 +9,14 @@ import 'package:shadcn_flutter/shadcn_flutter.dart';
 import 'package:spotube/collections/routes.gr.dart';
 import 'package:spotube/collections/spotube_icons.dart';
 import 'package:spotube/components/adaptive/adaptive_select_tile.dart';
-import 'package:spotube/models/database/database.dart';
 import 'package:spotube/modules/settings/playback/edit_connect_port_dialog.dart';
 import 'package:spotube/modules/settings/section_card_with_heading.dart';
 import 'package:spotube/modules/settings/playback/engine_priority_dialog.dart';
 import 'package:spotube/extensions/context.dart';
-import 'package:spotube/modules/settings/youtube_engine_not_installed_dialog.dart';
 import 'package:spotube/provider/metadata_plugin/audio_source/quality_presets.dart';
 import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
 import 'package:spotube/services/kv_store/kv_store.dart';
 import 'package:spotube/services/youtube_engine/yt_dlp_binary.dart';
-import 'package:spotube/services/youtube_engine/android_yt_dlp_engine.dart';
 import 'package:spotube/services/youtube_engine/yt_dlp_auth_browser.dart';
 
 import 'package:spotube/utils/platform.dart';

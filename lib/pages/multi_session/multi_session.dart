@@ -135,7 +135,7 @@ class MultiSessionPage extends HookConsumerWidget {
     return SafeArea(
       bottom: false,
       child: Scaffold(
-        headers: [
+        headers: const [
           TitleBar(title: Text("Multi-Session")),
         ],
         child: Padding(

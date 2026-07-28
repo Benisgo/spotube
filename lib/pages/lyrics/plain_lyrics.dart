@@ -12,10 +12,6 @@ import 'package:spotube/components/shimmers/shimmer_lyrics.dart';
 import 'package:spotube/extensions/constrains.dart';
 import 'package:spotube/extensions/context.dart';
 
-import 'package:spotube/components/shimmers/shimmer_lyrics.dart';
-import 'package:spotube/extensions/constrains.dart';
-import 'package:spotube/extensions/context.dart';
-
 import 'package:spotube/provider/audio_player/audio_player.dart';
 import 'package:spotube/provider/lyrics/synced.dart';
 import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';

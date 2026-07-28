@@ -1,8 +1,54 @@
+import 'dart:convert';
+
 import 'package:dart_ytmusic_api/dart_ytmusic_api.dart';
 import 'package:http_parser/http_parser.dart';
+import 'package:http/http.dart' as http;
 import 'package:spotube/services/logger/logger.dart';
 import 'package:spotube/services/youtube_engine/youtube_engine.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
+
+/// InnerTube client context used by YouTube Music's streaming endpoint.
+/// This is needed because dart_ytmusic_api's getSong() doesn't always
+/// return adaptiveFormats with URLs. A direct InnerTube /player call
+/// reliably returns stream URLs.
+class _YtMusicInnerTubeClient {
+  static const _baseUrl = 'https://www.youtube.com/youtubei/v1';
+  static const _apiKey = 'AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8';
+  static final http.Client _client = http.Client();
+
+  static Future<Map<String, dynamic>> player(String videoId) async {
+    final payload = {
+      'context': {
+        'client': {
+          'clientName': 'ANDROID',
+          'clientVersion': '19.09.37',
+          'androidSdkVersion': 30,
+          'hl': 'en',
+          'gl': 'US',
+        },
+      },
+      'videoId': videoId,
+      'playbackContext': {
+        'contentPlaybackContext': {'html5Preference': 'HTML5_PREF_WANTS'},
+      },
+    };
+    final response = await _client.post(
+      Uri.parse('$_baseUrl/player?key=$_apiKey'),
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent':
+            'com.google.android.apps.youtube.music/6.30.52 (Linux; Android 11)',
+      },
+      body: jsonEncode(payload),
+    );
+    if (response.statusCode != 200) {
+      throw Exception(
+        'InnerTube (Music) player request failed: ${response.statusCode}',
+      );
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+}
 
 /// A YouTube engine that resolves streaming URLs via YouTube Music's
 /// InnerTube API. Returns direct CDN URLs that are more reliable and
@@ -24,6 +70,7 @@ class YtMusicEngine implements YouTubeEngine {
 
   @override
   Future<Video> getVideo(String videoId) async {
+    // Use dart_ytmusic_api for metadata (title, artist, duration)
     final ytmusic = await _ensureClient();
     final song = await ytmusic.getSong(videoId);
     return _toVideo(song, videoId);
@@ -31,9 +78,10 @@ class YtMusicEngine implements YouTubeEngine {
 
   @override
   Future<StreamManifest> getStreamManifest(String videoId) async {
-    final ytmusic = await _ensureClient();
-    final song = await ytmusic.getSong(videoId);
-    final streams = _toAudioOnlyStreams(song.adaptiveFormats, videoId);
+    // Use direct InnerTube call for reliable stream URLs
+    // dart_ytmusic_api's getSong() adaptiveFormats often lacks URLs.
+    final data = await _YtMusicInnerTubeClient.player(videoId);
+    final streams = _toAudioOnlyStreams(data, videoId);
     return StreamManifest(streams);
   }
 
@@ -42,9 +90,10 @@ class YtMusicEngine implements YouTubeEngine {
     String videoId,
   ) async {
     final ytmusic = await _ensureClient();
+    final data = await _YtMusicInnerTubeClient.player(videoId);
     final song = await ytmusic.getSong(videoId);
     final video = _toVideo(song, videoId);
-    final streams = _toAudioOnlyStreams(song.adaptiveFormats, videoId);
+    final streams = _toAudioOnlyStreams(data, videoId);
     return (video, StreamManifest(streams));
   }
 
@@ -59,10 +108,13 @@ class YtMusicEngine implements YouTubeEngine {
   }
 
   List<AudioOnlyStreamInfo> _toAudioOnlyStreams(
-    List<dynamic> adaptiveFormats,
+    Map<String, dynamic> data,
     String videoId,
   ) {
     final result = <AudioOnlyStreamInfo>[];
+    final streamingData = data['streamingData'] as Map<String, dynamic>? ?? {};
+    final adaptiveFormats =
+        streamingData['adaptiveFormats'] as List<dynamic>? ?? [];
 
     for (final format in adaptiveFormats) {
       final f = format as Map<String, dynamic>;

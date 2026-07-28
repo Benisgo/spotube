@@ -134,7 +134,7 @@ class DebugEngineTestPage extends HookConsumerWidget {
           ),
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 160),
               children: [
                 for (final entry in engines.where((e) => e.available))
                   _EngineCard(
@@ -167,7 +167,7 @@ class DebugEngineTestPage extends HookConsumerWidget {
         testName: testName,
         success: true,
         elapsed: stopwatch.elapsed,
-        detail: result?.toString().substring(0, 150),
+        detail: result?.toString(),
       ));
     } catch (e) {
       stopwatch.stop();
@@ -175,7 +175,7 @@ class DebugEngineTestPage extends HookConsumerWidget {
         testName: testName,
         success: false,
         elapsed: stopwatch.elapsed,
-        detail: e.toString().substring(0, 300),
+        detail: e.toString(),
       ));
     } finally {
       engine.dispose();

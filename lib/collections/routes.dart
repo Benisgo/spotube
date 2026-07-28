@@ -181,6 +181,11 @@ class AppRouter extends RootStackRouter {
               path: "stats",
               page: StatsRoute.page,
             ),
+            if (kDebugMode)
+              AutoRoute(
+                path: "debug/engines",
+                page: DebugEngineTestRoute.page,
+              ),
             AutoRoute(
               path: "stats/minutes",
               page: StatsMinutesRoute.page,

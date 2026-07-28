@@ -1,4 +1,6 @@
 import 'package:auto_route/auto_route.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 import 'package:spotube/collections/routes.gr.dart';
 import 'package:spotube/collections/spotube_icons.dart';
@@ -42,6 +44,14 @@ List<SideBarTiles> getSidebarTileList(AppLocalizations l10n) => [
         icon: SpotubeIcons.music,
         title: l10n.lyrics,
       ),
+      if (kDebugMode)
+        SideBarTiles(
+          id: "debug_engines",
+          pathPrefix: "/debug/engines",
+          route: const DebugEngineTestRoute(),
+          icon: Icons.bug_report,
+          title: 'Engine Test',
+        ),
       SideBarTiles(
         id: "stats",
         pathPrefix: "/stats",

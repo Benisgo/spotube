@@ -83,10 +83,16 @@ class SpotubeTrackObject with _$SpotubeTrackObject {
 }
 
 extension AsMediaListSpotubeTrackObject on Iterable<SpotubeTrackObject> {
-  List<SpotubeMedia> asMediaList({String? firstTrackDirectUrl, SpotubeTrackObject? targetTrack}) {
+  List<SpotubeMedia> asMediaList({
+    String? firstTrackDirectUrl,
+    Map<String, String>? firstTrackDirectHeaders,
+    SpotubeTrackObject? targetTrack,
+  }) {
     return map((track) => SpotubeMedia(
           track,
           directUrl: track.id == targetTrack?.id ? firstTrackDirectUrl : null,
+          httpHeaders:
+              track.id == targetTrack?.id ? firstTrackDirectHeaders : null,
         )).toList();
   }
 }

@@ -68,18 +68,14 @@ class RootAppPage extends HookConsumerWidget {
           ],
           floatingFooter: true,
           child: Sidebar(
-            child: MediaQuery(
-              data: MediaQuery.of(context).copyWith(
-                padding: MediaQuery.paddingOf(context)
-                    .copyWith(bottom: 100 * context.theme.scaling),
-              ),
+            child: _ContentPadding(
               child: Theme(
                 data: Theme.of(context).copyWith(
                   colorScheme: () => Theme.of(context).colorScheme.copyWith(
-                    background: backgroundImage != null
-                        ? () => Colors.transparent
-                        : null,
-                  ),
+                        background: backgroundImage != null
+                            ? () => Colors.transparent
+                            : null,
+                      ),
                 ),
                 child: const AutoRouter(),
               ),
@@ -130,6 +126,29 @@ class RootAppPage extends HookConsumerWidget {
           ),
         scaffold,
       ],
+    );
+  }
+}
+
+/// Scoped widget that watches only navigationPanelHeight for bottom padding.
+/// Prevents the entire RootAppPage shell from rebuilding on every player drag.
+class _ContentPadding extends ConsumerWidget {
+  final Widget child;
+
+  const _ContentPadding({required this.child});
+
+  @override
+  Widget build(BuildContext context, ref) {
+    final panelHeight = ref.watch(navigationPanelHeight);
+    final scaling = context.theme.scaling;
+    return MediaQuery(
+      data: MediaQuery.of(context).copyWith(
+        padding: MediaQuery.paddingOf(context).copyWith(
+          bottom:
+              63.0 * scaling + (panelHeight > 0 ? panelHeight * scaling : 0),
+        ),
+      ),
+      child: child,
     );
   }
 }

@@ -19,7 +19,6 @@ import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/models/multi_session/multi_session.dart';
 import 'package:spotube/provider/audio_player/audio_player.dart';
 import 'package:spotube/provider/audio_player/querying_track_info.dart';
-import 'package:spotube/provider/audio_player/state.dart';
 import 'package:spotube/provider/blacklist_provider.dart';
 import 'package:spotube/provider/multi_session/multi_session.dart';
 import 'package:spotube/utils/platform.dart';
@@ -45,7 +44,6 @@ class TrackTile extends HookConsumerWidget {
   final VoidCallback? onLongPress;
   final bool userPlaylist;
   final String? playlistId;
-  final AudioPlayerState playlist;
   final bool compact;
   final bool isFetchingActiveTrack;
   final List<Widget>? leadingActions;
@@ -56,7 +54,6 @@ class TrackTile extends HookConsumerWidget {
     required this.track,
     this.selected = false,
     this.selectionMode = false,
-    required this.playlist,
     this.onTap,
     this.onLongPress,
     this.onChanged,
@@ -76,16 +73,18 @@ class TrackTile extends HookConsumerWidget {
         ref.watch(audioPlayerProvider.select((value) => value.activeTrack?.id));
     final isPlaying = activeTrackId == track.id;
     final pendingPlaybackTrackId = ref.watch(pendingPlaybackTrackIdProvider);
-    final isPendingPlayback = pendingPlaybackTrackId == track.id &&
-        playlist.activeTrack?.id != track.id;
+    final isPendingPlayback =
+        pendingPlaybackTrackId == track.id && activeTrackId != track.id;
     final isTrackQuerying =
         isFetchingActiveTrack || ref.watch(trackQueryingInfoProvider(track));
     final isSelected = isPlaying || isPendingPlayback;
     final effectiveSelection = selectionMode || onChanged != null;
 
-    final multiSession = ref.watch(multiSessionProvider);
-    final isListener = multiSession.connected &&
-        !multiSession.can(MultiSessionPermission.controlPlayback);
+    final isListener = ref.watch(
+      multiSessionProvider.select(
+        (s) => s.connected && !s.can(MultiSessionPermission.controlPlayback),
+      ),
+    );
 
     return LayoutBuilder(builder: (context, constrains) {
       return Listener(
@@ -157,62 +156,11 @@ class TrackTile extends HookConsumerWidget {
                           ),
                         ),
                 ),
-                Stack(
-                  children: [
-                    ClipRRect(
-                      borderRadius: theme.borderRadiusMd,
-                      child: UniversalImage(
-                        path: (track.album.images)
-                            .smallest(ImagePlaceholder.albumArt),
-                        height: 40,
-                        width: 40,
-                        fit: BoxFit.cover,
-                      ),
-                    ),
-                    Positioned.fill(
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 300),
-                        decoration: BoxDecoration(
-                          borderRadius: theme.borderRadiusMd,
-                          color: isHovering
-                              ? Colors.black.withAlpha(102)
-                              : Colors.transparent,
-                        ),
-                      ),
-                    ),
-                    Positioned.fill(
-                      child: Center(
-                        child: Skeleton.ignore(
-                          child: AnimatedSwitcher(
-                            duration: const Duration(milliseconds: 300),
-                            child: switch ((
-                              isPlaying,
-                              isTrackQuerying,
-                              isHovering,
-                              isPendingPlayback,
-                            )) {
-                              (true, true, _, _) ||
-                              (_, _, _, true) =>
-                                const SizedBox(
-                                  width: 26,
-                                  height: 26,
-                                  child: CircularProgressIndicator(),
-                                ),
-                              (true, _, _, _) => Icon(
-                                  SpotubeIcons.pause,
-                                  color: theme.colorScheme.primary,
-                                ),
-                              (_, _, true, _) => const Icon(
-                                  SpotubeIcons.play,
-                                  color: Colors.white,
-                                ),
-                              _ => const SizedBox.shrink(),
-                            },
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+                _TrackTileArtOverlay(
+                  track: track,
+                  isHovering: isHovering,
+                  isPendingPlayback: isPendingPlayback,
+                  isTrackQuerying: isTrackQuerying,
                 ),
               ],
             ),
@@ -342,5 +290,84 @@ class TrackTile extends HookConsumerWidget {
         ),
       );
     });
+  }
+}
+
+/// Scoped widget that watches only activeTrackId for the album art overlay.
+/// Prevents the entire TrackTile from rebuilding when the active track changes.
+class _TrackTileArtOverlay extends ConsumerWidget {
+  final SpotubeTrackObject track;
+  final bool isHovering;
+  final bool isPendingPlayback;
+  final bool isTrackQuerying;
+
+  const _TrackTileArtOverlay({
+    required this.track,
+    required this.isHovering,
+    required this.isPendingPlayback,
+    required this.isTrackQuerying,
+  });
+
+  @override
+  Widget build(BuildContext context, ref) {
+    final theme = Theme.of(context);
+    final isPlaying = ref.watch(
+          audioPlayerProvider.select((s) => s.activeTrack?.id),
+        ) ==
+        track.id;
+
+    return Stack(
+      children: [
+        ClipRRect(
+          borderRadius: theme.borderRadiusMd,
+          child: UniversalImage(
+            path: (track.album.images).smallest(ImagePlaceholder.albumArt),
+            height: 40,
+            width: 40,
+            fit: BoxFit.cover,
+          ),
+        ),
+        Positioned.fill(
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            decoration: BoxDecoration(
+              borderRadius: theme.borderRadiusMd,
+              color:
+                  isHovering ? Colors.black.withAlpha(102) : Colors.transparent,
+            ),
+          ),
+        ),
+        Positioned.fill(
+          child: Center(
+            child: Skeleton.ignore(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                child: switch ((
+                  isPlaying,
+                  isTrackQuerying,
+                  isHovering,
+                  isPendingPlayback,
+                )) {
+                  (true, true, _, _) || (_, _, _, true) => const SizedBox(
+                      width: 26,
+                      height: 26,
+                      child: CircularProgressIndicator(),
+                    ),
+                  (true, _, _, _) => Icon(
+                      SpotubeIcons.pause,
+                      color: theme.colorScheme.primary,
+                    ),
+                  (_, _, true, _) => const Icon(
+                      SpotubeIcons.play,
+                      color: Colors.white,
+                    ),
+                  _ => const SizedBox.shrink(),
+                },
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }

@@ -12,11 +12,13 @@ enum CloseBehavior {
 }
 
 enum YoutubeClientEngine {
+  innerTube("InnerTube"),
   ytDlp("yt-dlp"),
   youtubeExplode("YouTubeExplode"),
   newPipe("NewPipe"),
   invidious("Invidious"),
-  verome("Verome");
+  verome("Verome"),
+  youtubeMusic("YouTube Music");
 
   final String label;
 
@@ -24,6 +26,7 @@ enum YoutubeClientEngine {
 
   bool isAvailableForPlatform() {
     return switch (this) {
+      YoutubeClientEngine.innerTube => InnerTubeEngine.isAvailableForPlatform,
       YoutubeClientEngine.youtubeExplode =>
         YouTubeExplodeEngine.isAvailableForPlatform,
       YoutubeClientEngine.ytDlp => YtDlpEngine.isAvailableForPlatform ||
@@ -31,6 +34,7 @@ enum YoutubeClientEngine {
       YoutubeClientEngine.newPipe => NewPipeEngine.isAvailableForPlatform,
       YoutubeClientEngine.invidious => InvidiousEngine.isAvailableForPlatform,
       YoutubeClientEngine.verome => VeromeEngine.isAvailableForPlatform,
+      YoutubeClientEngine.youtubeMusic => true,
     };
   }
 }
@@ -149,6 +153,8 @@ class PreferencesTable extends Table {
       text().withDefault(const Constant(""))();
   BoolColumn get handleSpotifyLinks =>
       boolean().withDefault(const Constant(true))();
+  BoolColumn get enableFastPlayback =>
+      boolean().withDefault(const Constant(false))();
 
   // Default values as PreferencesTableData
   static PreferencesTableData defaults() {
@@ -191,6 +197,7 @@ class PreferencesTable extends Table {
       lyricsCharacterEdge: LyricsCharacterEdge.none,
       multiSessionRelayUrl: "",
       handleSpotifyLinks: true,
+      enableFastPlayback: false,
     );
   }
 }

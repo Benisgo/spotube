@@ -86,3 +86,12 @@ tm.json
 
 android/build
 android/app/.cxx
+
+# Copilot / AI agent customization files
+.github/skills/
+.github/agents/
+.github/hooks/
+.github/prompts/
+.github/instructions/
+mdFiles/
+/AGENTS.md

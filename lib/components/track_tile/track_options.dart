@@ -213,7 +213,7 @@ class TrackOptions extends HookConsumerWidget {
               onTapItem?.call();
             },
             leading: const Icon(SpotubeIcons.radio),
-            title: Text(context.l10n.start_a_radio),
+            title: const Text('Play Similar'),
           ),
           ButtonTile(
             style: ButtonVariance.menu,

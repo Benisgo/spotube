@@ -80,6 +80,18 @@ class PlayerControls extends HookConsumerWidget {
 
     final glowAnimation = useAnimation(glowController);
 
+    final lastSkipCall = useRef<DateTime?>(null);
+    void debouncedSkip(void Function() fn) {
+      final now = DateTime.now();
+      if (lastSkipCall.value != null &&
+          now.difference(lastSkipCall.value!) <
+              const Duration(milliseconds: 300)) {
+        return;
+      }
+      lastSkipCall.value = now;
+      fn();
+    }
+
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
       onTap: () {
@@ -210,15 +222,17 @@ class PlayerControls extends HookConsumerWidget {
                         enabled: !isFetchingActiveTrack,
                         icon: const Icon(SpotubeIcons.skipBack),
                         onPressed: () {
-                          if (audioPlayer.position.inSeconds > 10) {
-                            audioPlayer.seek(Duration.zero);
-                            return;
-                          }
-                          if (!audioPlayer.canSkipToPrevious) {
-                            showNoPreviousTrackToast();
-                            return;
-                          }
-                          audioPlayer.skipToPrevious();
+                          debouncedSkip(() {
+                            if (audioPlayer.position.inSeconds > 10) {
+                              audioPlayer.seek(Duration.zero);
+                              return;
+                            }
+                            if (!audioPlayer.canSkipToPrevious) {
+                              showNoPreviousTrackToast();
+                              return;
+                            }
+                            audioPlayer.skipToPrevious();
+                          });
                         },
                       ),
                     ),
@@ -280,7 +294,7 @@ class PlayerControls extends HookConsumerWidget {
                         icon: const Icon(SpotubeIcons.skipForward),
                         onPressed: isFetchingActiveTrack
                             ? null
-                            : audioPlayer.skipToNext,
+                            : () => debouncedSkip(audioPlayer.skipToNext),
                       ),
                     ),
                   if (!isListener)

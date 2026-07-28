@@ -21,15 +21,40 @@ class CustomPlayer extends Player {
 
   CustomPlayer({super.configuration})
       : _playerStateStream = StreamController.broadcast() {
-    nativePlayer.setProperty("network-timeout", "120");
-    nativePlayer.setProperty(
-      "demuxer-max-bytes",
-      (4 * 1024 * 1024).toString(),
-    );
-    nativePlayer.setProperty(
-      "demuxer-max-back-bytes",
-      (1 * 1024 * 1024).toString(),
-    );
+    if (kIsAndroid) {
+      nativePlayer.setProperty("network-timeout", "3");
+      nativePlayer.setProperty(
+        "demuxer-max-bytes",
+        (256 * 1024).toString(),
+      );
+      nativePlayer.setProperty(
+        "demuxer-max-back-bytes",
+        (64 * 1024).toString(),
+      );
+      nativePlayer.setProperty("cache-secs", "2");
+      nativePlayer.setProperty("cache-pause-initial", "no");
+    } else if (kIsWindows) {
+      nativePlayer.setProperty("network-timeout", "5");
+      nativePlayer.setProperty(
+        "demuxer-max-bytes",
+        (512 * 1024).toString(),
+      );
+      nativePlayer.setProperty(
+        "demuxer-max-back-bytes",
+        (128 * 1024).toString(),
+      );
+      nativePlayer.setProperty("cache-secs", "5");
+    } else {
+      nativePlayer.setProperty("network-timeout", "120");
+      nativePlayer.setProperty(
+        "demuxer-max-bytes",
+        (4 * 1024 * 1024).toString(),
+      );
+      nativePlayer.setProperty(
+        "demuxer-max-back-bytes",
+        (1 * 1024 * 1024).toString(),
+      );
+    }
 
     _subscriptions = [
       stream.buffering.listen((buffering) {
@@ -181,5 +206,15 @@ class CustomPlayer extends Player {
       'demuxer-max-back-bytes',
       sizeInBytes.toString(),
     );
+  }
+
+  Future<void> primeWindowsPipeline() async {
+    if (!kIsWindows) return;
+    final currentVol = state.volume;
+    if (currentVol <= 0) return;
+    await setVolume(0);
+    await play();
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    await setVolume(currentVol);
   }
 }

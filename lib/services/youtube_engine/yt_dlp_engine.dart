@@ -280,7 +280,8 @@ class YtDlpEngine implements YouTubeEngine {
     return message.contains("sign in to confirm you're not a bot") ||
         message.contains("use --cookies-from-browser") ||
         message.contains("use --cookies") ||
-        message.contains("login_required");
+        message.contains("login_required") ||
+        message.contains("no authentication cookie provided");
   }
 
   bool get _isInAuthCooldown {

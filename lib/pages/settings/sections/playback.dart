@@ -240,6 +240,17 @@ class SettingsPlaybackSection extends HookConsumerWidget {
           ),
         ),
         ListTile(
+          leading: const Icon(SpotubeIcons.magic),
+          title: const Text("Fast Playback (Experimental)"),
+          subtitle: const Text(
+            "Uses InnerTube API for faster extraction. Falls back to configured engines if it fails.",
+          ),
+          trailing: Switch(
+            value: preferences.enableFastPlayback,
+            onChanged: preferencesNotifier.setEnableFastPlayback,
+          ),
+        ),
+        ListTile(
           leading: const Icon(SpotubeIcons.playlistRemove),
           title: Text(context.l10n.blacklist),
           subtitle: Text(context.l10n.blacklist_description),

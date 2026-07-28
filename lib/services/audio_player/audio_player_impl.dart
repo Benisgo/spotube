@@ -100,39 +100,44 @@ class SpotubeAudioPlayer extends AudioPlayerInterface
     bool autoPlay = true,
     int initialIndex = 0,
   }) async {
-    assert(tracks.isNotEmpty);
-    assert(initialIndex <= tracks.length - 1);
+    await _executeSkip(() async {
+      assert(tracks.isNotEmpty);
+      assert(initialIndex <= tracks.length - 1);
 
-    _trace(
-      "openPlaylist tracks=${tracks.length} initialIndex=$initialIndex autoPlay=$autoPlay",
-    );
-    _critical(
-      "openPlaylist tracks=${tracks.length} initialIndex=$initialIndex autoPlay=$autoPlay",
-    );
-    await _stopCrossfade(restoreActiveVolume: false);
+      _trace(
+        "openPlaylist tracks=${tracks.length} initialIndex=$initialIndex autoPlay=$autoPlay",
+      );
+      _critical(
+        "openPlaylist tracks=${tracks.length} initialIndex=$initialIndex autoPlay=$autoPlay",
+      );
+      await _stopCrossfade(restoreActiveVolume: false);
 
-    final safeInitialIndex = initialIndex.clamp(0, tracks.length - 1).toInt();
-    _playlist = mk.Playlist(tracks, index: safeInitialIndex);
-    _currentIndex = safeInitialIndex;
-    _primaryPlayerActive = true;
+      final safeInitialIndex = initialIndex.clamp(0, tracks.length - 1).toInt();
+      _playlist = mk.Playlist(tracks, index: safeInitialIndex);
+      _currentIndex = safeInitialIndex;
+      _primaryPlayerActive = true;
 
-    await _primaryPlayer.setPlaylistMode(_loopMode);
-    await _primaryPlayer.setShuffle(_isShuffled);
-    await _mirrorSecondary((player) async {
-      await player.setPlaylistMode(_loopMode);
-      await player.setShuffle(_isShuffled);
+      await _primaryPlayer.setPlaylistMode(_loopMode);
+      await _primaryPlayer.setShuffle(_isShuffled);
+      await _mirrorSecondary((player) async {
+        await player.setPlaylistMode(_loopMode);
+        await player.setShuffle(_isShuffled);
+      });
+
+      await _openPlayerWithPlaylist(
+        _primaryPlayer,
+        safeInitialIndex,
+        play: autoPlay,
+      );
+      await _primaryPlayer.setVolume(_targetVolume * 100);
+      await _primaryPlayer.reapplyNormalizationIfNeeded();
+      if (kIsWindows && autoPlay) {
+        await _primaryPlayer.primeWindowsPipeline();
+      }
+      await _prepareInactivePlayer();
+      _isPlaying = autoPlay;
+      _emitPlaybackSnapshot(includePlaylist: true);
     });
-
-    await _openPlayerWithPlaylist(
-      _primaryPlayer,
-      safeInitialIndex,
-      play: autoPlay,
-    );
-    await _primaryPlayer.setVolume(_targetVolume * 100);
-    await _primaryPlayer.reapplyNormalizationIfNeeded();
-    await _prepareInactivePlayer();
-    _isPlaying = autoPlay;
-    _emitPlaybackSnapshot(includePlaylist: true);
   }
 
   List<String> get sources {
@@ -140,47 +145,53 @@ class SpotubeAudioPlayer extends AudioPlayerInterface
   }
 
   Future<void> skipToNext() async {
-    _trace("skipToNext");
-    final nextIndex = _nextIndexFrom(_currentIndex);
-    await _stopCrossfade();
-    try {
-      await _withPlayerTimeout(_activePlayer.next(), 'active.next');
-      await _activePlayer.reapplyNormalizationIfNeeded();
-    } catch (_) {
-      if (nextIndex != null) {
-        await _forceActivateIndex(nextIndex);
-        return;
+    await _executeSkip(() async {
+      _trace("skipToNext");
+      final nextIndex = _nextIndexFrom(_currentIndex);
+      await _stopCrossfade();
+      try {
+        await _withPlayerTimeout(_activePlayer.next(), 'active.next');
+        await _activePlayer.reapplyNormalizationIfNeeded();
+      } catch (_) {
+        if (nextIndex != null) {
+          await _forceActivateIndex(nextIndex);
+          return;
+        }
+        rethrow;
       }
-      rethrow;
-    }
+    });
   }
 
   Future<void> skipToPrevious() async {
-    _trace("skipToPrevious");
-    final previousIndex = _previousIndexFrom(_currentIndex);
-    await _stopCrossfade();
-    try {
-      await _withPlayerTimeout(_activePlayer.previous(), 'active.previous');
-      await _activePlayer.reapplyNormalizationIfNeeded();
-    } catch (_) {
-      if (previousIndex != null) {
-        await _forceActivateIndex(previousIndex);
-        return;
+    await _executeSkip(() async {
+      _trace("skipToPrevious");
+      final previousIndex = _previousIndexFrom(_currentIndex);
+      await _stopCrossfade();
+      try {
+        await _withPlayerTimeout(_activePlayer.previous(), 'active.previous');
+        await _activePlayer.reapplyNormalizationIfNeeded();
+      } catch (_) {
+        if (previousIndex != null) {
+          await _forceActivateIndex(previousIndex);
+          return;
+        }
+        rethrow;
       }
-      rethrow;
-    }
+    });
   }
 
   Future<void> jumpTo(int index) async {
-    _trace("jumpTo index=$index");
-    await _stopCrossfade();
-    try {
-      await _withPlayerTimeout(
-          _activePlayer.jump(index), 'active.jump($index)');
-      await _activePlayer.reapplyNormalizationIfNeeded();
-    } catch (_) {
-      await _forceActivateIndex(index);
-    }
+    await _executeSkip(() async {
+      _trace("jumpTo index=$index");
+      await _stopCrossfade();
+      try {
+        await _withPlayerTimeout(
+            _activePlayer.jump(index), 'active.jump($index)');
+        await _activePlayer.reapplyNormalizationIfNeeded();
+      } catch (_) {
+        await _forceActivateIndex(index);
+      }
+    });
   }
 
   Future<void> addTrack(mk.Media media) async {
@@ -205,23 +216,25 @@ class SpotubeAudioPlayer extends AudioPlayerInterface
   }
 
   Future<void> removeTrack(int index) async {
-    _trace("removeTrack index=$index");
-    await _stopCrossfade();
-    await _primaryPlayer.remove(index);
-    await _mirrorSecondary((player) => player.remove(index));
+    await _executeSkip(() async {
+      _trace("removeTrack index=$index");
+      await _stopCrossfade();
+      await _primaryPlayer.remove(index);
+      await _mirrorSecondary((player) => player.remove(index));
 
-    if (_primaryPlayer.state.playlist.medias.isEmpty) {
-      _playlist = const mk.Playlist([]);
-      _currentIndex = -1;
-      _emitPlaybackSnapshot(includePlaylist: true);
-      return;
-    }
+      if (_primaryPlayer.state.playlist.medias.isEmpty) {
+        _playlist = const mk.Playlist([]);
+        _currentIndex = -1;
+        _emitPlaybackSnapshot(includePlaylist: true);
+        return;
+      }
 
-    _currentIndex =
-        min(_currentIndex, _primaryPlayer.state.playlist.medias.length - 1);
-    _syncPlaylistFromActive(_activePlayer.state.playlist);
-    _emitIndexSnapshot();
-    await _prepareInactivePlayer();
+      _currentIndex =
+          min(_currentIndex, _primaryPlayer.state.playlist.medias.length - 1);
+      _syncPlaylistFromActive(_activePlayer.state.playlist);
+      _emitIndexSnapshot();
+      await _prepareInactivePlayer();
+    });
   }
 
   Future<void> moveTrack(int from, int to) async {

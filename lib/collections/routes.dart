@@ -15,6 +15,13 @@ class AppRouter extends RootStackRouter {
   AppRouter(this.ref) : super(navigatorKey: rootNavigatorKey);
 
   @override
+  RouteType get defaultRouteType => const RouteType.custom(
+        transitionsBuilder: TransitionsBuilders.fadeIn,
+        durationInMilliseconds: 150,
+        opaque: true,
+      );
+
+  @override
   List<AutoRoute> get routes => [
         AutoRoute(
           page: RootAppRoute.page,

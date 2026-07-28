@@ -1,4 +1,12 @@
 {
-  "version": "2.0.0",
-  "tasks": []
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Build Windows (debug)",
+			"type": "shell",
+			"command": "fvm flutter build windows --debug 2>&1",
+			"problemMatcher": [],
+			"group": "build"
+		}
+	]
 }

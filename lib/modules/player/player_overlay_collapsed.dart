@@ -21,17 +21,24 @@ class PlayerOverlayCollapsedSection extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, ref) {
-    final playlist = ref.watch(audioPlayerProvider);
-    final canShow = playlist.activeTrack != null;
+    final activeTrack = ref.watch(
+      audioPlayerProvider.select((s) => s.activeTrack),
+    );
+    final canShow = activeTrack != null;
 
     final isFetchingActiveTrack = ref.watch(queryingTrackInfoProvider);
     final playing =
         useStream(audioPlayer.playingStream).data ?? audioPlayer.isPlaying;
 
-    final multiSession = ref.watch(multiSessionProvider);
-    final isListener = multiSession.connected &&
-        !multiSession.can(MultiSessionPermission.controlPlayback);
-    final displayPlaying = playing && !multiSession.locallyMuted;
+    final isListener = ref.watch(
+      multiSessionProvider.select(
+        (s) => s.connected && !s.can(MultiSessionPermission.controlPlayback),
+      ),
+    );
+    final displayPlaying = playing &&
+        !ref.watch(
+          multiSessionProvider.select((s) => s.locallyMuted),
+        );
 
     final theme = Theme.of(context);
 
@@ -51,6 +58,18 @@ class PlayerOverlayCollapsedSection extends HookConsumerWidget {
     }
 
     final shouldShow = useState(true);
+
+    final lastSkipCall = useRef<DateTime?>(null);
+    void debouncedSkip(void Function() fn) {
+      final now = DateTime.now();
+      if (lastSkipCall.value != null &&
+          now.difference(lastSkipCall.value!) <
+              const Duration(milliseconds: 300)) {
+        return;
+      }
+      lastSkipCall.value = now;
+      fn();
+    }
 
     ref.listen(navigationPanelHeight, (_, height) {
       shouldShow.value = height.ceil() == 75;
@@ -88,7 +107,7 @@ class PlayerOverlayCollapsedSection extends HookConsumerWidget {
                                 width: double.infinity,
                                 color: Colors.transparent,
                                 child: PlayerTrackDetails(
-                                  track: playlist.activeTrack,
+                                  track: activeTrack,
                                   color: theme.colorScheme.foreground,
                                 ),
                               ),
@@ -101,18 +120,19 @@ class PlayerOverlayCollapsedSection extends HookConsumerWidget {
                                   icon: const Icon(SpotubeIcons.skipBack),
                                   onPressed: isFetchingActiveTrack
                                       ? null
-                                      : () {
-                                          if (audioPlayer.position.inSeconds >
-                                              10) {
-                                            audioPlayer.seek(Duration.zero);
-                                            return;
-                                          }
-                                          if (!audioPlayer.canSkipToPrevious) {
-                                            showNoPreviousTrackToast();
-                                            return;
-                                          }
-                                          audioPlayer.skipToPrevious();
-                                        },
+                                      : () => debouncedSkip(() {
+                                            if (audioPlayer.position.inSeconds >
+                                                10) {
+                                              audioPlayer.seek(Duration.zero);
+                                              return;
+                                            }
+                                            if (!audioPlayer
+                                                .canSkipToPrevious) {
+                                              showNoPreviousTrackToast();
+                                              return;
+                                            }
+                                            audioPlayer.skipToPrevious();
+                                          }),
                                 ),
                               Consumer(
                                 builder: (context, ref, _) {
@@ -140,7 +160,8 @@ class PlayerOverlayCollapsedSection extends HookConsumerWidget {
                                   icon: const Icon(SpotubeIcons.skipForward),
                                   onPressed: isFetchingActiveTrack
                                       ? null
-                                      : audioPlayer.skipToNext,
+                                      : () =>
+                                          debouncedSkip(audioPlayer.skipToNext),
                                 ),
                               const Gap(5),
                             ],

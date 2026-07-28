@@ -9,6 +9,7 @@ import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/services/logger/logger.dart';
 import 'package:spotube/services/audio_player/custom_player.dart';
 import 'package:spotube/services/audio_player/playback_state.dart';
+import 'package:spotube/services/youtube_engine/android_yt_dlp_engine.dart';
 import 'package:spotube/utils/platform.dart';
 
 part 'audio_players_streams_mixin.dart';
@@ -16,13 +17,47 @@ part 'audio_player_impl.dart';
 
 class SpotubeMedia extends mk.Media {
   static int serverPort = 0;
+  static const _directUrlExtrasKey = '_spotubeDirectUrl';
+  static const _httpHeadersExtrasKey = '_spotubeHttpHeaders';
 
   static String get _host =>
       kIsWindows ? "localhost" : InternetAddress.loopbackIPv4.address;
 
+  static Map<String, String>? headersForDirectUrl(String? directUrl) {
+    if (directUrl == null || directUrl.isEmpty) return null;
+
+    try {
+      final ytDlpHeaders = AndroidYtDlpEngine.headersForUrl(directUrl);
+      if (ytDlpHeaders != null && ytDlpHeaders.isNotEmpty) {
+        return ytDlpHeaders;
+      }
+    } catch (_) {}
+
+    final uri = Uri.tryParse(directUrl);
+    if (uri == null) return null;
+    final host = uri.host.toLowerCase();
+    if (!host.contains('googlevideo.com') &&
+        !host.contains('youtube.com') &&
+        !host.contains('youtu.be')) {
+      return null;
+    }
+
+    return const {
+      "user-agent":
+          "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.6367.83 Mobile Safari/537.36",
+      "accept": "*/*",
+      "accept-language": "en-US,en;q=0.5",
+      "origin": "https://www.youtube.com",
+      "referer": "https://www.youtube.com/",
+    };
+  }
+
   final SpotubeTrackObject track;
-  SpotubeMedia(this.track, {String? directUrl})
-      : assert(
+  SpotubeMedia(
+    this.track, {
+    String? directUrl,
+    Map<String, String>? httpHeaders,
+  })  : assert(
           track is SpotubeLocalTrackObject || track is SpotubeFullTrackObject,
           "Track must be a either a local track or a full track object with ISRC",
         ),
@@ -30,12 +65,29 @@ class SpotubeMedia extends mk.Media {
           track is SpotubeLocalTrackObject
               ? track.path
               : directUrl ?? "http://$_host:$serverPort/stream/${track.id}",
-          extras: track.toJson(),
+          extras: {
+            ...track.toJson(),
+            if (directUrl != null && directUrl.isNotEmpty)
+              _directUrlExtrasKey: directUrl,
+            if (httpHeaders != null && httpHeaders.isNotEmpty)
+              _httpHeadersExtrasKey: httpHeaders,
+          },
+          httpHeaders: httpHeaders,
         );
 
   factory SpotubeMedia.media(Media media) {
     assert(media.extras != null, "[Media] must have extra metadata set");
-    return SpotubeMedia(SpotubeTrackObject.fromJson(media.extras!));
+    final extras = media.extras!;
+    final rawHeaders = extras[_httpHeadersExtrasKey];
+    return SpotubeMedia(
+      SpotubeTrackObject.fromJson(extras),
+      directUrl: extras[_directUrlExtrasKey] as String?,
+      httpHeaders: rawHeaders is Map
+          ? rawHeaders.map(
+              (key, value) => MapEntry(key.toString(), value.toString()),
+            )
+          : null,
+    );
   }
 }
 
@@ -80,7 +132,11 @@ abstract class AudioPlayerInterface {
   bool _crossfadePreloadEnabled = false;
   bool _resumeAfterCompletedAdvancePending = false;
   bool _suppressCompletedAdvanceRecovery = false;
-  int? _completedAdvanceOriginIndex;
+  bool _skipInProgress = false;
+  bool _crossfadeHandoffPending = false;
+  bool _isStoppingCrossfade = false;
+  int _consecutiveFailedTracks = 0;
+  static const int _maxConsecutiveFailures = 3;
   Timer? _completedAdvanceTimer;
   Timer? _crossfadeTimer;
   Timer? _crossfadeHandoffTimer;
@@ -95,6 +151,20 @@ abstract class AudioPlayerInterface {
     if (_lastEmittedPlaylistSignature == signature) return;
     _lastEmittedPlaylistSignature = signature;
     _playlistStreamController.add(playlist);
+  }
+
+  Future<void> _executeSkip(
+    Future<void> Function() skipFn,
+  ) async {
+    if (_skipInProgress) return;
+    _skipInProgress = true;
+    setSuppressCompletedAdvanceRecovery(true);
+    try {
+      await skipFn();
+    } finally {
+      _skipInProgress = false;
+      setSuppressCompletedAdvanceRecovery(false);
+    }
   }
 
   void _trace(String message) {}
@@ -252,10 +322,11 @@ abstract class AudioPlayerInterface {
         if (_isActivePlayer(isPrimary)) {
           _isPlaying = event;
           if (event) {
+            _consecutiveFailedTracks = 0;
             _resumeAfterCompletedAdvancePending = false;
-            _completedAdvanceOriginIndex = null;
             _completedAdvanceTimer?.cancel();
             _completedAdvanceTimer = null;
+            _suppressCompletedAdvanceRecovery = false;
           }
           _playingStreamController.add(event);
         }
@@ -294,12 +365,43 @@ abstract class AudioPlayerInterface {
       }),
       player.stream.completed.listen((event) {
         if (_isActivePlayer(isPrimary) && event && !_isCrossfading) {
-          _completedAdvanceOriginIndex = _currentIndex;
+          // Detect consecutive failed tracks. When MPV auto-advances
+          // through expired URLs, each transition fires completed.
+          // After _maxConsecutiveFailures, stop the player to prevent
+          // burning through the entire playlist.
+          final playedBriefly =
+              _activePlayer.state.position.inMilliseconds < 2000 ||
+                  _activePlayer.state.duration.inMilliseconds == 0;
+          if (playedBriefly) {
+            _consecutiveFailedTracks++;
+          } else {
+            _consecutiveFailedTracks = 0;
+          }
+
+          if (_consecutiveFailedTracks >= _maxConsecutiveFailures) {
+            _critical(
+              'stop cascade: $_consecutiveFailedTracks consecutive failures',
+            );
+            _suppressCompletedAdvanceRecovery = true;
+            unawaited(_activePlayer.stop());
+            _consecutiveFailedTracks = 0;
+            _resumeAfterCompletedAdvancePending = false;
+            _completedStreamController.add(null);
+            return;
+          }
+
+          final alreadyPending = _resumeAfterCompletedAdvancePending;
           _resumeAfterCompletedAdvancePending =
               !_suppressCompletedAdvanceRecovery &&
                   _nextIndexFrom(_currentIndex) != null;
-          if (!_suppressCompletedAdvanceRecovery) {
+          if (!_suppressCompletedAdvanceRecovery && !alreadyPending) {
             _scheduleCompletedAdvanceRecovery();
+          } else if (alreadyPending) {
+            // A recovery is already in progress. Suppress any further
+            // recovery scheduling until playback resumes, to prevent
+            // async completed events from jump() during recovery from
+            // creating an infinite loop.
+            _suppressCompletedAdvanceRecovery = true;
           }
           _completedStreamController.add(null);
         }
@@ -494,38 +596,45 @@ abstract class AudioPlayerInterface {
     bool restoreActiveVolume = true,
     bool stopInactivePlayer = true,
   }) async {
-    _crossfadeTimer?.cancel();
-    _crossfadeTimer = null;
-    _crossfadeHandoffTimer?.cancel();
-    _crossfadeHandoffTimer = null;
-    _completedAdvanceTimer?.cancel();
-    _completedAdvanceTimer = null;
+    if (_isStoppingCrossfade) return;
+    _isStoppingCrossfade = true;
+    _crossfadeHandoffPending = false;
+    try {
+      _crossfadeTimer?.cancel();
+      _crossfadeTimer = null;
+      _crossfadeHandoffTimer?.cancel();
+      _crossfadeHandoffTimer = null;
+      _completedAdvanceTimer?.cancel();
+      _completedAdvanceTimer = null;
 
-    if (_secondaryPlayer != null &&
-        stopInactivePlayer &&
-        _inactivePlayer.state.playing) {
-      await _bestEffortPlayerCommand(
-        _inactivePlayer.pause(),
-        'inactive.pause.stopCrossfade',
-      );
-      await _bestEffortPlayerCommand(
-        _inactivePlayer.seek(Duration.zero),
-        'inactive.seek.stopCrossfade',
-      );
-      await _bestEffortPlayerCommand(
-        _inactivePlayer.setVolume(0),
-        'inactive.setVolume.stopCrossfade',
-      );
+      if (_secondaryPlayer != null &&
+          stopInactivePlayer &&
+          _inactivePlayer.state.playing) {
+        await _bestEffortPlayerCommand(
+          _inactivePlayer.pause(),
+          'inactive.pause.stopCrossfade',
+        );
+        await _bestEffortPlayerCommand(
+          _inactivePlayer.seek(Duration.zero),
+          'inactive.seek.stopCrossfade',
+        );
+        await _bestEffortPlayerCommand(
+          _inactivePlayer.setVolume(0),
+          'inactive.setVolume.stopCrossfade',
+        );
+      }
+
+      if (restoreActiveVolume && hasSource) {
+        await _bestEffortPlayerCommand(
+          _activePlayer.setVolume(_targetVolume * 100),
+          'active.setVolume.restore',
+        );
+      }
+
+      _isCrossfading = false;
+    } finally {
+      _isStoppingCrossfade = false;
     }
-
-    if (restoreActiveVolume && hasSource) {
-      await _bestEffortPlayerCommand(
-        _activePlayer.setVolume(_targetVolume * 100),
-        'active.setVolume.restore',
-      );
-    }
-
-    _isCrossfading = false;
   }
 
   Future<void> _resumeAfterCompletedAdvance() async {
@@ -556,33 +665,27 @@ abstract class AudioPlayerInterface {
     if (!_resumeAfterCompletedAdvancePending) return;
     if (_activePlayer.state.playing) {
       _resumeAfterCompletedAdvancePending = false;
-      _completedAdvanceOriginIndex = null;
       return;
     }
 
-    final originIndex = _completedAdvanceOriginIndex;
-    if (originIndex != null && _currentIndex == originIndex) {
-      final nextIndex = _nextIndexFrom(originIndex);
-      if (nextIndex != null) {
-        try {
-          await _activePlayer.jump(nextIndex);
-        } catch (_) {}
-        _syncIndexFromActive(nextIndex);
-      }
-    }
-
+    // Only use seek(0) + play() — never jump(). The jump() method causes
+    // MPV to reload media, which fires async completed events that can
+    // re-trigger recovery scheduling even with suppress flags, AND can
+    // block the Windows message pump on expired streaming URLs (freezing
+    // the UI). seek(0) + play() is safe: if MPV already advanced to the
+    // next track but is stalled on buffering, play() resumes it. If the
+    // next track's URL is truly expired, MPV handles the failure cleanly
+    // without blocking.
     await _resumeAfterCompletedAdvance();
-    await Future<void>.delayed(const Duration(milliseconds: 180));
 
-    if (!_activePlayer.state.playing && _currentIndex >= 0) {
-      try {
-        await _activePlayer.jump(_currentIndex);
-      } catch (_) {}
+    // Give MPV a moment to start playback before giving up entirely.
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+
+    if (!_activePlayer.state.playing) {
       await _resumeAfterCompletedAdvance();
     }
 
     _resumeAfterCompletedAdvancePending = false;
-    _completedAdvanceOriginIndex = null;
   }
 
   Future<void> _animateCrossfade(Duration duration) async {
@@ -699,11 +802,17 @@ abstract class AudioPlayerInterface {
 
   bool get isCrossfading => _isCrossfading;
 
+  /// Whether the player is currently cascading through consecutive
+  /// failed tracks (expired URLs). When true, prefetching should be
+  /// skipped to avoid flooding the yt-dlp worker.
+  bool get isTrackCascadeActive =>
+      _consecutiveFailedTracks >= _maxConsecutiveFailures;
+
   void setSuppressCompletedAdvanceRecovery(bool suppress) {
     _suppressCompletedAdvanceRecovery = suppress;
     if (suppress) {
+      _consecutiveFailedTracks = 0;
       _resumeAfterCompletedAdvancePending = false;
-      _completedAdvanceOriginIndex = null;
       _completedAdvanceTimer?.cancel();
       _completedAdvanceTimer = null;
     }
@@ -734,8 +843,10 @@ abstract class AudioPlayerInterface {
     final handoffDelay =
         duration > handoffLead ? duration - handoffLead : Duration.zero;
 
+    _crossfadeHandoffPending = true;
     _crossfadeHandoffTimer?.cancel();
     _crossfadeHandoffTimer = Timer(handoffDelay, () {
+      if (!_crossfadeHandoffPending) return;
       unawaited(
         _switchActivePlayer(
           nextIndex,

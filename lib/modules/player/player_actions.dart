@@ -110,8 +110,7 @@ class PlayerActions extends HookConsumerWidget {
                         constraints: const BoxConstraints(maxWidth: 800),
                         child: Consumer(
                           builder: (context, ref, _) {
-                            final playlist =
-                                ref.watch(audioPlayerProvider);
+                            final playlist = ref.watch(audioPlayerProvider);
                             final playlistNotifier =
                                 ref.read(audioPlayerProvider.notifier);
 
@@ -146,7 +145,7 @@ class PlayerActions extends HookConsumerWidget {
                     builder: (context) {
                       return SurfaceCard(
                         padding: EdgeInsets.zero,
-                        child:                         ConstrainedBox(
+                        child: ConstrainedBox(
                           constraints: const BoxConstraints(
                             maxHeight: 720,
                             maxWidth: 640,

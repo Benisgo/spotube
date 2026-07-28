@@ -15,14 +15,12 @@ import 'package:spotube/services/youtube_engine/yt_dlp_engine.dart';
 import 'package:spotube/services/youtube_engine/android_yt_dlp_engine.dart';
 import 'package:spotube/utils/platform.dart';
 
-class _EngineTestResult {
-  final String engineName;
+class _TestResult {
   final String testName;
   final bool success;
   final Duration elapsed;
   final String? detail;
-  const _EngineTestResult({
-    required this.engineName,
+  const _TestResult({
     required this.testName,
     required this.success,
     required this.elapsed,
@@ -30,60 +28,7 @@ class _EngineTestResult {
   });
 }
 
-class _EngineTester {
-  final String name;
-  final YouTubeEngine Function() factory;
-  final bool Function() isAvailable;
-  const _EngineTester({
-    required this.name,
-    required this.factory,
-    required this.isAvailable,
-  });
-}
-
-List<_EngineTester> _allTesters() => [
-      _EngineTester(
-        name: 'InnerTube',
-        factory: () => InnerTubeEngine(),
-        isAvailable: () => InnerTubeEngine.isAvailableForPlatform,
-      ),
-      _EngineTester(
-        name: 'YouTubeExplode',
-        factory: () => YouTubeExplodeEngine(),
-        isAvailable: () => YouTubeExplodeEngine.isAvailableForPlatform,
-      ),
-      _EngineTester(
-        name: 'Invidious',
-        factory: () => InvidiousEngine(),
-        isAvailable: () => InvidiousEngine.isAvailableForPlatform,
-      ),
-      _EngineTester(
-        name: 'NewPipe',
-        factory: () => NewPipeEngine(),
-        isAvailable: () => NewPipeEngine.isAvailableForPlatform,
-      ),
-      _EngineTester(
-        name: 'Verome',
-        factory: () => VeromeEngine(),
-        isAvailable: () => VeromeEngine.isAvailableForPlatform,
-      ),
-      _EngineTester(
-        name: 'YtDlp',
-        factory: () => YtDlpEngine(),
-        isAvailable: () => YtDlpEngine.isAvailableForPlatform,
-      ),
-      if (kIsAndroid)
-        _EngineTester(
-          name: 'AndroidYtDlp',
-          factory: () => AndroidYtDlpEngine(),
-          isAvailable: () => AndroidYtDlpEngine.isAvailableForPlatform,
-        ),
-      _EngineTester(
-        name: 'YouTube Music',
-        factory: () => YtMusicEngine(),
-        isAvailable: () => YtMusicEngine.isAvailableForPlatform,
-      ),
-    ];
+typedef _EngineFactory = YouTubeEngine Function();
 
 @RoutePage()
 class DebugEngineTestPage extends HookConsumerWidget {
@@ -92,37 +37,52 @@ class DebugEngineTestPage extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, ref) {
     final videoIdController = useTextEditingController(text: 'dQw4w9WgXcQ');
-    final results = useState<List<_EngineTestResult>>(const []);
+    final results = useState<Map<String, List<_TestResult>>>({});
     final running = useState<Set<String>>({});
+
+    // Explicit engine list - add new engines here
+    final engines = <_EngineEntry>[
+      _EngineEntry('InnerTube', () => InnerTubeEngine(),
+          InnerTubeEngine.isAvailableForPlatform),
+      _EngineEntry('YouTubeExplode', () => YouTubeExplodeEngine(),
+          YouTubeExplodeEngine.isAvailableForPlatform),
+      _EngineEntry('Invidious', () => InvidiousEngine(),
+          InvidiousEngine.isAvailableForPlatform),
+      _EngineEntry('NewPipe', () => NewPipeEngine(),
+          NewPipeEngine.isAvailableForPlatform),
+      _EngineEntry('Verome', () => VeromeEngine(),
+          VeromeEngine.isAvailableForPlatform),
+      _EngineEntry('YtDlp', () => YtDlpEngine(),
+          YtDlpEngine.isAvailableForPlatform),
+      if (kIsAndroid)
+        _EngineEntry('AndroidYtDlp', () => AndroidYtDlpEngine(),
+            AndroidYtDlpEngine.isAvailableForPlatform),
+      _EngineEntry('YouTube Music', () => YtMusicEngine(),
+          YtMusicEngine.isAvailableForPlatform),
+    ];
+
+    Future<void> testEngine(_EngineEntry entry) async {
+      final videoId = videoIdController.text.trim();
+      if (videoId.isEmpty) return;
+
+      running.value = {...running.value, entry.name};
+      final list = <_TestResult>[];
+
+      await _runTest(entry.factory, 'getVideo', videoId, list,
+          (e) => e.getVideo(videoId));
+      await _runTest(entry.factory, 'getStreamManifest', videoId, list,
+          (e) => e.getStreamManifest(videoId));
+
+      results.value = {...results.value, entry.name: list};
+      running.value = running.value.difference({entry.name});
+    }
 
     Future<void> testAll() async {
       final videoId = videoIdController.text.trim();
       if (videoId.isEmpty) return;
-      final testers = _allTesters().where((t) => t.isAvailable()).toList();
-      final newResults = <_EngineTestResult>[];
-      results.value = [];
-      for (final tester in testers) {
-        running.value = {...running.value, tester.name};
-        await _runTest(tester, 'getVideo', videoId, newResults,
-            (engine) => engine.getVideo(videoId));
-        await _runTest(tester, 'getStreamManifest', videoId, newResults,
-            (engine) => engine.getStreamManifest(videoId));
-        running.value = running.value.difference({tester.name});
-        results.value = List.of(newResults);
+      for (final entry in engines.where((e) => e.available)) {
+        await testEngine(entry);
       }
-    }
-
-    Future<void> testSingle(_EngineTester tester) async {
-      final videoId = videoIdController.text.trim();
-      if (videoId.isEmpty) return;
-      running.value = {...running.value, tester.name};
-      final newResults = List<_EngineTestResult>.of(results.value);
-      await _runTest(tester, 'getVideo', videoId, newResults,
-          (engine) => engine.getVideo(videoId));
-      await _runTest(tester, 'getStreamManifest', videoId, newResults,
-          (engine) => engine.getStreamManifest(videoId));
-      running.value = running.value.difference({tester.name});
-      results.value = newResults;
     }
 
     return Scaffold(
@@ -148,6 +108,7 @@ class DebugEngineTestPage extends HookConsumerWidget {
                       labelText: 'Video ID or URL',
                       hintText: 'e.g. dQw4w9WgXcQ',
                       border: OutlineInputBorder(),
+                      isDense: true,
                     ),
                   ),
                 ),
@@ -166,7 +127,7 @@ class DebugEngineTestPage extends HookConsumerWidget {
                           text.split('youtu.be/').last.split('?').first;
                     }
                   },
-                  child: const Text('Extract ID'),
+                  child: const Text('Extract'),
                 ),
               ],
             ),
@@ -175,15 +136,12 @@ class DebugEngineTestPage extends HookConsumerWidget {
             child: ListView(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               children: [
-                for (final tester
-                    in _allTesters().where((t) => t.isAvailable()))
+                for (final entry in engines.where((e) => e.available))
                   _EngineCard(
-                    tester: tester,
-                    results: results.value
-                        .where((r) => r.engineName == tester.name)
-                        .toList(),
-                    isRunning: running.value.contains(tester.name),
-                    onTest: () => testSingle(tester),
+                    name: entry.name,
+                    testResults: results.value[entry.name] ?? const [],
+                    isRunning: running.value.contains(entry.name),
+                    onTest: () => testEngine(entry),
                   ),
               ],
             ),
@@ -194,32 +152,30 @@ class DebugEngineTestPage extends HookConsumerWidget {
   }
 
   Future<void> _runTest(
-    _EngineTester tester,
+    _EngineFactory factory,
     String testName,
     String videoId,
-    List<_EngineTestResult> results,
+    List<_TestResult> results,
     Future<Object?> Function(YouTubeEngine engine) testFn,
   ) async {
-    final engine = tester.factory();
+    final engine = factory();
     final stopwatch = Stopwatch()..start();
     try {
       final result = await testFn(engine).timeout(const Duration(seconds: 15));
       stopwatch.stop();
-      results.add(_EngineTestResult(
-        engineName: tester.name,
+      results.add(_TestResult(
         testName: testName,
         success: true,
         elapsed: stopwatch.elapsed,
-        detail: result?.toString().substring(0, 100),
+        detail: result?.toString().substring(0, 150),
       ));
     } catch (e) {
       stopwatch.stop();
-      results.add(_EngineTestResult(
-        engineName: tester.name,
+      results.add(_TestResult(
         testName: testName,
         success: false,
         elapsed: stopwatch.elapsed,
-        detail: e.toString().substring(0, 200),
+        detail: e.toString().substring(0, 300),
       ));
     } finally {
       engine.dispose();
@@ -227,14 +183,22 @@ class DebugEngineTestPage extends HookConsumerWidget {
   }
 }
 
+class _EngineEntry {
+  final String name;
+  final _EngineFactory factory;
+  final bool available;
+  const _EngineEntry(this.name, this.factory, this.available);
+}
+
 class _EngineCard extends StatelessWidget {
-  final _EngineTester tester;
-  final List<_EngineTestResult> results;
+  final String name;
+  final List<_TestResult> testResults;
   final bool isRunning;
   final VoidCallback onTest;
+
   const _EngineCard({
-    required this.tester,
-    required this.results,
+    required this.name,
+    required this.testResults,
     required this.isRunning,
     required this.onTest,
   });
@@ -252,7 +216,7 @@ class _EngineCard extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: Text(tester.name, style: theme.textTheme.titleMedium),
+                  child: Text(name, style: theme.textTheme.titleMedium),
                 ),
                 if (isRunning)
                   const SizedBox(
@@ -268,42 +232,50 @@ class _EngineCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 8),
-            if (results.isEmpty)
+            if (testResults.isEmpty)
               Text(
                 'Not tested yet',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
                 ),
               ),
-            for (final result in results)
+            for (final result in testResults)
               Padding(
                 padding: const EdgeInsets.only(top: 4),
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(
-                      result.success ? Icons.check_circle : Icons.error,
-                      size: 16,
-                      color: result.success ? Colors.green : Colors.red,
+                    Row(
+                      children: [
+                        Icon(
+                          result.success
+                              ? Icons.check_circle
+                              : Icons.error,
+                          size: 16,
+                          color: result.success ? Colors.green : Colors.red,
+                        ),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            '${result.testName} (${result.elapsed.inMilliseconds}ms)${result.success ? " OK" : " FAIL"}',
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 8),
-                    Text(
-                      '${result.testName} (${result.elapsed.inMilliseconds}ms)',
-                      style: theme.textTheme.bodySmall,
-                    ),
-                    if (result.detail != null) ...[
-                      const SizedBox(width: 8),
-                      Expanded(
+                    if (result.detail != null && !result.success)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 24, top: 2),
                         child: Text(
                           result.detail!,
                           style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurface
-                                .withValues(alpha: 0.5),
+                            color: Colors.red.shade300,
+                            fontSize: 11,
                           ),
-                          maxLines: 2,
+                          maxLines: 5,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                    ],
                   ],
                 ),
               ),

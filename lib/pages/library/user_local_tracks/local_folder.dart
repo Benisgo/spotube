@@ -448,25 +448,26 @@ class LocalLibraryPage extends HookConsumerWidget {
                                   itemBuilder: (context, index) {
                                     if (trackSnapshot.isLoading) {
                                       return TrackTile(
-                                        playlist: playlist,
                                         track: FakeData.track,
                                         index: index,
                                       );
                                     }
 
                                     final track = filteredTracks[index];
-                                    return TrackTile(
-                                      index: index,
-                                      playlist: playlist,
-                                      track: track,
-                                      userPlaylist: false,
-                                      onTap: () async {
-                                        await playLocalTracks(
-                                          ref,
-                                          sortedTracks,
-                                          currentTrack: track,
-                                        );
-                                      },
+                                    return RepaintBoundary(
+                                      key: ValueKey(track.id),
+                                      child: TrackTile(
+                                        index: index,
+                                        track: track,
+                                        userPlaylist: false,
+                                        onTap: () async {
+                                          await playLocalTracks(
+                                            ref,
+                                            sortedTracks,
+                                            currentTrack: track,
+                                          );
+                                        },
+                                      ),
                                     );
                                   },
                                 ),
@@ -486,7 +487,6 @@ class LocalLibraryPage extends HookConsumerWidget {
                         itemBuilder: (context, index) => TrackTile(
                           track: FakeData.track,
                           index: index,
-                          playlist: playlist,
                         ),
                       ),
                     ),

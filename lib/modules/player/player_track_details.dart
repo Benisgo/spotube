@@ -27,8 +27,11 @@ class PlayerTrackDetails extends HookConsumerWidget {
   Widget build(BuildContext context, ref) {
     final theme = Theme.of(context);
     final mediaQuery = MediaQuery.of(context);
-    final playback = ref.watch(audioPlayerProvider);
-    final playing = useStream(audioPlayer.playingStream).data ?? audioPlayer.isPlaying;
+    final activeTrack = ref.watch(
+      audioPlayerProvider.select((s) => s.activeTrack),
+    );
+    final playing =
+        useStream(audioPlayer.playingStream).data ?? audioPlayer.isPlaying;
 
     final glowController = useAnimationController(
       duration: const Duration(milliseconds: 2000),
@@ -38,7 +41,8 @@ class PlayerTrackDetails extends HookConsumerWidget {
       if (playing) {
         glowController.repeat(reverse: true);
       } else {
-        glowController.animateTo(0.0, duration: const Duration(milliseconds: 500));
+        glowController.animateTo(0.0,
+            duration: const Duration(milliseconds: 500));
       }
       return null;
     }, [playing]);
@@ -48,7 +52,7 @@ class PlayerTrackDetails extends HookConsumerWidget {
     return Listener(
       onPointerDown: (event) {
         if (event.buttons != kSecondaryMouseButton) return;
-        if (playback.activeTrack == null) return;
+        if (activeTrack == null) return;
         if (_playerDetailsOverlay.value != null) {
           _playerDetailsOverlay.value?.remove();
           _playerDetailsOverlay.value = null;
@@ -56,12 +60,12 @@ class PlayerTrackDetails extends HookConsumerWidget {
         _playerDetailsOverlay.value = TrackOptionsButton.showOptions(
           context,
           event.position,
-          playback.activeTrack!,
+          activeTrack,
         );
       },
       child: Row(
         children: [
-          if (playback.activeTrack != null)
+          if (activeTrack != null)
             Transform.scale(
               scale: 1.0 + (0.05 * glowAnimation),
               child: Container(
@@ -102,14 +106,14 @@ class PlayerTrackDetails extends HookConsumerWidget {
                 children: [
                   const SizedBox(height: 4),
                   Text(
-                    playback.activeTrack?.name ?? "",
+                    activeTrack?.name ?? "",
                     overflow: TextOverflow.ellipsis,
                     style: theme.typography.normal.copyWith(
                       color: color,
                     ),
                   ),
                   Text(
-                    playback.activeTrack?.artists.asString() ?? "",
+                    activeTrack?.artists.asString() ?? "",
                     overflow: TextOverflow.ellipsis,
                     style: theme.typography.small.copyWith(color: color),
                   )
@@ -122,14 +126,14 @@ class PlayerTrackDetails extends HookConsumerWidget {
               child: Column(
                 children: [
                   LinkText(
-                    playback.activeTrack?.name ?? "",
-                    TrackRoute(trackId: playback.activeTrack?.id ?? ""),
+                    activeTrack?.name ?? "",
+                    TrackRoute(trackId: activeTrack?.id ?? ""),
                     push: true,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(fontWeight: FontWeight.bold, color: color),
                   ),
                   ArtistLink(
-                    artists: playback.activeTrack?.artists ?? [],
+                    artists: activeTrack?.artists ?? [],
                     onRouteChange: (route) {
                       context.router.navigateNamed(route);
                     },

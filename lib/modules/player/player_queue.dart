@@ -289,7 +289,6 @@ class PlayerQueue extends HookConsumerWidget {
                             onReorder: onReorder,
                             itemCount: filteredTracks.length,
                             prototypeItem: TrackTile(
-                              playlist: playlist,
                               track: tracks.first,
                               compact: true,
                               isFetchingActiveTrack: isFetchingActiveTrack,
@@ -329,39 +328,40 @@ class PlayerQueue extends HookConsumerWidget {
                                   key: ValueKey('scroll_$i'),
                                   controller: controller,
                                   index: i,
-                                  child: TrackTile(
-                                    playlist: playlist,
-                                    index: i,
-                                    track: track,
-                                    compact: true,
-                                    isFetchingActiveTrack:
-                                        isFetchingActiveTrack,
-                                    selectionMode: selectionMode.value,
-                                    selected: selectedTrackIds.value
-                                        .contains(track.id),
-                                    onChanged: selectionMode.value
-                                        ? (_) => toggleSelection(track.id)
-                                        : null,
-                                    onTap: () async {
-                                      if (selectionMode.value) {
-                                        toggleSelection(track.id);
-                                        return;
-                                      }
-                                      if (playlist.activeTrack?.id ==
-                                          track.id) {
-                                        return;
-                                      }
-                                      await onJump(track);
-                                    },
-                                    onLongPress: () {
-                                      if (!canEditQueue) return;
-                                      if (!selectionMode.value) {
-                                        selectionMode.value = true;
-                                        selectedTrackIds.value = {track.id};
-                                      } else {
-                                        toggleSelection(track.id);
-                                      }
-                                    },
+                                  child: RepaintBoundary(
+                                    child: TrackTile(
+                                      index: i,
+                                      track: track,
+                                      compact: true,
+                                      isFetchingActiveTrack:
+                                          isFetchingActiveTrack,
+                                      selectionMode: selectionMode.value,
+                                      selected: selectedTrackIds.value
+                                          .contains(track.id),
+                                      onChanged: selectionMode.value
+                                          ? (_) => toggleSelection(track.id)
+                                          : null,
+                                      onTap: () async {
+                                        if (selectionMode.value) {
+                                          toggleSelection(track.id);
+                                          return;
+                                        }
+                                        if (playlist.activeTrack?.id ==
+                                            track.id) {
+                                          return;
+                                        }
+                                        await onJump(track);
+                                      },
+                                      onLongPress: () {
+                                        if (!canEditQueue) return;
+                                        if (!selectionMode.value) {
+                                          selectionMode.value = true;
+                                          selectedTrackIds.value = {track.id};
+                                        } else {
+                                          toggleSelection(track.id);
+                                        }
+                                      },
+                                    ),
                                   ),
                                 ),
                               );

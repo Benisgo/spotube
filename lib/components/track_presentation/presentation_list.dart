@@ -16,7 +16,6 @@ import 'package:spotube/components/track_presentation/use_is_user_playlist.dart'
 import 'package:spotube/extensions/context.dart';
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/pages/library/user_local_tracks/user_local_tracks.dart';
-import 'package:spotube/provider/audio_player/audio_player.dart';
 import 'package:spotube/provider/metadata_plugin/metadata_plugin_provider.dart';
 
 const _itemExtent = 64.0;
@@ -36,7 +35,9 @@ class _TrackPlaceholder extends StatelessWidget {
           ClipRRect(
             borderRadius: theme.borderRadiusMd,
             child: Container(
-              width: 44, height: 44, color: theme.colorScheme.muted,
+              width: 44,
+              height: 44,
+              color: theme.colorScheme.muted,
             ),
           ),
           const SizedBox(width: 12),
@@ -46,7 +47,8 @@ class _TrackPlaceholder extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Container(
-                  height: 12, width: 180,
+                  height: 12,
+                  width: 180,
                   decoration: BoxDecoration(
                     color: theme.colorScheme.muted,
                     borderRadius: BorderRadius.circular(6),
@@ -54,7 +56,8 @@ class _TrackPlaceholder extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 Container(
-                  height: 10, width: 120,
+                  height: 10,
+                  width: 120,
                   decoration: BoxDecoration(
                     color: theme.colorScheme.muted,
                     borderRadius: BorderRadius.circular(5),
@@ -64,7 +67,8 @@ class _TrackPlaceholder extends StatelessWidget {
             ),
           ),
           Container(
-            height: 10, width: 32,
+            height: 10,
+            width: 32,
             decoration: BoxDecoration(
               color: theme.colorScheme.muted,
               borderRadius: BorderRadius.circular(5),
@@ -104,11 +108,15 @@ class PresentationListSection extends HookConsumerWidget {
 
       if (collection is SpotubeSimplePlaylistObject) {
         result = await plugin.playlist.tracks(
-          id, offset: offset, limit: limit,
+          id,
+          offset: offset,
+          limit: limit,
         );
       } else {
         result = await plugin.album.tracks(
-          id, offset: offset, limit: limit,
+          id,
+          offset: offset,
+          limit: limit,
         );
       }
 
@@ -135,7 +143,6 @@ class PresentationListSection extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, ref) {
     final options = TrackPresentationOptions.of(context);
-    final playlist = ref.read(audioPlayerProvider);
     final state = ref.watch(presentationStateProvider(options.collection));
     final notifier =
         ref.read(presentationStateProvider(options.collection).notifier);
@@ -246,7 +253,6 @@ class PresentationListSection extends HookConsumerWidget {
                 userPlaylist: isUserPlaylist,
                 playlistId: options.collectionId,
                 index: index,
-                playlist: playlist,
                 track: track,
                 selected: isSelected,
                 onTap: () => onTileTap(track, index),

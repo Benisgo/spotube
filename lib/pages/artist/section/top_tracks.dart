@@ -154,16 +154,18 @@ class ArtistPageTopTracks extends HookConsumerWidget {
           itemCount: topTracks.length,
           itemBuilder: (context, index) {
             final track = topTracks.elementAt(index);
-            return TrackTile(
-              index: index,
-              playlist: playlist,
-              track: track,
-              onTap: () async {
-                playPlaylist(
-                  topTracks.toList(),
-                  currentTrack: track,
-                );
-              },
+            return RepaintBoundary(
+              key: ValueKey(track.id),
+              child: TrackTile(
+                index: index,
+                track: track,
+                onTap: () async {
+                  playPlaylist(
+                    topTracks.toList(),
+                    currentTrack: track,
+                  );
+                },
+              ),
             );
           },
         ),

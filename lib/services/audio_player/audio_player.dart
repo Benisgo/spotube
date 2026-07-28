@@ -135,6 +135,8 @@ abstract class AudioPlayerInterface {
   bool _skipInProgress = false;
   bool _crossfadeHandoffPending = false;
   bool _isStoppingCrossfade = false;
+  int _consecutiveFailedTracks = 0;
+  static const int _maxConsecutiveFailures = 3;
   Timer? _completedAdvanceTimer;
   Timer? _crossfadeTimer;
   Timer? _crossfadeHandoffTimer;
@@ -320,6 +322,7 @@ abstract class AudioPlayerInterface {
         if (_isActivePlayer(isPrimary)) {
           _isPlaying = event;
           if (event) {
+            _consecutiveFailedTracks = 0;
             _resumeAfterCompletedAdvancePending = false;
             _completedAdvanceTimer?.cancel();
             _completedAdvanceTimer = null;
@@ -362,6 +365,31 @@ abstract class AudioPlayerInterface {
       }),
       player.stream.completed.listen((event) {
         if (_isActivePlayer(isPrimary) && event && !_isCrossfading) {
+          // Detect consecutive failed tracks. When MPV auto-advances
+          // through expired URLs, each transition fires completed.
+          // After _maxConsecutiveFailures, stop the player to prevent
+          // burning through the entire playlist.
+          final playedBriefly =
+              _activePlayer.state.position.inMilliseconds < 2000 ||
+                  _activePlayer.state.duration.inMilliseconds == 0;
+          if (playedBriefly) {
+            _consecutiveFailedTracks++;
+          } else {
+            _consecutiveFailedTracks = 0;
+          }
+
+          if (_consecutiveFailedTracks >= _maxConsecutiveFailures) {
+            _critical(
+              'stop cascade: $_consecutiveFailedTracks consecutive failures',
+            );
+            _suppressCompletedAdvanceRecovery = true;
+            unawaited(_activePlayer.stop());
+            _consecutiveFailedTracks = 0;
+            _resumeAfterCompletedAdvancePending = false;
+            _completedStreamController.add(null);
+            return;
+          }
+
           final alreadyPending = _resumeAfterCompletedAdvancePending;
           _resumeAfterCompletedAdvancePending =
               !_suppressCompletedAdvanceRecovery &&
@@ -774,9 +802,16 @@ abstract class AudioPlayerInterface {
 
   bool get isCrossfading => _isCrossfading;
 
+  /// Whether the player is currently cascading through consecutive
+  /// failed tracks (expired URLs). When true, prefetching should be
+  /// skipped to avoid flooding the yt-dlp worker.
+  bool get isTrackCascadeActive =>
+      _consecutiveFailedTracks >= _maxConsecutiveFailures;
+
   void setSuppressCompletedAdvanceRecovery(bool suppress) {
     _suppressCompletedAdvanceRecovery = suppress;
     if (suppress) {
+      _consecutiveFailedTracks = 0;
       _resumeAfterCompletedAdvancePending = false;
       _completedAdvanceTimer?.cancel();
       _completedAdvanceTimer = null;

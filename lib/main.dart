@@ -331,6 +331,9 @@ class Spotube extends HookConsumerWidget {
                     PointerDeviceKind.invertedStylus,
                   }
                 : null,
+            physics: kIsWeb || kIsLinux || kIsWindows || kIsMacOS
+                ? const ClampingScrollPhysics()
+                : const BouncingScrollPhysics(),
           ),
           child: child!,
         );

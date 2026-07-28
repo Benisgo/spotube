@@ -22,7 +22,6 @@ Future<void> Function(SpotubeTrackObject track, int index)
     useTrackTilePlayCallback(
   WidgetRef ref,
 ) {
-  const primeAwaitBudget = Duration(seconds: 7);
   final context = useContext();
   final options = TrackPresentationOptions.of(context);
   final playlist = ref.watch(audioPlayerProvider);
@@ -101,125 +100,106 @@ Future<void> Function(SpotubeTrackObject track, int index)
       final isTrackQueued = playlist.tracks.containsBy(track, (a) => a.id);
       final canJumpInCurrentQueue = hasActiveLocalSource && isTrackQueued;
 
-      try {
-        if (primeFuture != null && canJumpInCurrentQueue) {
-          PlaybackStartTrace.markTrack(
-            track.id,
-            'prime_await.start',
-            data: {'budgetMs': primeAwaitBudget.inMilliseconds},
-          );
-          try {
-            await primeFuture.timeout(primeAwaitBudget);
-            PlaybackStartTrace.markTrack(track.id, 'prime_await.done');
-          } on TimeoutException {
-            PlaybackStartTrace.markTrack(track.id, 'prime_await.timeout');
-          }
-        } else if (primeFuture != null) {
-          PlaybackStartTrace.markTrack(track.id, 'prime_await.skipped');
-        }
+      // Fire-and-forget the prime — it's just cache-warming.
+      // Don't block jumpToTrack/load on it (was previously awaited with
+      // a 7-second timeout, causing the UI to feel unresponsive).
+      if (primeFuture != null) {
+        unawaited(primeFuture.catchError((Object _) {}));
+      }
 
-        // Stale-call guard: if another track tap happened since we started,
-        // this async chain is stale — abort.
-        if (playlistNotifier.trackTapGeneration != tapGeneration) {
-          PlaybackStartTrace.markTrack(
+      // Stale-call guard: if another track tap happened since we started,
+      // this async chain is stale — abort.
+      if (playlistNotifier.trackTapGeneration != tapGeneration) {
+        PlaybackStartTrace.markTrack(
+          track.id,
+          'tap_generation.stale_aborted',
+        );
+        return;
+      }
+
+      if (canJumpInCurrentQueue) {
+        PlaybackStartTrace.markTrack(
+          track.id,
+          'jump_to_existing_queue.start',
+        );
+        await playlistNotifier.jumpToTrack(track);
+        PlaybackStartTrace.markTrack(track.id, 'jump_to_existing_queue.done');
+      } else {
+        final initialTracks = options.tracks;
+        if (initialTracks.isEmpty) {
+          PlaybackStartTrace.failTrack(
             track.id,
-            'tap_generation.stale_aborted',
+            'load.aborted_empty_initial_tracks',
           );
+          playlistNotifier.clearPendingPlaybackTrackId(track.id);
           return;
         }
 
-        if (canJumpInCurrentQueue) {
+        final actualIndex = initialTracks.indexWhere((t) => t.id == track.id);
+        final safeIndex = actualIndex >= 0 ? actualIndex : index;
+
+        // Re-check generation before load (async gap since primeFuture)
+        if (playlistNotifier.trackTapGeneration != tapGeneration) {
           PlaybackStartTrace.markTrack(
             track.id,
-            'jump_to_existing_queue.start',
+            'load_playlist.stale_aborted',
           );
-          await playlistNotifier.jumpToTrack(track);
-          PlaybackStartTrace.markTrack(track.id, 'jump_to_existing_queue.done');
-        } else {
-          final initialTracks = options.tracks;
-          if (initialTracks.isEmpty) {
-            PlaybackStartTrace.failTrack(
-              track.id,
-              'load.aborted_empty_initial_tracks',
-            );
-            playlistNotifier.clearPendingPlaybackTrackId(track.id);
-            return;
-          }
-
-          final actualIndex = initialTracks.indexWhere((t) => t.id == track.id);
-          final safeIndex = actualIndex >= 0 ? actualIndex : index;
-
-          // Re-check generation before load (async gap since primeFuture)
-          if (playlistNotifier.trackTapGeneration != tapGeneration) {
-            PlaybackStartTrace.markTrack(
-              track.id,
-              'load_playlist.stale_aborted',
-            );
-            return;
-          }
-          PlaybackStartTrace.markTrack(
-            track.id,
-            'load_playlist.start',
-            data: {'initialTrackCount': initialTracks.length},
-          );
-          await playlistNotifier.load(
-            initialTracks,
-            initialIndex: safeIndex,
-            autoPlay: true,
-          );
-          PlaybackStartTrace.markTrack(track.id, 'load_playlist.done');
-          playlistNotifier.addCollection(options.collectionId);
-          if (options.collection is SpotubeSimpleAlbumObject) {
-            historyNotifier
-                .addAlbums([options.collection as SpotubeSimpleAlbumObject]);
-          } else {
-            historyNotifier.addPlaylists(
-                [options.collection as SpotubeSimplePlaylistObject]);
-          }
-
-          if (options.pagination.hasNextPage) {
-            unawaited(
-              () async {
-                try {
-                  PlaybackStartTrace.markTrack(
-                    track.id,
-                    'load_remaining_tracks.start',
-                  );
-                  final allTracks = await options.pagination.onFetchAll();
-                  final remainingTracks =
-                      allTracks.skip(initialTracks.length).toList();
-                  if (remainingTracks.isNotEmpty) {
-                    await playlistNotifier.addTracks(remainingTracks);
-                  }
-                  PlaybackStartTrace.markTrack(
-                    track.id,
-                    'load_remaining_tracks.done',
-                    data: {'remainingTrackCount': remainingTracks.length},
-                  );
-                } catch (error, stack) {
-                  PlaybackStartTrace.markTrack(
-                    track.id,
-                    'load_remaining_tracks.failed',
-                    data: {'error': error.toString()},
-                  );
-                  await AppLogger.reportError(
-                    error,
-                    stack,
-                    "Failed to fetch remaining tracks for ${options.collectionId}",
-                  );
-                }
-              }(),
-            );
-          }
+          return;
         }
-      } catch (error) {
-        PlaybackStartTrace.failTrack(
+        PlaybackStartTrace.markTrack(
           track.id,
-          'playback_request.failed',
-          data: {'error': error.toString()},
+          'load_playlist.start',
+          data: {'initialTrackCount': initialTracks.length},
         );
-        playlistNotifier.clearPendingPlaybackTrackId(track.id);
-        rethrow;
+        await playlistNotifier.load(
+          initialTracks,
+          initialIndex: safeIndex,
+          autoPlay: true,
+        );
+        PlaybackStartTrace.markTrack(track.id, 'load_playlist.done');
+        playlistNotifier.addCollection(options.collectionId);
+        if (options.collection is SpotubeSimpleAlbumObject) {
+          historyNotifier
+              .addAlbums([options.collection as SpotubeSimpleAlbumObject]);
+        } else {
+          historyNotifier.addPlaylists(
+              [options.collection as SpotubeSimplePlaylistObject]);
+        }
+
+        if (options.pagination.hasNextPage) {
+          unawaited(
+            () async {
+              try {
+                PlaybackStartTrace.markTrack(
+                  track.id,
+                  'load_remaining_tracks.start',
+                );
+                final allTracks = await options.pagination.onFetchAll();
+                final remainingTracks =
+                    allTracks.skip(initialTracks.length).toList();
+                if (remainingTracks.isNotEmpty) {
+                  await playlistNotifier.addTracks(remainingTracks);
+                }
+                PlaybackStartTrace.markTrack(
+                  track.id,
+                  'load_remaining_tracks.done',
+                  data: {'remainingTrackCount': remainingTracks.length},
+                );
+              } catch (error, stack) {
+                PlaybackStartTrace.markTrack(
+                  track.id,
+                  'load_remaining_tracks.failed',
+                  data: {'error': error.toString()},
+                );
+                await AppLogger.reportError(
+                  error,
+                  stack,
+                  "Failed to fetch remaining tracks for ${options.collectionId}",
+                );
+              }
+            }(),
+          );
+        }
       }
 
       final activeTrackId = ref.read(audioPlayerProvider).activeTrack?.id;

@@ -3,7 +3,6 @@ import 'dart:async';
 
 import 'package:collection/collection.dart';
 import 'package:drift/drift.dart';
-import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:spotube/extensions/list.dart';
@@ -21,7 +20,6 @@ import 'package:spotube/services/audio_player/audio_player.dart';
 import 'package:spotube/services/logger/logger.dart';
 import 'package:spotube/services/logger/playback_start_trace.dart';
 import 'package:spotube/services/youtube_engine/yt_dlp_worker.dart';
-import 'package:spotube/utils/platform.dart';
 
 final pendingPlaybackTrackIdProvider = StateProvider<String?>((ref) => null);
 
@@ -63,6 +61,10 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
     if (state.tracks.isEmpty || YtDlpWorkerClient.shouldDeferBackgroundWork) {
       return;
     }
+    // Skip prefetching when tracks are cascading through expired URLs.
+    // This prevents flooding the yt-dlp worker with unnecessary fetches
+    // while MPV burns through the playlist on failed streams.
+    if (audioPlayer.isTrackCascadeActive) return;
 
     final centerIndex = state.currentIndex < 0 ? 0 : state.currentIndex;
     final indexes = <int>{
@@ -190,9 +192,6 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
   }
 
   Future<void> _syncSavedState() async {
-    if (kDebugMode && kIsWindows) {
-      return;
-    }
 
     final database = ref.read(databaseProvider);
     final preferences = await (database.select(database.preferencesTable)
@@ -702,8 +701,9 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
         targetTrack is SpotubeFullTrackObject) {
       try {
         final notifier = ref.read(sourcedTrackProvider(targetTrack).notifier);
-        final sourced =
-            await ref.read(sourcedTrackProvider(targetTrack).future);
+        final sourced = await ref
+            .read(sourcedTrackProvider(targetTrack).future)
+            .timeout(const Duration(seconds: 15));
         if (sourced.url != null) {
           final refreshed = await notifier.refreshStreamingUrl();
           firstTrackDirectUrl = refreshed.url;

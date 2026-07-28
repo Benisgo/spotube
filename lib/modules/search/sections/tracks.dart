@@ -45,7 +45,6 @@ class SearchTracksSection extends HookConsumerWidget {
             return TrackTile(
               index: i,
               track: track,
-              playlist: playlist,
               onTap: () async {
                 final isRemoteDevice =
                     await showSelectDeviceDialog(context, ref);

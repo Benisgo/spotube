@@ -17,6 +17,10 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   // plugins.
   ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 
+  // Set a consistent AppUserModelID so pinned taskbar shortcuts
+  // don't create duplicate icons when launching from different paths.
+  ::SetCurrentProcessExplicitAppUserModelID(L"com.github.KRTirtho.Spotube");
+
   flutter::DartProject project(L"data");
 
   std::vector<std::string> command_line_arguments = GetCommandLineArguments();

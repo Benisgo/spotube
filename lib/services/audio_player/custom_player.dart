@@ -44,6 +44,9 @@ class CustomPlayer extends Player {
         (128 * 1024).toString(),
       );
       nativePlayer.setProperty("cache-secs", "5");
+      // Disable video output to reduce GPU usage during audio-only playback
+      nativePlayer.setProperty("vo", "null");
+      nativePlayer.setProperty("video", "no");
     } else {
       nativePlayer.setProperty("network-timeout", "120");
       nativePlayer.setProperty(

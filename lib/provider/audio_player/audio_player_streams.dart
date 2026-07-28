@@ -116,6 +116,7 @@ class AudioPlayerStreamListeners {
 
   StreamSubscription subscribeToSkipSponsor() {
     return audioPlayer.positionStream.listen((position) async {
+      if (!audioPlayer.isPlaying) return;
       if (_skipSponsorBusy) return;
       try {
         if (position < const Duration(seconds: 3)) {
@@ -157,6 +158,7 @@ class AudioPlayerStreamListeners {
   StreamSubscription subscribeToScrobbleChanged() {
     String? lastScrobbled;
     return audioPlayer.positionStream.listen((position) async {
+      if (!audioPlayer.isPlaying) return;
       try {
         final uid = audioPlayerState.activeTrack is SpotubeLocalTrackObject
             ? (audioPlayerState.activeTrack as SpotubeLocalTrackObject).path
@@ -207,6 +209,7 @@ class AudioPlayerStreamListeners {
   StreamSubscription subscribeToPosition() {
     String lastTrack = ""; // used to prevent multiple calls to the same track
     return audioPlayer.positionStream.listen((event) async {
+      if (!audioPlayer.isPlaying) return;
       final percentProgress =
           (event.inSeconds / max(audioPlayer.duration.inSeconds, 1)) * 100;
       try {

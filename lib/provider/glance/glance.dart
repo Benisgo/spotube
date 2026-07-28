@@ -153,14 +153,17 @@ final glanceProvider = Provider((ref) {
 
   final subscriptions = [
     audioPlayer.playingStream.listen((playing) async {
+      if (!kIsMobile) return;
       await _saveWidgetData("isPlaying", playing);
       await _updateWidget();
     }),
     audioPlayer.positionStream.listen((position) async {
+      if (!kIsMobile) return;
       await _saveWidgetData("position", position.inSeconds);
       await _updateWidget();
     }),
     audioPlayer.durationStream.listen((duration) async {
+      if (!kIsMobile) return;
       await _saveWidgetData("duration", duration.inSeconds);
       await _updateWidget();
     }),

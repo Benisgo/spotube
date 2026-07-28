@@ -25,12 +25,12 @@ final closeNotification = !kIsDesktop
 
 void useCloseBehavior(WidgetRef ref) {
   Future<void> closeApp() async {
-    try {
-      await ref
-          .read(multiSessionProvider.notifier)
-          .shutdownForAppClose()
-          .timeout(const Duration(seconds: 2), onTimeout: () {});
-    } catch (_) {}
+    // Fire-and-forget multi-session cleanup (don't block close on it)
+    unawaited(ref
+        .read(multiSessionProvider.notifier)
+        .shutdownForAppClose()
+        .timeout(const Duration(seconds: 1), onTimeout: () {})
+        .catchError((_) {}));
 
     if (kIsDesktop) {
       await windowManager.setPreventClose(false);

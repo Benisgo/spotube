@@ -144,8 +144,8 @@ class _ContentPadding extends ConsumerWidget {
     return MediaQuery(
       data: MediaQuery.of(context).copyWith(
         padding: MediaQuery.paddingOf(context).copyWith(
-          bottom: 63.0 * scaling +
-              (panelHeight > 0 ? panelHeight * scaling : 0),
+          bottom:
+              63.0 * scaling + (panelHeight > 0 ? panelHeight * scaling : 0),
         ),
       ),
       child: child,

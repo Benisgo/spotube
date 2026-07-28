@@ -192,7 +192,6 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
   }
 
   Future<void> _syncSavedState() async {
-
     final database = ref.read(databaseProvider);
     final preferences = await (database.select(database.preferencesTable)
           ..where((tbl) => tbl.id.equals(0)))

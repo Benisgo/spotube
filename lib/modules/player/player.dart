@@ -181,8 +181,8 @@ class PlayerView extends HookConsumerWidget {
                           showDialog(
                             context: context,
                             builder: (context) => TrackDetailsDialog(
-                              track: currentActiveTrack
-                                  as SpotubeFullTrackObject,
+                              track:
+                                  currentActiveTrack as SpotubeFullTrackObject,
                             ),
                           );
                         }
@@ -225,8 +225,7 @@ class PlayerView extends HookConsumerWidget {
                       child: IconButton.ghost(
                         icon: const Icon(SpotubeIcons.music),
                         onPressed: () {
-                          context.pushRoute(
-                              const PlayerLyricsRoute());
+                          context.pushRoute(const PlayerLyricsRoute());
                         },
                       ),
                     ),
@@ -254,8 +253,7 @@ class PlayerView extends HookConsumerWidget {
                                       ),
                                       if (isLocalTrack)
                                         Text(
-                                          currentActiveTrack.artists
-                                              .asString(),
+                                          currentActiveTrack.artists.asString(),
                                           style: theme.typography.normal
                                               .copyWith(
                                                   fontWeight: FontWeight.bold),
@@ -263,29 +261,25 @@ class PlayerView extends HookConsumerWidget {
                                       else
                                         ArtistLink(
                                           artists:
-                                              currentActiveTrack?.artists ??
-                                                  [],
+                                              currentActiveTrack?.artists ?? [],
                                           textStyle: theme.typography.normal
                                               .copyWith(
                                                   fontWeight: FontWeight.bold),
                                           onRouteChange: (route) {
                                             panelController.close();
-                                            context.router
-                                                .navigateNamed(route);
+                                            context.router.navigateNamed(route);
                                           },
                                           onOverflowArtistClick: () =>
                                               context.navigateTo(
                                             TrackRoute(
-                                              trackId:
-                                                  currentActiveTrack!.id,
+                                              trackId: currentActiveTrack!.id,
                                             ),
                                           ),
                                         ),
                                     ],
                                   ),
                                 ),
-                                if (currentActiveTrack != null &&
-                                    !isLocalTrack)
+                                if (currentActiveTrack != null && !isLocalTrack)
                                   Padding(
                                     padding: const EdgeInsets.only(left: 8),
                                     child: TrackHeartButton(
@@ -301,8 +295,7 @@ class PlayerView extends HookConsumerWidget {
                             ),
                             const SizedBox(height: 10),
                             const PlayerActions(
-                              mainAxisAlignment:
-                                  MainAxisAlignment.spaceEvenly,
+                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                               showQueue: true,
                               showHeart: false,
                             ),
@@ -329,14 +322,13 @@ class PlayerView extends HookConsumerWidget {
                         ),
                         const SizedBox(height: 40),
                         Container(
-                          padding:
-                              const EdgeInsets.symmetric(horizontal: 16),
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               AutoSizeText(
-                                currentActiveTrack?.name
-                                        ?? context.l10n.not_playing,
+                                currentActiveTrack?.name ??
+                                    context.l10n.not_playing,
                                 style: const TextStyle(fontSize: 22),
                                 maxFontSize: 22,
                                 maxLines: 1,
@@ -345,16 +337,13 @@ class PlayerView extends HookConsumerWidget {
                                 Text(
                                   currentActiveTrack.artists.asString(),
                                   style: theme.typography.normal
-                                      .copyWith(
-                                          fontWeight: FontWeight.bold),
+                                      .copyWith(fontWeight: FontWeight.bold),
                                 )
                               else
                                 ArtistLink(
-                                  artists:
-                                      currentActiveTrack?.artists ?? [],
+                                  artists: currentActiveTrack?.artists ?? [],
                                   textStyle: theme.typography.normal
-                                      .copyWith(
-                                          fontWeight: FontWeight.bold),
+                                      .copyWith(fontWeight: FontWeight.bold),
                                   onRouteChange: (route) {
                                     panelController.close();
                                     context.router.navigateNamed(route);
@@ -373,14 +362,12 @@ class PlayerView extends HookConsumerWidget {
                         const PlayerControls(),
                         const SizedBox(height: 20),
                         const PlayerActions(
-                          mainAxisAlignment:
-                              MainAxisAlignment.spaceEvenly,
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                           showQueue: true,
                         ),
                         const SizedBox(height: 20),
                         Padding(
-                          padding:
-                              const EdgeInsets.symmetric(horizontal: 16),
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
                           child: RepaintBoundary(
                             child: Consumer(builder: (context, ref, _) {
                               final volume = ref.watch(volumeProvider);
@@ -408,8 +395,7 @@ class PlayerView extends HookConsumerWidget {
                                   fontWeight: FontWeight.w500);
                             },
                           ),
-                          leading: const Icon(
-                              SpotubeIcons.lightningOutlined),
+                          leading: const Icon(SpotubeIcons.lightningOutlined),
                           child: Text(qualityLabel),
                         ),
                       ],
@@ -466,6 +452,7 @@ class _AlbumArtSwipeArea extends HookWidget {
   Widget build(BuildContext context) {
     final dragOffset = useState(0.0);
     final isDragging = useState(false);
+    final swipeGuard = useRef(false);
 
     return GestureDetector(
       onHorizontalDragStart: (_) {
@@ -476,11 +463,20 @@ class _AlbumArtSwipeArea extends HookWidget {
             (dragOffset.value + details.delta.dx).clamp(-200.0, 200.0);
       },
       onHorizontalDragEnd: (details) {
+        if (swipeGuard.value) return;
         const threshold = 80.0;
         if (dragOffset.value < -threshold) {
+          swipeGuard.value = true;
           onSwipeLeft();
+          Future.delayed(const Duration(milliseconds: 300), () {
+            swipeGuard.value = false;
+          });
         } else if (dragOffset.value > threshold) {
+          swipeGuard.value = true;
           onSwipeRight();
+          Future.delayed(const Duration(milliseconds: 300), () {
+            swipeGuard.value = false;
+          });
         }
         dragOffset.value = 0.0;
         isDragging.value = false;
@@ -510,7 +506,8 @@ class _AlbumArtSwipeArea extends HookWidget {
                   Transform.translate(
                     offset: Offset(280 + dragOffset.value, 0),
                     child: Opacity(
-                      opacity: (((-dragOffset.value) - 20) / 200).clamp(0.0, 1.0),
+                      opacity:
+                          (((-dragOffset.value) - 20) / 200).clamp(0.0, 1.0),
                       child: _buildAlbumArt(nextAlbumArt!),
                     ),
                   ),

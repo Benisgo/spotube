@@ -16,6 +16,7 @@ import 'package:spotube/provider/discord_provider.dart';
 import 'package:spotube/provider/metadata_plugin/metadata_plugin_provider.dart';
 import 'package:spotube/provider/server/server.dart';
 import 'package:spotube/provider/server/sourced_track_provider.dart';
+import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
 import 'package:spotube/services/audio_player/audio_player.dart';
 import 'package:spotube/services/logger/logger.dart';
 import 'package:spotube/services/logger/playback_start_trace.dart';
@@ -23,6 +24,12 @@ import 'package:spotube/services/youtube_engine/yt_dlp_worker.dart';
 import 'package:spotube/utils/platform.dart';
 
 final pendingPlaybackTrackIdProvider = StateProvider<String?>((ref) => null);
+
+/// Monotonically increasing counter for track tap operations.
+/// Captured at the start of a tap callback and checked before performing
+/// the actual playback command. If the counter changed, another tap
+/// happened in the meantime and this call is stale — abort.
+int _trackTapGeneration = 0;
 
 class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
   BlackListNotifier get _blacklist => ref.read(blacklistProvider.notifier);
@@ -70,14 +77,14 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
         unawaited(
           YtDlpExecutionContext.runBackground(() async {
             try {
-              final isImmediateNext = index == centerIndex || index == centerIndex + 1;
+              final isImmediateNext =
+                  index == centerIndex || index == centerIndex + 1;
               if (!isImmediateNext && !await _hasCachedSourceMatch(track)) {
                 return;
               }
               final sourcedTrack =
                   await ref.read(sourcedTrackProvider(track).future);
-              if (isImmediateNext &&
-                  !sourcedTrack.hasFreshValidatedStream) {
+              if (isImmediateNext && !sourcedTrack.hasFreshValidatedStream) {
                 await ref
                     .read(sourcedTrackProvider(track).notifier)
                     .refreshStreamingUrl()
@@ -127,6 +134,15 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
     }
   }
 
+  /// Returns the current track-tap generation and advances the counter.
+  /// Each tap on a track increments this. Callers should capture the
+  /// returned value at the start of their async operation and compare
+  /// against [trackTapGeneration] before performing the playback command.
+  int generateTrackTap() => ++_trackTapGeneration;
+
+  /// The current track-tap generation counter.
+  int get trackTapGeneration => _trackTapGeneration;
+
   Future<void> primeTrackPlayback(
     SpotubeTrackObject track, {
     bool refreshStream = true,
@@ -140,7 +156,9 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
         PlaybackStartTrace.markTrack(
           track.id,
           'prime_track.sourced_ready',
-          data: {'hasFreshValidatedStream': sourcedTrack.hasFreshValidatedStream},
+          data: {
+            'hasFreshValidatedStream': sourcedTrack.hasFreshValidatedStream
+          },
         );
         if (refreshStream && !sourcedTrack.hasFreshValidatedStream) {
           PlaybackStartTrace.markTrack(
@@ -302,6 +320,7 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
         }
       }),
       audioPlayer.playlistStream.listen((playlist) async {
+        final streamSeq = _playlistOperationId;
         try {
           final signature =
               '${playlist.medias.length}:${playlist.index}:${playlist.medias.map((m) => m.uri).join("|")}';
@@ -316,10 +335,12 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
               tracks: tracks,
               currentIndex: playlist.index,
             );
+            if (_playlistOperationId != streamSeq) return;
           } else {
             state = state.copyWith(
               currentIndex: playlist.index,
             );
+            if (_playlistOperationId != streamSeq) return;
           }
           if (state.activeTrack != null) {
             PlaybackStartTrace.markTrack(
@@ -332,12 +353,14 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
             );
           }
           final pendingTrackId = ref.read(pendingPlaybackTrackIdProvider);
-          if (pendingTrackId != null && state.activeTrack?.id == pendingTrackId) {
+          if (pendingTrackId != null &&
+              state.activeTrack?.id == pendingTrackId) {
             clearPendingPlaybackTrackId(pendingTrackId);
           }
           _prefetchAdjacentSources();
 
           if (!_isBatchAdding) {
+            if (_playlistOperationId != streamSeq) return;
             await _updatePlayerState(
               AudioPlayerStateTableCompanion(
                 currentIndex: Value(state.currentIndex),
@@ -651,11 +674,13 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
     int initialIndex = 0,
     bool autoPlay = false,
   }) async {
+    final preferences = ref.read(userPreferencesProvider);
     _playlistOperationId++;
     _isBatchAdding = false;
     _assertAllowedTracks(tracks);
-    final targetTrack =
-        tracks.isEmpty ? null : tracks[initialIndex.clamp(0, tracks.length - 1)];
+    final targetTrack = tracks.isEmpty
+        ? null
+        : tracks[initialIndex.clamp(0, tracks.length - 1)];
     if (targetTrack != null) {
       PlaybackStartTrace.markTrack(
         targetTrack.id,
@@ -668,16 +693,22 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
       PlaybackStartTrace.markTrack(targetTrack.id, 'server.ready');
     }
 
-    // Resolve the first track's CDN URL directly so MPV can play it without
-    // going through the local proxy (which has issues on some Android devices)
+    // Resolve the first track's CDN URL directly when fast playback is enabled
+    // so MPV can skip the local proxy for the active track.
     String? firstTrackDirectUrl;
-    if (targetTrack != null && targetTrack is SpotubeFullTrackObject && !kIsDesktop) {
+    Map<String, String>? firstTrackDirectHeaders;
+    if (preferences.enableFastPlayback &&
+        targetTrack != null &&
+        targetTrack is SpotubeFullTrackObject) {
       try {
         final notifier = ref.read(sourcedTrackProvider(targetTrack).notifier);
-        final sourced = await ref.read(sourcedTrackProvider(targetTrack).future);
-        if (sourced?.url != null) {
-          await notifier.refreshStreamingUrl();
-          firstTrackDirectUrl = notifier.state.value?.url;
+        final sourced =
+            await ref.read(sourcedTrackProvider(targetTrack).future);
+        if (sourced.url != null) {
+          final refreshed = await notifier.refreshStreamingUrl();
+          firstTrackDirectUrl = refreshed.url;
+          firstTrackDirectHeaders =
+              SpotubeMedia.headersForDirectUrl(firstTrackDirectUrl);
         }
       } catch (_) {}
     }
@@ -685,7 +716,11 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
     final medias = _blacklist
         .filter(tracks)
         .toList()
-        .asMediaList(firstTrackDirectUrl: firstTrackDirectUrl, targetTrack: targetTrack)
+        .asMediaList(
+          firstTrackDirectUrl: firstTrackDirectUrl,
+          firstTrackDirectHeaders: firstTrackDirectHeaders,
+          targetTrack: targetTrack,
+        )
         .unique((a, b) => a.uri == b.uri);
 
     if (medias.isEmpty) {
@@ -715,7 +750,8 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
       initialIndex: safeInitialIndex,
       autoPlay: autoPlay,
     );
-    PlaybackStartTrace.markTrack(selectedTrack.id, 'audio_player.open_playlist.done');
+    PlaybackStartTrace.markTrack(
+        selectedTrack.id, 'audio_player.open_playlist.done');
 
     await _updatePlayerState(
       AudioPlayerStateTableCompanion(
@@ -724,7 +760,8 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
         positionMs: const Value(0),
       ),
     );
-    PlaybackStartTrace.markTrack(selectedTrack.id, 'audio_player_notifier.load.done');
+    PlaybackStartTrace.markTrack(
+        selectedTrack.id, 'audio_player_notifier.load.done');
   }
 
   Future<void> swapActiveSource() async {
@@ -763,6 +800,8 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
   }
 
   Future<void> jumpToTrack(SpotubeTrackObject track) async {
+    final pendingId = ref.read(pendingPlaybackTrackIdProvider);
+    if (pendingId != null && pendingId != track.id) return;
     final index =
         state.tracks.toList().indexWhere((element) => element.id == track.id);
     if (index == -1) return;

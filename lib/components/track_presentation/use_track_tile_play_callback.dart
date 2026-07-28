@@ -89,6 +89,7 @@ Future<void> Function(SpotubeTrackObject track, int index)
       YtDlpWorkerClient.notifyForegroundPlaybackStart();
       playlistNotifier.setPendingPlaybackTrackId(track.id);
       PlaybackStartTrace.markTrack(track.id, 'pending_track_set');
+      final tapGeneration = playlistNotifier.generateTrackTap();
       Future<void>? primeFuture;
       if (track is SpotubeFullTrackObject) {
         PlaybackStartTrace.markTrack(track.id, 'prime_requested');
@@ -97,8 +98,7 @@ Future<void> Function(SpotubeTrackObject track, int index)
 
       final hasActiveLocalSource =
           audioPlayer.hasSource && playlist.currentIndex >= 0;
-      final isTrackQueued =
-          playlist.tracks.containsBy(track, (a) => a.id);
+      final isTrackQueued = playlist.tracks.containsBy(track, (a) => a.id);
       final canJumpInCurrentQueue = hasActiveLocalSource && isTrackQueued;
 
       try {
@@ -116,6 +116,16 @@ Future<void> Function(SpotubeTrackObject track, int index)
           }
         } else if (primeFuture != null) {
           PlaybackStartTrace.markTrack(track.id, 'prime_await.skipped');
+        }
+
+        // Stale-call guard: if another track tap happened since we started,
+        // this async chain is stale — abort.
+        if (playlistNotifier.trackTapGeneration != tapGeneration) {
+          PlaybackStartTrace.markTrack(
+            track.id,
+            'tap_generation.stale_aborted',
+          );
+          return;
         }
 
         if (canJumpInCurrentQueue) {
@@ -139,6 +149,14 @@ Future<void> Function(SpotubeTrackObject track, int index)
           final actualIndex = initialTracks.indexWhere((t) => t.id == track.id);
           final safeIndex = actualIndex >= 0 ? actualIndex : index;
 
+          // Re-check generation before load (async gap since primeFuture)
+          if (playlistNotifier.trackTapGeneration != tapGeneration) {
+            PlaybackStartTrace.markTrack(
+              track.id,
+              'load_playlist.stale_aborted',
+            );
+            return;
+          }
           PlaybackStartTrace.markTrack(
             track.id,
             'load_playlist.start',

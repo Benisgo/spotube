@@ -22,7 +22,7 @@ class CustomPlayer extends Player {
   CustomPlayer({super.configuration})
       : _playerStateStream = StreamController.broadcast() {
     if (kIsAndroid) {
-      nativePlayer.setProperty("network-timeout", "3000");
+      nativePlayer.setProperty("network-timeout", "3");
       nativePlayer.setProperty(
         "demuxer-max-bytes",
         (256 * 1024).toString(),
@@ -34,7 +34,7 @@ class CustomPlayer extends Player {
       nativePlayer.setProperty("cache-secs", "2");
       nativePlayer.setProperty("cache-pause-initial", "no");
     } else if (kIsWindows) {
-      nativePlayer.setProperty("network-timeout", "5000");
+      nativePlayer.setProperty("network-timeout", "5");
       nativePlayer.setProperty(
         "demuxer-max-bytes",
         (512 * 1024).toString(),

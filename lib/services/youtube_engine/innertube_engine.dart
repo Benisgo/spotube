@@ -3,6 +3,7 @@ import 'dart:convert';
 // ignore: depend_on_referenced_packages
 import 'package:http_parser/http_parser.dart';
 import 'package:http/http.dart' as http;
+import 'package:spotube/services/logger/logger.dart';
 import 'package:spotube/services/youtube_engine/youtube_engine.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
@@ -25,6 +26,16 @@ class _InnerTubeClient {
   }
 
   static Future<Map<String, dynamic>> player(String videoId) async {
+    final payload = {
+      ..._context(),
+      'videoId': videoId,
+      'playbackContext': {
+        'contentPlaybackContext': {'html5Preference': 'HTML5_PREF_WANTS'},
+      },
+    };
+    AppLogger.log.i(
+      '[innertube] request=player videoId=$videoId clientName=${payload['client']['clientName']} clientVersion=${payload['client']['clientVersion']}',
+    );
     final response = await _client.post(
       Uri.parse('$_baseUrl/player?key=$_apiKey'),
       headers: {
@@ -32,19 +43,22 @@ class _InnerTubeClient {
         'User-Agent':
             'Mozilla/5.0 (Linux; Android 11; Pixel 5) AppleWebKit/537.36',
       },
-      body: jsonEncode({
-        ..._context(),
-        'videoId': videoId,
-        'playbackContext': {
-          'contentPlaybackContext': {'html5Preference': 'HTML5_PREF_WANTS'},
-        },
-      }),
+      body: jsonEncode(payload),
     );
     if (response.statusCode != 200) {
+      final bodySnippet = response.body.length > 500
+          ? '${response.body.substring(0, 500)}...'
+          : response.body;
+      AppLogger.log.w(
+        '[innertube] response=player_failed videoId=$videoId status=${response.statusCode} body=$bodySnippet',
+      );
       throw Exception(
         'InnerTube player request failed: ${response.statusCode}',
       );
     }
+    AppLogger.log.i(
+      '[innertube] response=player_ok videoId=$videoId status=${response.statusCode}',
+    );
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 }
@@ -117,8 +131,7 @@ class InnerTubeEngine implements YouTubeEngine {
     String videoId,
   ) {
     final result = <AudioOnlyStreamInfo>[];
-    final streamingData =
-        data['streamingData'] as Map<String, dynamic>? ?? {};
+    final streamingData = data['streamingData'] as Map<String, dynamic>? ?? {};
     final adaptiveFormats =
         streamingData['adaptiveFormats'] as List<dynamic>? ?? [];
 

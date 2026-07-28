@@ -7,6 +7,7 @@ import 'package:spotube/services/youtube_engine/invidious_engine.dart';
 import 'package:spotube/services/youtube_engine/newpipe_engine.dart';
 import 'package:spotube/services/youtube_engine/verome_engine.dart';
 import 'package:spotube/services/youtube_engine/youtube_explode_engine.dart';
+import 'package:spotube/services/youtube_engine/yt_music_engine.dart';
 import 'package:spotube/services/youtube_engine/yt_dlp_engine.dart';
 import 'package:spotube/services/youtube_engine/fallback_youtube_engine.dart';
 import 'package:spotube/services/youtube_engine/youtube_engine.dart';
@@ -40,6 +41,9 @@ final youtubeEngineProvider = Provider<YouTubeEngine>((ref) {
     } else if (engine == YoutubeClientEngine.youtubeExplode &&
         YouTubeExplodeEngine.isAvailableForPlatform) {
       instances.add(YouTubeExplodeEngine());
+    } else if (engine == YoutubeClientEngine.youtubeMusic &&
+        YtMusicEngine.isAvailableForPlatform) {
+      instances.add(YtMusicEngine());
     }
   }
 

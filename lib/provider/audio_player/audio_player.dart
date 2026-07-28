@@ -65,6 +65,8 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
     // This prevents flooding the yt-dlp worker with unnecessary fetches
     // while MPV burns through the playlist on failed streams.
     if (audioPlayer.isTrackCascadeActive) return;
+    // Also skip prefetching when the player is not actively playing
+    if (!audioPlayer.isPlaying) return;
 
     final centerIndex = state.currentIndex < 0 ? 0 : state.currentIndex;
     final indexes = <int>{

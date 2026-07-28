@@ -384,7 +384,10 @@ abstract class AudioPlayerInterface {
             );
             _suppressCompletedAdvanceRecovery = true;
             unawaited(_activePlayer.stop());
-            _consecutiveFailedTracks = 0;
+            // Don't reset to 0 — keep at max so another cascade won't
+            // restart immediately. Reset only on explicit user action
+            // (playing resumes via play/resume).
+            _consecutiveFailedTracks = _maxConsecutiveFailures;
             _resumeAfterCompletedAdvancePending = false;
             _completedStreamController.add(null);
             return;

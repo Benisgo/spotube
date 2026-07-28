@@ -187,9 +187,8 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
       return false;
     }
 
-    final targetIndex = activeTrackId == null
-        ? 0
-        : remoteTrackIds.indexOf(activeTrackId);
+    final targetIndex =
+        activeTrackId == null ? 0 : remoteTrackIds.indexOf(activeTrackId);
     final index = targetIndex < 0 ? 0 : targetIndex;
     if (localState.currentIndex != index) return false;
 
@@ -849,8 +848,7 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
       final activeSource = snapshot.activeSource;
 
       // Timeout old failed tracks (>30s)
-      if (_failedSessionTracks.isNotEmpty &&
-          activeTrackChanged) {
+      if (_failedSessionTracks.isNotEmpty && activeTrackChanged) {
         _failedSessionTracks.clear();
       }
       // Skip source swap if load() was already called — the new playlist
@@ -878,10 +876,7 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
           _lastSentPositionAt != null &&
           (snapshot.positionMs - _lastSentPositionMs!).abs() <
               _remoteSeekThresholdMs &&
-          DateTime.now()
-                  .difference(_lastSentPositionAt!)
-                  .inMilliseconds <
-              1500;
+          DateTime.now().difference(_lastSentPositionAt!).inMilliseconds < 1500;
 
       final localPositionMs = audioPlayer.position.inMilliseconds;
       final positionDriftMs = (snapshot.positionMs - localPositionMs).abs();

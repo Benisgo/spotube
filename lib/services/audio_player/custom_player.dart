@@ -44,7 +44,7 @@ class CustomPlayer extends Player {
         (128 * 1024).toString(),
       );
       nativePlayer.setProperty("cache-secs", "5");
-      // Disable video output to reduce GPU usage during audio-only playback
+      // Disable video output on desktop to reduce GPU usage during audio-only playback
       nativePlayer.setProperty("vo", "null");
       nativePlayer.setProperty("video", "no");
     } else {
@@ -57,6 +57,9 @@ class CustomPlayer extends Player {
         "demuxer-max-back-bytes",
         (1 * 1024 * 1024).toString(),
       );
+      // Disable video output on desktop to reduce GPU usage
+      nativePlayer.setProperty("vo", "null");
+      nativePlayer.setProperty("video", "no");
     }
 
     _subscriptions = [

@@ -53,8 +53,9 @@ class EnginePriorityDialog extends HookConsumerWidget {
                     final list = orderedEngines.toList();
                     final item = list.removeAt(oldIndex);
                     list.insert(newIndex, item);
-                    enginesState.value =
-                        list.where((e) => enginesState.value.contains(e)).toList();
+                    enginesState.value = list
+                        .where((e) => enginesState.value.contains(e))
+                        .toList();
                   },
                   children: [
                     for (int i = 0; i < orderedEngines.length; i++)
@@ -67,17 +68,21 @@ class EnginePriorityDialog extends HookConsumerWidget {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Switch(
-                                value: enginesState.value.contains(orderedEngines[i]),
+                                value: enginesState.value
+                                    .contains(orderedEngines[i]),
                                 onChanged: (val) async {
                                   final list = enginesState.value.toList();
                                   if (val) {
-                                    if (orderedEngines[i] == YoutubeClientEngine.ytDlp) {
+                                    if (orderedEngines[i] ==
+                                        YoutubeClientEngine.ytDlp) {
                                       final isInstalled = kIsAndroid
-                                          ? await AndroidYtDlpEngine.isInstalled()
+                                          ? await AndroidYtDlpEngine
+                                              .isInstalled()
                                           : await YtDlpBinary.ensureAvailable(
                                               downloadIfMissing: false);
                                       if (!isInstalled && context.mounted) {
-                                        final hasInstalled = await showDialog<bool>(
+                                        final hasInstalled =
+                                            await showDialog<bool>(
                                           context: context,
                                           builder: (context) =>
                                               YouTubeEngineNotInstalledDialog(

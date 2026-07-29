@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:spotube/services/logger/logger.dart';
 import 'package:spotube/services/youtube_engine/android_yt_dlp_engine.dart';
 import 'package:spotube/services/youtube_engine/youtube_engine.dart';
+import 'package:spotube/services/youtube_engine/yt_po_token_provider.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
 class _NsigDecoder {
@@ -76,6 +77,29 @@ class _NsigDecoder {
     }
   }
 
+  static Future<String?> decodeSignature(String s) async {
+    final pid = await _ensurePlayerId();
+    if (pid == null) return null;
+    final cacheKey = "sig:$s";
+    if (_cache.containsKey(cacheKey)) return _cache[cacheKey];
+    try {
+      final resp = await _client.get(
+          Uri.parse(
+              "$_decodeUrl?player=${Uri.encodeComponent(pid)}&sig=${Uri.encodeComponent(s)}"),
+          headers: {
+            "User-Agent": _userAgent
+          }).timeout(const Duration(seconds: 8));
+      if (resp.statusCode != 200) return null;
+      final json = jsonDecode(resp.body) as Map<String, dynamic>;
+      final decoded = json["result"] as String?;
+      if (decoded != null && decoded.isNotEmpty) _cache[cacheKey] = decoded;
+      return decoded;
+    } catch (e) {
+      AppLogger.log.w("[yt_music_nsig] failed to decode sig: $e");
+      return null;
+    }
+  }
+
   static Future<String> applyToUrl(String url) async {
     final uri = Uri.tryParse(url);
     if (uri == null) return url;
@@ -95,6 +119,17 @@ class _NsigDecoder {
 class _YtMusicClient {
   static final YoutubeHttpClient _http = YoutubeHttpClient();
   static final _iosClient = YoutubeApiClient.ios;
+
+  /// Cache player responses so getStreamManifest can reuse getVideo's result.
+  static final Map<String, Map<String, dynamic>> _playerCache = {};
+
+  static void _cacheResponse(String videoId, Map<String, dynamic> data) {
+    _playerCache[videoId] = data;
+  }
+
+  static Map<String, dynamic>? _getCachedResponse(String videoId) {
+    return _playerCache[videoId];
+  }
 
   /// Custom clients not in youtube_explode_dart.
   static final _visionOs = YoutubeApiClient({
@@ -234,6 +269,28 @@ class _YtMusicClient {
     return null;
   }
 
+  /// Add BotGuard poToken + visitorData to a WEB client player request.
+  static Future<void> _enrichWithPoToken(
+    Map<String, dynamic> payload,
+    Map<String, String> requestHeaders,
+    Map<String, dynamic> clientCtx,
+    String videoId,
+  ) async {
+    try {
+      final token = await YouTubePoTokenProvider.getToken(videoId);
+      if (token != null) {
+        payload["serviceIntegrityDimensions"] = {"poToken": token};
+      }
+      final visitorData = await YouTubePoTokenProvider.getVisitorData();
+      if (visitorData != null) {
+        requestHeaders["X-Goog-Visitor-Id"] = visitorData;
+        clientCtx["visitorData"] = visitorData;
+      }
+    } catch (e) {
+      AppLogger.log.w("[yt_music] _enrichWithPoToken failed: $e");
+    }
+  }
+
   /// Numeric client IDs for X-YouTube-Client-Name header.
   static const _clientIds = {
     "IOS": "5",
@@ -331,6 +388,8 @@ class _YtMusicClient {
           },
         };
       }
+      // PoToken + visitorData (BotGuard attestation) for WEB client
+      // (enrichment happens after requestHeaders is built below)
     }
 
     AppLogger.log.i(
@@ -352,8 +411,8 @@ class _YtMusicClient {
     if (_cookies.isNotEmpty) {
       requestHeaders["cookie"] = _cookies;
       // SAPISIDHASH Authorization — Flow sends this only for login-capable clients.
-      // Clients like IOS, TVHTML5, MWEB, WEB, ANDROID_CREATOR support login.
-      // ANDROID, ANDROID_VR, VISIONOS do NOT — sending auth to them causes 400.
+      // IOS, TVHTML5, MWEB, WEB, ANDROID_CREATOR support login.
+      // ANDROID, ANDROID_VR, VISIONOS — sending auth to them causes 400.
       final loginCapable = {"IOS", "TVHTML5", "MWEB", "WEB", "ANDROID_CREATOR"};
       if (loginCapable.contains(clientName)) {
         final sapisid = _parseCookieValue(_cookies, "SAPISID");
@@ -366,6 +425,11 @@ class _YtMusicClient {
           requestHeaders["Authorization"] = "SAPISIDHASH ${epochSec}_$hash";
         }
       }
+    }
+
+    // PoToken + visitorData enrichment for WEB client only (requires requestHeaders)
+    if (clientName == "WEB") {
+      await _enrichWithPoToken(payload, requestHeaders, clientCtx, videoId);
     }
 
     final response = await _http.post(
@@ -448,6 +512,9 @@ class YtMusicEngine implements YouTubeEngine {
         if (vd != null &&
             vd.containsKey("title") &&
             (vd["lengthSeconds"]?.toString() ?? "0") != "0") {
+          // Cache only valid responses (with videoDetails) for getStreamManifest reuse
+          final sd = data["streamingData"] as Map<String, dynamic>?;
+          if (sd != null) _YtMusicClient._cacheResponse(videoId, data);
           return _toVideo(data, videoId);
         }
       } catch (_) {
@@ -465,18 +532,33 @@ class YtMusicEngine implements YouTubeEngine {
 
   @override
   Future<StreamManifest> getStreamManifest(String videoId) async {
+    // Check cache first (getVideo may have already fetched this)
+    final cached = _YtMusicClient._getCachedResponse(videoId);
+    if (cached != null) {
+      final streams = await _toAudioOnlyStreams(cached, videoId);
+      if (streams.isNotEmpty) {
+        AppLogger.log.i(
+            "[yt_music] cached_streams videoId=$videoId audio=${streams.length}");
+        return StreamManifest(streams);
+      }
+    }
+
+    // Prewarm BotGuard in background while we try other clients
+    YouTubePoTokenProvider.getVisitorData();
+
+    // ANDROID + WEB first (best for audio + poToken auth). IOS/MWEB as backup.
     for (final client in [
-      YoutubeApiClient.ios,
-      YoutubeApiClient.androidVr,
       YoutubeApiClient.android,
+      YoutubeApiClient.safari,
+      YoutubeApiClient.ios,
+      YoutubeApiClient.mweb,
+      YoutubeApiClient.androidVr,
       _YtMusicClient._visionOs,
       YoutubeApiClient.tv,
       _YtMusicClient._tvSimply,
       _YtMusicClient._webEmbedded,
       _YtMusicClient._androidCreator,
       _YtMusicClient._iPados,
-      YoutubeApiClient.mweb,
-      YoutubeApiClient.safari,
     ]) {
       final name = client.payload["context"]["client"]["clientName"];
       try {
@@ -608,11 +690,19 @@ class YtMusicEngine implements YouTubeEngine {
               "hasUrl=${f.containsKey("url")} "
               "hasSigCipher=${f.containsKey("signatureCipher")} "
               "hasCipher=${f.containsKey("cipher")} "
+              "hasAudioQuality=${f.containsKey("audioQuality")} "
               "mime=$mimeType itag=${f["itag"]} "
               "url=${u != null ? "${u.substring(0, u.length.clamp(0, 60))}..." : "null"}");
         }
 
-        if (mimeType.split("/").first == "video") continue;
+        // Accept audio-only OR combined formats (video+audio). Combined formats
+        // like itag=18 (avc1 + mp4a) have mimeType starting with "video/".
+        final isAudioOnly = mimeType.startsWith("audio/");
+        final hasAudioCodec = mimeType.contains("mp4a") ||
+            mimeType.contains("opus") ||
+            mimeType.contains("mp3");
+        final hasAudioQuality = f.containsKey("audioQuality");
+        if (!isAudioOnly && !hasAudioCodec && !hasAudioQuality) continue;
         var url = f["url"]?.toString();
 
         if (url == null) {
@@ -621,13 +711,36 @@ class YtMusicEngine implements YouTubeEngine {
           if (cipher != null) {
             try {
               final params = Uri.splitQueryString(cipher);
-              url = params["url"];
-              // Append signature param: &sp=s
+              url = params["url"]!;
+              // Reconstruct URL: keep all cipher params, remove obfuscated sig
+              final allParams = <String, String>{};
               final sp = params["sp"];
               final s = params["s"];
+              params.forEach((k, v) {
+                // Exclude url, sp, s, and any param matching sp (obfuscated sig)
+                if (k != "url" && k != "sp" && k != "s" && k != sp) {
+                  allParams[k] = v;
+                }
+              });
               if (sp != null && s != null && sp.isNotEmpty && s.isNotEmpty) {
-                url = "$url&$sp=${Uri.encodeComponent(s)}";
+                // Try PipePipe sig decode; skip format if decoding fails
+                final decodedSig = await _NsigDecoder.decodeSignature(s);
+                if (decodedSig == null) {
+                  if (i < 20) {
+                    AppLogger.log.i("[yt_music] sig_skip[$i] videoId=$videoId "
+                        "rawLen=${s.length} (PipePipe decoder unavailable)");
+                  }
+                  continue; // skip this format — sig undecodable
+                }
+                allParams[sp] = decodedSig;
+                if (i < 20) {
+                  AppLogger.log
+                      .i("[yt_music] sig_decode[$i] videoId=$videoId sp=$sp "
+                          "rawLen=${s.length} decodedLen=${decodedSig.length}");
+                }
               }
+              url =
+                  Uri.parse(url).replace(queryParameters: allParams).toString();
             } catch (_) {
               continue;
             }
@@ -648,11 +761,14 @@ class YtMusicEngine implements YouTubeEngine {
 
         url = await _NsigDecoder.applyToUrl(url);
 
-        // Verify URL works using YoutubeHttpClient (has session cookies)
+        // Quick HEAD verify — ciphered URLs need full 2s for sig decode,
+        // direct URLs get 0.5s to catch bad nsig without slowing playback
+        final hadCipher =
+            f.containsKey("signatureCipher") || f.containsKey("cipher");
         try {
           final headResp = await _YtMusicClient._http
               .head(Uri.parse(url))
-              .timeout(const Duration(seconds: 5));
+              .timeout(Duration(seconds: hadCipher ? 2 : 1));
           if (headResp.statusCode == 403) {
             if (i < 20) {
               AppLogger.log.i("[yt_music] verify_403[$i] videoId=$videoId");
@@ -687,6 +803,8 @@ class YtMusicEngine implements YouTubeEngine {
           _parseMediaType(mimeType),
           null,
         ));
+        // Found one working stream — no need to check more
+        break;
       }
       if (result.isNotEmpty) break;
     }

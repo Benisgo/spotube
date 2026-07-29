@@ -170,7 +170,9 @@ class YoutubeAudioSource {
   ]
 
   fun matches(track) -> Future {
-    var query = track["title"] as string
+    var query = track["title"]
+    if (query == null || query == "") return Future.value([])
+    query = "" + query
     var artists = track["artists"] as List
     if (artists != null && artists.length > 0) {
       query = query + " " + artists.join(" ")
@@ -194,16 +196,19 @@ class YoutubeAudioSource {
   }
 
   fun streams(match) -> Future {
-    return _engine.streamManifest(match["id"] as string).then(fun(manifests) {
+    var videoId = match["id"]
+    if (videoId == null || videoId == "") return Future.value([])
+    return _engine.streamManifest(videoId).then(fun(manifests) {
       return manifests.map(fun(s) {
         return {
           url: s["url"],
-          quality: s["quality"],
-          bitrate: s["bitrate"],
           container: s["container"],
+          type: "lossy",
+          codec: s["codec"],
+          bitrate: s["bitrate"],
           videoId: s["videoId"],
         }
-      })
+      }).toList()
     })
   }
 }

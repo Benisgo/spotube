@@ -1,5 +1,5 @@
 {
-  "version": "2.0.0",
+  "version": "2.0.1",
   "name": "YouTube Audio",
   "author": "Kingkor Roy Tirtho",
   "description": "YouTube audio source plugin for Spotube (with auth)",

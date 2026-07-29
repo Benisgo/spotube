@@ -1,9 +1,13 @@
 import 'dart:async';
 
-import 'package:riverpod/riverpod.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/provider/metadata_plugin/metadata_plugin_provider.dart';
 import 'package:spotube/services/logger/logger.dart';
+
+/// YouTube audio plugin stores cookies under this key in SharedPreferences.
+const _ytCookiePrefsKey = 'spotube_plugin.youtube-audio.yt_cookie_header';
 
 class MetadataPluginAuthenticatedNotifier extends AsyncNotifier<bool> {
   @override
@@ -54,6 +58,15 @@ class AudioSourcePluginAuthenticatedNotifier extends AsyncNotifier<bool> {
         true) {
       return false;
     }
+
+    // Check persisted cookies first (survives app restart)
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final persisted = prefs.getString(_ytCookiePrefsKey);
+      if (persisted != null && persisted.isNotEmpty) {
+        return true;
+      }
+    } catch (_) {}
 
     final defaultPlugin = await ref
         .watch(audioSourcePluginProvider.future)

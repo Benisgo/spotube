@@ -20,15 +20,21 @@ class _TestResult {
   final bool success;
   final Duration elapsed;
   final String? detail;
-  const _TestResult({
-    required this.testName,
-    required this.success,
-    required this.elapsed,
-    this.detail,
-  });
+  const _TestResult({required this.testName, required this.success, required this.elapsed, this.detail});
 }
 
 typedef _EngineFactory = YouTubeEngine Function();
+
+final _allEngines = <_EngineEntry>[
+  _EngineEntry("InnerTube", () => InnerTubeEngine(), InnerTubeEngine.isAvailableForPlatform),
+  _EngineEntry("YouTubeExplode", () => YouTubeExplodeEngine(), YouTubeExplodeEngine.isAvailableForPlatform),
+  _EngineEntry("Invidious", () => InvidiousEngine(), InvidiousEngine.isAvailableForPlatform),
+  _EngineEntry("NewPipe", () => NewPipeEngine(), NewPipeEngine.isAvailableForPlatform),
+  _EngineEntry("Verome", () => VeromeEngine(), VeromeEngine.isAvailableForPlatform),
+  _EngineEntry("YtDlp", () => YtDlpEngine(), YtDlpEngine.isAvailableForPlatform),
+  if (kIsAndroid) _EngineEntry("AndroidYtDlp", () => AndroidYtDlpEngine(), AndroidYtDlpEngine.isAvailableForPlatform),
+  _EngineEntry("YouTube Music", () => YtMusicEngine(), YtMusicEngine.isAvailableForPlatform),
+];
 
 @RoutePage()
 class DebugEngineTestPage extends HookConsumerWidget {
@@ -36,252 +42,112 @@ class DebugEngineTestPage extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, ref) {
-    final videoIdController = useTextEditingController(text: 'dQw4w9WgXcQ');
-    final results = useState<Map<String, List<_TestResult>>>({});
-    final running = useState<Set<String>>({});
-
-    // Explicit engine list - add new engines here
-    final engines = <_EngineEntry>[
-      _EngineEntry('InnerTube', () => InnerTubeEngine(),
-          InnerTubeEngine.isAvailableForPlatform),
-      _EngineEntry('YouTubeExplode', () => YouTubeExplodeEngine(),
-          YouTubeExplodeEngine.isAvailableForPlatform),
-      _EngineEntry('Invidious', () => InvidiousEngine(),
-          InvidiousEngine.isAvailableForPlatform),
-      _EngineEntry('NewPipe', () => NewPipeEngine(),
-          NewPipeEngine.isAvailableForPlatform),
-      _EngineEntry('Verome', () => VeromeEngine(),
-          VeromeEngine.isAvailableForPlatform),
-      _EngineEntry('YtDlp', () => YtDlpEngine(),
-          YtDlpEngine.isAvailableForPlatform),
-      if (kIsAndroid)
-        _EngineEntry('AndroidYtDlp', () => AndroidYtDlpEngine(),
-            AndroidYtDlpEngine.isAvailableForPlatform),
-      _EngineEntry('YouTube Music', () => YtMusicEngine(),
-          YtMusicEngine.isAvailableForPlatform),
-    ];
-
-    Future<void> testEngine(_EngineEntry entry) async {
-      final videoId = videoIdController.text.trim();
-      if (videoId.isEmpty) return;
-
-      running.value = {...running.value, entry.name};
-      final list = <_TestResult>[];
-
-      await _runTest(entry.factory, 'getVideo', videoId, list,
-          (e) => e.getVideo(videoId));
-      await _runTest(entry.factory, 'getStreamManifest', videoId, list,
-          (e) => e.getStreamManifest(videoId));
-
-      results.value = {...results.value, entry.name: list};
-      running.value = running.value.difference({entry.name});
-    }
-
-    Future<void> testAll() async {
-      final videoId = videoIdController.text.trim();
-      if (videoId.isEmpty) return;
-      for (final entry in engines.where((e) => e.available)) {
-        await testEngine(entry);
-      }
-    }
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('YouTube Engine Tester'),
-        actions: [
-          TextButton(
-            onPressed: running.value.isNotEmpty ? null : testAll,
-            child: const Text('Test All'),
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: videoIdController,
-                    decoration: const InputDecoration(
-                      labelText: 'Video ID or URL',
-                      hintText: 'e.g. dQw4w9WgXcQ',
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                TextButton(
-                  onPressed: () {
-                    final text = videoIdController.text.trim();
-                    if (text.contains('youtube.com/watch?v=')) {
-                      final uri = Uri.tryParse(text);
-                      if (uri != null) {
-                        videoIdController.text =
-                            uri.queryParameters['v'] ?? text;
-                      }
-                    } else if (text.contains('youtu.be/')) {
-                      videoIdController.text =
-                          text.split('youtu.be/').last.split('?').first;
-                    }
-                  },
-                  child: const Text('Extract'),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 160),
-              children: [
-                for (final entry in engines.where((e) => e.available))
-                  _EngineCard(
-                    name: entry.name,
-                    testResults: results.value[entry.name] ?? const [],
-                    isRunning: running.value.contains(entry.name),
-                    onTest: () => testEngine(entry),
-                  ),
-              ],
-            ),
-          ),
-        ],
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text("Engine Tester"),
+          bottom: const TabBar(tabs: [
+            Tab(text: "Video ID", icon: Icon(Icons.play_arrow)),
+            Tab(text: "Search", icon: Icon(Icons.search)),
+          ]),
+        ),
+        body: const TabBarView(children: [
+          _VideoTestTab(), _SearchTestTab(),
+        ]),
       ),
     );
   }
+}
 
-  Future<void> _runTest(
-    _EngineFactory factory,
-    String testName,
-    String videoId,
-    List<_TestResult> results,
-    Future<Object?> Function(YouTubeEngine engine) testFn,
-  ) async {
-    final engine = factory();
-    final stopwatch = Stopwatch()..start();
-    try {
-      final result = await testFn(engine).timeout(const Duration(seconds: 15));
-      stopwatch.stop();
-      results.add(_TestResult(
-        testName: testName,
-        success: true,
-        elapsed: stopwatch.elapsed,
-        detail: result?.toString(),
-      ));
-    } catch (e) {
-      stopwatch.stop();
-      results.add(_TestResult(
-        testName: testName,
-        success: false,
-        elapsed: stopwatch.elapsed,
-        detail: e.toString(),
-      ));
-    } finally {
-      engine.dispose();
+class _VideoTestTab extends HookConsumerWidget {
+  const _VideoTestTab();
+  @override
+  Widget build(BuildContext context, ref) {
+    final c = useTextEditingController(text: "dQw4w9WgXcQ");
+    final r = useState<Map<String, List<_TestResult>>>({});
+    final b = useState<Set<String>>({});
+    Future<void> t(_EngineEntry e) async {
+      final id = _extractId(c.text); if (id.isEmpty) return;
+      b.value = {...b.value, e.name}; final l = <_TestResult>[];
+      await _runTest(e.factory, "getVideo", id, l, (x) => x.getVideo(id));
+      await _runTest(e.factory, "getStreamManifest", id, l, (x) => x.getStreamManifest(id));
+      r.value = {...r.value, e.name: l}; b.value = b.value.difference({e.name});
     }
+    return _buildTab(c, r.value, b.value, t, hint: "Video ID or URL");
+  }
+}
+
+class _SearchTestTab extends HookConsumerWidget {
+  const _SearchTestTab();
+  @override
+  Widget build(BuildContext context, ref) {
+    final c = useTextEditingController(text: "Rick Astley Never Gonna Give You Up");
+    final r = useState<Map<String, List<_TestResult>>>({});
+    final b = useState<Set<String>>({});
+    Future<void> t(_EngineEntry e) async {
+      final q = c.text.trim(); if (q.isEmpty) return;
+      b.value = {...b.value, e.name}; final l = <_TestResult>[];
+      await _runTest(e.factory, "search", q, l, (x) => x.searchVideos(q));
+      r.value = {...r.value, e.name: l}; b.value = b.value.difference({e.name});
+    }
+    return _buildTab(c, r.value, b.value, t, hint: "Search query");
   }
 }
 
 class _EngineEntry {
-  final String name;
-  final _EngineFactory factory;
-  final bool available;
+  final String name; final _EngineFactory factory; final bool available;
   const _EngineEntry(this.name, this.factory, this.available);
 }
 
-class _EngineCard extends StatelessWidget {
-  final String name;
-  final List<_TestResult> testResults;
-  final bool isRunning;
-  final VoidCallback onTest;
+String _extractId(String text) {
+  final t = text.trim();
+  if (t.contains("youtube.com/watch?v=")) { final u = Uri.tryParse(t); if (u != null) return u.queryParameters["v"] ?? t; }
+  else if (t.contains("youtu.be/")) return t.split("youtu.be/").last.split("?").first;
+  return t;
+}
 
-  const _EngineCard({
-    required this.name,
-    required this.testResults,
-    required this.isRunning,
-    required this.onTest,
-  });
+Widget _buildTab(TextEditingController c, Map<String, List<_TestResult>> r, Set<String> b, Future<void> Function(_EngineEntry) t, {required String hint}) {
+  return Column(children: [
+    Padding(padding: const EdgeInsets.all(16), child: TextField(controller: c, decoration: InputDecoration(labelText: hint, hintText: "e.g. dQw4w9WgXcQ", border: const OutlineInputBorder(), isDense: true))),
+    Expanded(child: ListView(padding: const EdgeInsets.fromLTRB(16, 0, 16, 160), children: [
+      for (final e in _allEngines.where((x) => x.available))
+        _EngineCard(name: e.name, testResults: r[e.name] ?? const [], isRunning: b.contains(e.name), onTest: () => t(e)),
+    ])),
+  ]);
+}
+
+Future<void> _runTest(_EngineFactory f, String n, String i, List<_TestResult> r, Future<Object?> Function(YouTubeEngine) fn) async {
+  final e = f(); final sw = Stopwatch()..start();
+  try { final v = await fn(e).timeout(const Duration(seconds: 15)); sw.stop();
+    r.add(_TestResult(testName: n, success: true, elapsed: sw.elapsed, detail: v?.toString().substring(0, v.toString().length.clamp(0, 120)))); }
+  catch (ex) { sw.stop(); r.add(_TestResult(testName: n, success: false, elapsed: sw.elapsed, detail: ex.toString())); }
+  finally { e.dispose(); }
+}
+
+class _EngineCard extends StatelessWidget {
+  final String name; final List<_TestResult> testResults; final bool isRunning; final VoidCallback onTest;
+  const _EngineCard({required this.name, required this.testResults, required this.isRunning, required this.onTest});
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(name, style: theme.textTheme.titleMedium),
-                ),
-                if (isRunning)
-                  const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                const SizedBox(width: 8),
-                TextButton(
-                  onPressed: isRunning ? null : onTest,
-                  child: const Text('Test'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            if (testResults.isEmpty)
-              Text(
-                'Not tested yet',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
-                ),
-              ),
-            for (final result in testResults)
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          result.success
-                              ? Icons.check_circle
-                              : Icons.error,
-                          size: 16,
-                          color: result.success ? Colors.green : Colors.red,
-                        ),
-                        const SizedBox(width: 8),
-                        Flexible(
-                          child: Text(
-                            '${result.testName} (${result.elapsed.inMilliseconds}ms)${result.success ? " OK" : " FAIL"}',
-                            style: theme.textTheme.bodySmall,
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (result.detail != null && !result.success)
-                      Padding(
-                        padding: const EdgeInsets.only(left: 24, top: 2),
-                        child: Text(
-                          result.detail!,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: Colors.red.shade300,
-                            fontSize: 11,
-                          ),
-                          maxLines: 5,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
+    final t = Theme.of(context);
+    return Card(margin: const EdgeInsets.only(bottom: 12), child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        Expanded(child: Text(name, style: t.textTheme.titleMedium)),
+        if (isRunning) const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+        const SizedBox(width: 8), TextButton(onPressed: isRunning ? null : onTest, child: const Text("Test")),
+      ]),
+      const SizedBox(height: 8),
+      if (testResults.isEmpty) Text("Not tested yet", style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurface.withValues(alpha: 0.5))),
+      for (final r in testResults) Padding(padding: const EdgeInsets.only(top: 4), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(r.success ? Icons.check_circle : Icons.error, size: 16, color: r.success ? Colors.green : Colors.red),
+          const SizedBox(width: 8),
+          Text("${r.testName} (${r.elapsed.inMilliseconds}ms)", style: t.textTheme.bodySmall),
+        ]),
+        if (r.detail != null) Padding(padding: const EdgeInsets.only(left: 24, top: 2), child: Text(r.detail!, style: t.textTheme.bodySmall?.copyWith(fontSize: 11, color: r.success ? t.colorScheme.onSurface.withValues(alpha: 0.7) : Colors.red.shade300), maxLines: 5, overflow: TextOverflow.ellipsis)),
+      ])),
+    ])));
   }
 }

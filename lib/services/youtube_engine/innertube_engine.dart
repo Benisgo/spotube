@@ -8,40 +8,62 @@ import 'package:spotube/services/youtube_engine/youtube_engine.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
 class _InnerTubeClient {
-  static const _baseUrl = 'https://www.youtube.com/youtubei/v1';
-  static const _apiKey = 'AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8';
+  static const _baseUrl = 'https://youtubei.googleapis.com/youtubei/v1';
   static final http.Client _client = http.Client();
 
-  static Map<String, dynamic> _context() {
+  /// Generate a random 16-char content playback nonce.
+  static String _generateCpn() {
+    const chars =
+        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_!";
+    final seed = DateTime.now().microsecondsSinceEpoch;
+    return String.fromCharCodes(List.generate(
+        16,
+        (i) =>
+            chars.codeUnitAt(((seed * (i + 1)) + (i * 7919)) % chars.length)));
+  }
+
+  static Map<String, dynamic> _buildPayload(String videoId) {
     return {
-      'client': {
-        'clientName': 'ANDROID',
-        'clientVersion': '19.09.37',
-        'androidSdkVersion': 30,
-        'hl': 'en',
-        'gl': 'US',
-        'utcOffsetMinutes': 0,
+      'context': {
+        'client': {
+          'clientName': 'ANDROID',
+          'clientVersion': '21.03.38',
+          'clientScreen': 'WATCH',
+          'platform': 'MOBILE',
+          'osName': 'Android',
+          'osVersion': '16',
+          'androidSdkVersion': 36,
+          'hl': 'en',
+          'gl': 'US',
+          'utcOffsetMinutes': 0,
+        },
+        'request': {
+          'internalExperimentFlags': <dynamic>[],
+          'useSsl': true,
+        },
+        'user': {
+          'lockedSafetyMode': false,
+        },
       },
+      'videoId': videoId,
+      'cpn': _generateCpn(),
+      'contentCheckOk': true,
+      'racyCheckOk': true,
     };
   }
 
   static Future<Map<String, dynamic>> player(String videoId) async {
-    final payload = {
-      ..._context(),
-      'videoId': videoId,
-      'playbackContext': {
-        'contentPlaybackContext': {'html5Preference': 'HTML5_PREF_WANTS'},
-      },
-    };
+    final payload = _buildPayload(videoId);
     AppLogger.log.i(
-      '[innertube] request=player videoId=$videoId clientName=${payload['client']['clientName']} clientVersion=${payload['client']['clientVersion']}',
+      '[innertube] request=player videoId=$videoId clientName=${payload['context']['client']['clientName']} clientVersion=${payload['context']['client']['clientVersion']}',
     );
     final response = await _client.post(
-      Uri.parse('$_baseUrl/player?key=$_apiKey'),
+      Uri.parse('$_baseUrl/player?prettyPrint=false'),
       headers: {
         'Content-Type': 'application/json',
         'User-Agent':
-            'Mozilla/5.0 (Linux; Android 11; Pixel 5) AppleWebKit/537.36',
+            'com.google.android.youtube/21.03.38 (Linux; U; Android 16; US) gzip',
+        'X-Goog-Api-Format-Version': '2',
       },
       body: jsonEncode(payload),
     );

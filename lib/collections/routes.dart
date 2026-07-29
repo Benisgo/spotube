@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:spotube/collections/routes.gr.dart';
 import 'package:spotube/pages/debug/engine_test_page.dart';
+import 'package:spotube/pages/debug/scoring_test_page.dart';
 import 'package:spotube/provider/metadata_plugin/core/auth.dart';
 import 'package:spotube/services/kv_store/kv_store.dart';
 
@@ -186,6 +187,11 @@ class AppRouter extends RootStackRouter {
               AutoRoute(
                 path: "debug/engines",
                 page: DebugEngineTestRoute.page,
+              ),
+            if (kDebugMode)
+              AutoRoute(
+                path: "debug/scoring",
+                page: DebugScoringTestRoute.page,
               ),
             AutoRoute(
               path: "stats/minutes",

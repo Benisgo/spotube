@@ -6,6 +6,7 @@ import 'package:spotube/collections/routes.gr.dart';
 import 'package:spotube/collections/spotube_icons.dart';
 import 'package:spotube/l10n/l10n.dart';
 import 'package:spotube/pages/debug/engine_test_page.dart';
+import 'package:spotube/pages/debug/scoring_test_page.dart';
 
 class SideBarTiles {
   final IconData icon;
@@ -52,6 +53,14 @@ List<SideBarTiles> getSidebarTileList(AppLocalizations l10n) => [
           route: const DebugEngineTestRoute(),
           icon: Icons.bug_report,
           title: 'Engine Test',
+        ),
+      if (kDebugMode)
+        SideBarTiles(
+          id: "debug_scoring",
+          pathPrefix: "/debug/scoring",
+          route: const DebugScoringTestRoute(),
+          icon: Icons.analytics,
+          title: 'Scoring Test',
         ),
       SideBarTiles(
         id: "stats",

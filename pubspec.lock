@@ -1187,11 +1187,9 @@ packages:
   hetu_spotube_plugin:
     dependency: "direct main"
     description:
-      path: "."
-      ref: main
-      resolved-ref: d85dd429241d464a8b5b0c2b3d870143eeba8b46
-      url: "https://github.com/KRTirtho/hetu_spotube_plugin.git"
-    source: git
+      path: "packages/hetu_spotube_plugin"
+      relative: true
+    source: path
     version: "0.0.2"
   hetu_std:
     dependency: "direct main"

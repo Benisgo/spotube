@@ -1,0 +1,71 @@
+import 'dart:io';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:path/path.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:fk_user_agent/fk_user_agent.dart';
+
+Future<String?> getUserAgent() async {
+  if (Platform.isIOS || Platform.isAndroid) {
+    await FkUserAgent.init();
+    return FkUserAgent.userAgent;
+  }
+  return null;
+}
+
+final webViewEnvironment =
+    Platform.isWindows
+        ? getApplicationSupportDirectory().then((directory) async {
+          return await WebViewEnvironment.create(
+            settings: WebViewEnvironmentSettings(
+              userDataFolder: join(directory.path, 'inappwebview_data'),
+            ),
+          );
+        })
+        : Future.value(null);
+
+class WebviewPage extends StatelessWidget {
+  final String uri;
+  final void Function(String url)? onLoad;
+  const WebviewPage({super.key, required this.uri, this.onLoad});
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder(
+      future: Future.wait([webViewEnvironment, getUserAgent()]),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Center(child: CircularProgressIndicator());
+        }
+
+        return InAppWebView(
+          initialUrlRequest: URLRequest(url: WebUri(uri)),
+          webViewEnvironment: snapshot.data?[0] as WebViewEnvironment?,
+          initialSettings: InAppWebViewSettings(
+            userAgent: snapshot.data?[1] as String?,
+          ),
+          onLoadStop: (controller, url) {
+            try {
+              if (onLoad != null && url != null) {
+                onLoad!(url.toString());
+              }
+            } catch (e, stack) {
+              debugPrint("[Webview][onLoad] Error: $e");
+              debugPrintStack(stackTrace: stack);
+              rethrow;
+            }
+          },
+          onPermissionRequest: (controller, request) async {
+            // YouTube requests protected media permissions on Windows.
+            // Grant all requested resources to prevent WebView2 crashes.
+            return PermissionResponse(
+              action: PermissionResponseAction.GRANT,
+              resources: request.resources,
+            );
+          },
+        );
+      },
+    );
+  }
+}

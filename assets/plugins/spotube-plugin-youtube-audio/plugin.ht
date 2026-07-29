@@ -1,0 +1,222 @@
+import "module:std" as std
+
+var Stream = std.Stream
+var StreamController = std.StreamController
+
+// ── External class declarations (inlined from spotube_plugin module) ──
+external class Cookie {
+  final domain: string
+  final expiresDate: int
+  final isHttpOnly: bool
+  final isSecure: bool
+  final isSessionOnly: bool
+  final name: string
+  final path: string
+  final value: any
+
+  construct ({
+    this.domain,
+    this.expiresDate,
+    this.isHttpOnly,
+    this.isSecure,
+    this.isSessionOnly,
+    this.name,
+    this.path,
+    this.value,
+  })
+  construct fromJson(map: Map)
+  fun toJson() -> Map
+}
+
+external class Webview {
+  var uri: string
+  construct ({ this.uri })
+  get onUrlRequestStream -> Stream
+  fun open() -> Future
+  fun close() -> Future
+  fun getCookies(url: string) -> Future
+}
+
+external class LocalStorage {
+  static fun getString(key: string) -> Future
+  static fun setString(key: string, value: string) -> Future
+  static fun getInt(key: string) -> Future
+  static fun setInt(key: string, value: int) -> Future
+  static fun getBool(key: string) -> Future
+  static fun setBool(key: string, value: bool) -> Future
+  static fun getDouble(key: string) -> Future
+  static fun setDouble(key: string, value: double) -> Future
+  static fun getStringList(key: string) -> Future
+  static fun setStringList(key: string, value: List) -> Future
+  static fun remove(key: string) -> Future
+  static fun clear() -> Future
+  static fun containsKey(key: string) -> Future
+}
+
+external class YouTubeEngine {
+  construct ()
+  fun search(query: string) -> Future<List<Map>>
+  fun getVideo(videoId: string) -> Future<Map>
+  fun streamManifest(videoId: string) -> Future<List<Map>>
+}
+
+// ── Auth ──────────────────────────────────────────────────────────
+class YoutubeAuth {
+  var _controller
+  var _authenticated
+
+  construct() {
+    _controller = StreamController()
+    _authenticated = false
+  }
+
+  get authStateStream => _controller.stream
+
+  // authenticate() opens a WebView for the user to log into Google/YouTube.
+  // Reads cookies WHILE the WebView is alive (session cookies are lost on close).
+  fun authenticate() -> Future {
+    var wv = Webview(
+      uri: "https://accounts.google.com/ServiceLogin?service=youtube&continue=https://www.youtube.com&hl=en"
+    )
+    // Listen for the redirect to YouTube after login.
+    // Read cookies while WebView is alive, THEN close.
+    wv.onUrlRequestStream.listen(fun(url) {
+      if (url.contains("https://www.youtube.com/") && !(url.contains("ServiceLogin"))) {
+        // Collect cookies from both www.youtube.com and accounts.youtube.com
+        // since SetSID may set cookies on either domain.
+        wv.getCookies("https://www.youtube.com").then(fun(cookies) {
+          // Also fetch from accounts subdomain and merge
+          wv.getCookies("https://accounts.youtube.com").then(fun(extraCookies) {
+            var all = cookies
+            for (var c in extraCookies) {
+              all.add(c)
+            }
+            var parts = []
+            var seen = {}
+            for (var cookie in all) {
+              var name = cookie.name
+              var value = cookie.value
+              if (seen.containsKey(name)) continue
+              seen[name] = true
+              if (name == "SAPISID" || name == "PSAPISID" ||
+                  name == "SSID" || name == "HSID" ||
+                  name == "APISID" || name == "SID" ||
+                  name == "__Secure-3PSAPISID" ||
+                  name == "__Secure-3PAPISID" || name == "__Secure-3PSID" ||
+                  name == "LOGIN_INFO" || name == "PREF") {
+                LocalStorage.setString("yt_cookie_" + name, value)
+                parts.add(name + "=" + value)
+              }
+            }
+            if (parts.length > 0) {
+              LocalStorage.setString("yt_cookie_header", parts.join("; "))
+              _authenticated = true
+              _controller.add(true)
+            }
+            wv.close()
+          })
+        })
+      }
+    })
+    // Open the WebView (blocks until close is called from the listener)
+    return wv.open()
+  }
+
+  fun isAuthenticated() -> bool {
+    return _authenticated
+  }
+
+  fun logout() -> Future {
+    var known = [
+      "yt_cookie_header",
+      "yt_cookie_SAPISID",
+      "yt_cookie_PSAPISID",
+      "yt_cookie_SSID",
+      "yt_cookie_HSID",
+      "yt_cookie_APISID",
+      "yt_cookie_SID",
+      "yt_cookie___Secure-3PSAPISID",
+      "yt_cookie___Secure-3PAPISID",
+      "yt_cookie___Secure-3PSID",
+      "yt_cookie_LOGIN_INFO",
+      "yt_cookie_PREF",
+    ]
+    for (var k in known) {
+      LocalStorage.remove(k)
+    }
+    _authenticated = false
+    _controller.add(false)
+  }
+}
+
+// ── Audio Source ─────────────────────────────────────────────────
+class YoutubeAudioSource {
+  var _engine
+
+  construct(engine) {
+    _engine = engine
+  }
+
+  get supportedPresets => [
+    {
+      type: "lossy",
+      name: "mp4",
+      qualities: [
+        { bitrate: 48000 },
+        { bitrate: 128000 },
+        { bitrate: 256000 },
+      ],
+    },
+  ]
+
+  fun matches(track) -> Future {
+    var query = track["title"] as string
+    var artists = track["artists"] as List
+    if (artists != null && artists.length > 0) {
+      query = query + " " + artists.join(" ")
+    }
+    return _engine.search(query).then(fun(results) {
+      return results.map(fun(v) {
+        var thumb = v["thumbnail"]
+        if (thumb == null || thumb == "") {
+          thumb = "https://i.ytimg.com/vi/" + v["id"] + "/hqdefault.jpg"
+        }
+        return {
+          id: v["id"],
+          title: v["title"],
+          artists: [v["author"]],
+          duration: v["duration"],
+          thumbnail: thumb,
+          externalUri: "https://youtu.be/" + v["id"],
+        }
+      })
+    })
+  }
+
+  fun streams(match) -> Future {
+    return _engine.streamManifest(match["id"] as string).then(fun(manifests) {
+      return manifests.map(fun(s) {
+        return {
+          url: s["url"],
+          quality: s["quality"],
+          bitrate: s["bitrate"],
+          container: s["container"],
+          videoId: s["videoId"],
+        }
+      })
+    })
+  }
+}
+
+// ── Plugin Entry Point ──────────────────────────────────────────
+class YouTubeAudioSourcePlugin {
+  var auth
+  var audioSource
+
+  construct() {
+    auth = YoutubeAuth()
+    audioSource = YoutubeAudioSource(YouTubeEngine())
+  }
+}
+
+var metadataPlugin = YouTubeAudioSourcePlugin()

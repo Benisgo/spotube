@@ -1,0 +1,17 @@
+{
+  "version": "2.0.0",
+  "name": "YouTube Audio",
+  "author": "Kingkor Roy Tirtho",
+  "description": "YouTube audio source plugin for Spotube (with auth)",
+  "entryPoint": "YouTubeAudioSourcePlugin",
+  "apis": [
+    "webview",
+    "localstorage"
+  ],
+  "abilities": [
+    "authentication",
+    "audio-source"
+  ],
+  "repository": "https://github.com/KRTirtho/spotube-plugin-youtube-audio",
+  "pluginApiVersion": "2.0.0"
+}

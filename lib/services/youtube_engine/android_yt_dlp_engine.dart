@@ -19,6 +19,11 @@ class AndroidYtDlpEngine implements YouTubeEngine {
     return _headersByUrl[url];
   }
 
+  /// Store headers for a CDN URL so the proxy can use them when fetching.
+  static void setHeadersForUrl(String url, Map<String, String> headers) {
+    _headersByUrl[url] = headers;
+  }
+
   StreamManifest _parseFormats(List formats, videoId) {
     final audioOnlyStreams = formats
         .where((f) => f["resolution"] == "audio only" || f["vcodec"] == "none")

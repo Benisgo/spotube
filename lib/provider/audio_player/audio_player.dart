@@ -249,6 +249,8 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
       if (positionMs > 0) {
         await audioPlayer.seek(Duration(milliseconds: positionMs));
       }
+      // Prime the resumed track so its stream is resolved immediately
+      unawaited(primeTrackPlayback(tracks[safeCurrentIndex]));
     }
 
     if (playerState.collections.isNotEmpty) {

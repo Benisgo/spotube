@@ -247,13 +247,19 @@ class DownloadManagerNotifier extends Notifier<List<DownloadTask>> {
           index: 1,
         ),
       );
-      await MetadataGod.writeMetadata(
-        file: savePath,
-        metadata: task.track.toMetadata(
-          fileLength: await savePathFile.length(),
-          imageBytes: imageBytes,
-        ),
-      );
+      // Metadata tagging is best-effort (may fail on some platforms)
+      try {
+        await MetadataGod.writeMetadata(
+          file: savePath,
+          metadata: task.track.toMetadata(
+            fileLength: await savePathFile.length(),
+            imageBytes: imageBytes,
+          ),
+        );
+      } catch (_) {
+        AppLogger.log
+            .w("[download] metadata tagging failed (file saved without tags)");
+      }
     } catch (e, stack) {
       if (e is! DioException || e.type != DioExceptionType.cancel) {
         _setStatus(task.track, DownloadStatus.failed);

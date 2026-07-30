@@ -97,6 +97,9 @@ final localTracksProvider =
 
       final List<MetadataFile> filesWithMetadata = await Future.wait(
         entities.map((file) async {
+          if (!AppLogger.metadataGodAvailable) {
+            return (file: file, metadata: null, art: null);
+          }
           try {
             final metadata = await MetadataGod.readMetadata(file: file.path);
 

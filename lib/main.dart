@@ -213,8 +213,16 @@ Future<void> main(List<String> rawArgs) async {
     }
 
     if (!kIsWeb) {
-      await _runStartupStep(
-          'MetadataGod initialize', () => MetadataGod.initialize());
+      try {
+        await MetadataGod.initialize();
+        // ignore: avoid_classes_with_only_static_members
+        AppLogger.metadataGodAvailable = true;
+        AppLogger.log.i("[startup] MetadataGod initialized successfully");
+      } catch (e, s) {
+        AppLogger.metadataGodAvailable = false;
+        AppLogger.log.w(
+            "[startup] MetadataGod init failed (downloads will lack tags): $e");
+      }
     }
 
     await _runStartupStep(

@@ -37,13 +37,15 @@ class CustomPlayer extends Player {
       nativePlayer.setProperty("network-timeout", "5");
       nativePlayer.setProperty(
         "demuxer-max-bytes",
-        (512 * 1024).toString(),
+        (10 * 1024 * 1024).toString(), // 10MB — cache entire song
       );
       nativePlayer.setProperty(
         "demuxer-max-back-bytes",
-        (128 * 1024).toString(),
+        (10 * 1024 * 1024).toString(), // 10MB backward seek buffer
       );
-      nativePlayer.setProperty("cache-secs", "5");
+      nativePlayer.setProperty("cache-secs", "600"); // 10 min — full song cache
+      nativePlayer.setProperty(
+          "cache-pause", "no"); // don't pause while filling
       // Disable video output on desktop to reduce GPU usage during audio-only playback
       nativePlayer.setProperty("vo", "null");
       nativePlayer.setProperty("video", "no");

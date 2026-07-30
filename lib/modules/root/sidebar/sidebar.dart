@@ -128,10 +128,7 @@ class Sidebar extends HookConsumerWidget {
     final navigationButtons = [
       ...primaryButtons,
       const NavigationDivider(),
-      NavigationGroup(
-        label: Text(context.l10n.library),
-        children: libraryButtons,
-      ),
+      ...libraryButtons,
     ];
 
     final sidebarHeader = [
@@ -156,7 +153,8 @@ class Sidebar extends HookConsumerWidget {
     ];
 
     final customTheme = ref.watch(customThemeProvider);
-    final activeTrack = ref.watch(audioPlayerProvider.select((value) => value.activeTrack));
+    final activeTrack =
+        ref.watch(audioPlayerProvider.select((value) => value.activeTrack));
     final hasBackgroundImage = customTheme.enabled &&
         customTheme.useNowPlayingCoverBackground &&
         activeTrack?.album.images.isNotEmpty == true;

@@ -25,6 +25,9 @@ final _loggingToLoggerLevel = {
 };
 
 class AppLogger {
+  /// Set to true after MetadataGod.initialize() succeeds.
+  /// Other code checks this before calling MetadataGod to avoid FRB errors.
+  static bool metadataGodAvailable = false;
   static late final Logger log;
   static late final File logFile;
   static late final File criticalLogFile;
@@ -183,15 +186,14 @@ class AppLogger {
       _traceBacklog++;
       _traceWriteQueue = _traceWriteQueue
           .then(
-            (_) => file.writeAsString(
-              "[${DateTime.now()}][trace] $message\n",
-              mode: FileMode.writeOnlyAppend,
-            ),
-          )
+        (_) => file.writeAsString(
+          "[${DateTime.now()}][trace] $message\n",
+          mode: FileMode.writeOnlyAppend,
+        ),
+      )
           .whenComplete(() {
-            _traceBacklog = (_traceBacklog - 1).clamp(0, 1 << 30);
-          })
-          .catchError((_) => file);
+        _traceBacklog = (_traceBacklog - 1).clamp(0, 1 << 30);
+      }).catchError((_) => file);
     } catch (_) {}
   }
 

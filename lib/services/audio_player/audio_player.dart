@@ -307,7 +307,7 @@ abstract class AudioPlayerInterface {
         final now = DateTime.now();
         if (_lastPositionForwardedAt != null &&
             now.difference(_lastPositionForwardedAt!) <
-                const Duration(milliseconds: 200)) {
+                const Duration(milliseconds: 500)) {
           return;
         }
         _lastPositionForwardedAt = now;

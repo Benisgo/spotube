@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:drift/drift.dart';
 
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -112,10 +114,31 @@ class UserPreferencesNotifier extends Notifier<PreferencesTableData> {
   Future<void> openCacheFolder() async {
     try {
       final filePath = await getMusicCacheDir();
-
       await OpenFile.open(filePath);
     } catch (e, stack) {
       AppLogger.reportError(e, stack);
+    }
+  }
+
+  static Future<({int files, int bytes})> getCacheSize() async {
+    final dir = Directory(await getMusicCacheDir());
+    if (!await dir.exists()) return (files: 0, bytes: 0);
+    int files = 0;
+    int bytes = 0;
+    await for (final entity in dir.list(recursive: true)) {
+      if (entity is File) {
+        files++;
+        bytes += await entity.length();
+      }
+    }
+    return (files: files, bytes: bytes);
+  }
+
+  static Future<void> clearCache() async {
+    final dir = Directory(await getMusicCacheDir());
+    if (!await dir.exists()) return;
+    await for (final entity in dir.list(recursive: true)) {
+      await entity.delete();
     }
   }
 

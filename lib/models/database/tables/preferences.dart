@@ -159,7 +159,7 @@ class PreferencesTable extends Table {
   IntColumn get connectPort => integer().withDefault(const Constant(-1))();
   BoolColumn get cacheMusic => boolean().withDefault(const Constant(true))();
   BoolColumn get experimentalScoring =>
-      boolean().withDefault(const Constant(false))();
+      boolean().withDefault(const Constant(true))();
   RealColumn get miniPlayerTransparency =>
       real().withDefault(const Constant(0.55))();
   TextColumn get lyricsCharacterEdge => textEnum<LyricsCharacterEdge>()
@@ -203,7 +203,7 @@ class PreferencesTable extends Table {
       crossfadeTracks: false,
       crossfadeDurationSeconds: 5,
       cacheMusic: true,
-      experimentalScoring: false,
+      experimentalScoring: true,
       miniPlayerTransparency: 0.55,
       connectPort: -1,
       lyricsCharacterEdge: LyricsCharacterEdge.none,

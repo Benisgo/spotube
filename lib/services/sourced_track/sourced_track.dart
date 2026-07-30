@@ -9,13 +9,11 @@ import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/models/playback/track_sources.dart';
 import 'package:spotube/provider/database/database.dart';
 import 'package:spotube/provider/metadata_plugin/metadata_plugin_provider.dart';
-import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
 import 'package:spotube/services/dio/dio.dart';
 import 'package:spotube/services/logger/playback_start_trace.dart';
 import 'package:spotube/services/metadata/errors/exceptions.dart';
 
 import 'package:spotube/services/sourced_track/exceptions.dart';
-import 'package:spotube/utils/service_utils.dart';
 
 final officialMusicRegex = RegExp(
   r"official\s(video|audio|music\svideo|lyric\svideo|visualizer)",
@@ -129,7 +127,8 @@ class SourcedTrack extends BasicSourcedTrack {
 
     final inflight = _inFlightFetches[query.id];
     if (inflight != null) {
-      PlaybackStartTrace.markTrack(query.id, 'sourced_track.fetch.join_inflight');
+      PlaybackStartTrace.markTrack(
+          query.id, 'sourced_track.fetch.join_inflight');
       return inflight;
     }
 
@@ -162,92 +161,52 @@ class SourcedTrack extends BasicSourcedTrack {
       throw MetadataPluginException.noDefaultAudioSourcePlugin();
     }
 
-    final database = AppDatabase.current ?? ref.read(databaseProvider)!;
-    final cachedSource = await (database.select(database.sourceMatchTable)
-          ..where((s) =>
-              s.trackId.equals(query.id) &
-              s.sourceType.equals(audioSource.slug))
-          ..limit(1)
-          ..orderBy([
-            (s) =>
-                OrderingTerm(expression: s.createdAt, mode: OrderingMode.desc),
-          ]))
-        .get()
-        .then((s) => s.firstOrNull);
-
-    if (cachedSource == null) {
-      PlaybackStartTrace.markTrack(query.id, 'sourced_track.cache_miss');
-      final rankedMatches = await _searchRankedMatches(
-        ref: ref,
-        query: query,
-        deferred: true,
-      );
-      if (rankedMatches.isEmpty) {
-        throw TrackNotFoundError(query);
-      }
-      final primaryMatch = rankedMatches.first;
-      final deferredSiblings = rankedMatches.skip(1).toList();
-      _rememberSiblingFetch(
-        _siblingCacheKey(
-          trackId: query.id,
-          sourceSlug: audioSource.slug,
-        ),
-        rankedMatches,
-      );
-      PlaybackStartTrace.markTrack(
-        query.id,
-        'sourced_track.siblings.deferred',
-        data: {'resultCount': deferredSiblings.length, 'siblingsDeferred': true},
-      );
-
-      await database.into(database.sourceMatchTable).insert(
-            SourceMatchTableCompanion.insert(
-              trackId: query.id,
-              sourceInfo: Value(jsonEncode(primaryMatch)),
-              sourceType: audioSource.slug,
-            ),
-          );
-
-      final manifest = await _fetchStreams(
-        ref: ref,
-        match: primaryMatch,
-        sourceSlug: audioSource.slug,
-        trackId: query.id,
-      );
-
-      final sourcedTrack = SourcedTrack(
-        ref: ref,
-        siblings: const [],
-        info: primaryMatch,
-        source: audioSource.slug,
-        sources: manifest,
-        query: query,
-      );
-
-      final resolved = await sourcedTrack.resolvePlayableSource();
-      return resolved;
-    }
-    PlaybackStartTrace.markTrack(query.id, 'sourced_track.cache_hit');
-    final item = SpotubeAudioSourceMatchObject.fromJson(
-      jsonDecode(cachedSource.sourceInfo),
+    // Note: sourceMatchTable DB cache intentionally skipped —
+    // it stored stale results from previous scoring algorithms.
+    // In-memory caches (_resolvedFetches, _siblingFetches) handle
+    // within-session deduplication efficiently.
+    PlaybackStartTrace.markTrack(query.id, 'sourced_track.cache_miss');
+    final rankedMatches = await _searchRankedMatches(
+      ref: ref,
+      query: query,
+      deferred: true,
     );
+    if (rankedMatches.isEmpty) {
+      throw TrackNotFoundError(query);
+    }
+    final primaryMatch = rankedMatches.first;
+    final deferredSiblings = rankedMatches.skip(1).toList();
+    _rememberSiblingFetch(
+      _siblingCacheKey(
+        trackId: query.id,
+        sourceSlug: audioSource.slug,
+      ),
+      rankedMatches,
+    );
+    PlaybackStartTrace.markTrack(
+      query.id,
+      'sourced_track.siblings.deferred',
+      data: {'resultCount': deferredSiblings.length, 'siblingsDeferred': true},
+    );
+
     final manifest = await _fetchStreams(
       ref: ref,
-      match: item,
+      match: primaryMatch,
       sourceSlug: audioSource.slug,
       trackId: query.id,
     );
 
     final sourcedTrack = SourcedTrack(
       ref: ref,
-      siblings: [],
-      sources: manifest,
-      info: item,
-      query: query,
+      siblings: const [],
+      info: primaryMatch,
       source: audioSource.slug,
+      sources: manifest,
+      query: query,
     );
 
-    return sourcedTrack.resolvePlayableSource();
+    final resolved = await sourcedTrack.resolvePlayableSource();
+    return resolved;
   }
 
   static List<SpotubeAudioSourceMatchObject> rankResults(
@@ -352,6 +311,34 @@ class SourcedTrack extends BasicSourcedTrack {
           final titleOverlap = _overlapRatio(titleTokens, trackTokens);
           score += (titleOverlap * 28).round();
 
+          // Sequential word bonus: check how many track name words appear
+          // in the video title IN THE CORRECT ORDER. This rewards videos
+          // that have the full track name as a subsequence of their title.
+          final normalizedTitleTokens = _normalizeSearchText(sibling.title)
+              .split(' ')
+              .where((t) => t.isNotEmpty)
+              .toList();
+          final normalizedTrackTokens = normalizedTrackName
+              .split(' ')
+              .where((t) => t.isNotEmpty)
+              .toList();
+          {
+            int ti = 0;
+            int matched = 0;
+            for (final tw in normalizedTrackTokens) {
+              while (ti < normalizedTitleTokens.length) {
+                if (normalizedTitleTokens[ti] == tw) {
+                  matched++;
+                  ti++;
+                  break;
+                }
+                ti++;
+              }
+            }
+            // +3 per sequentially matched word (max tied to track word count)
+            score += (matched * 3);
+          }
+
           final artistOverlap =
               _overlapRatio(combinedSiblingTokens, artistTokens);
           score += (artistOverlap * 18).round();
@@ -404,6 +391,17 @@ class SourcedTrack extends BasicSourcedTrack {
             score += 1;
           } else if (durationDelta >= 30) {
             score -= 12;
+          }
+
+          // Edition/mix/remix bonus: if the track title contains edition keywords
+          // (mix, remix, version, edit) and the video title also contains them,
+          // this is likely the correct remix edition rather than the bare version.
+          final editionRegex = RegExp(
+              r'\b(mix|remix|version|edit|rework|rework|flip|bootleg|refix)\b',
+              caseSensitive: false);
+          if (editionRegex.hasMatch(normalizedTrackName) &&
+              editionRegex.hasMatch(normalizedTitle)) {
+            score += 10;
           }
 
           if (youtubeMusicRegex.hasMatch(title) ||
@@ -682,7 +680,8 @@ class SourcedTrack extends BasicSourcedTrack {
     PlaybackStartTrace.markTrack(query.id, 'sourced_track.refresh.start');
     final active = _inFlightRefreshes[query.id];
     if (active != null) {
-      PlaybackStartTrace.markTrack(query.id, 'sourced_track.refresh.join_inflight');
+      PlaybackStartTrace.markTrack(
+          query.id, 'sourced_track.refresh.join_inflight');
       return active;
     }
 
@@ -740,19 +739,12 @@ class SourcedTrack extends BasicSourcedTrack {
     }
 
     final videoResults = <SpotubeAudioSourceMatchObject>[];
-    final experimentalScoring = ref.read(
-      userPreferencesProvider.select((value) => value.experimentalScoring),
-    );
-
     final searchResults = await audioSource.audioSource.matches(query);
 
-    if (experimentalScoring) {
-      videoResults.addAll(rankResultsExperimental(searchResults, query));
-    } else if (ServiceUtils.onlyContainsEnglish(query.name)) {
-      videoResults.addAll(searchResults);
-    } else {
-      videoResults.addAll(rankResults(searchResults, query));
-    }
+    // Always use experimental scoring — it produces significantly better
+    // results than raw YouTube search ranking, especially for edge-case
+    // tracks where the search algorithm prioritizes wrong matches.
+    videoResults.addAll(rankResultsExperimental(searchResults, query));
 
     return videoResults.toSet().toList();
   }
@@ -794,7 +786,8 @@ class SourcedTrack extends BasicSourcedTrack {
           source.url,
           options: Options(
             headers: {
-              "user-agent": "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.6367.83 Mobile Safari/537.36",
+              "user-agent":
+                  "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.6367.83 Mobile Safari/537.36",
               "referer": "https://www.youtube.com/",
             },
             validateStatus: (status) => status != null && status < 500,
@@ -827,7 +820,9 @@ class SourcedTrack extends BasicSourcedTrack {
       final validationResults = await Future.wait(
         sources.map(validateStream),
       );
-      validStreams = validationResults.whereType<SpotubeAudioSourceStreamObject>().toList();
+      validStreams = validationResults
+          .whereType<SpotubeAudioSourceStreamObject>()
+          .toList();
     }
 
     if (validStreams.isEmpty) {

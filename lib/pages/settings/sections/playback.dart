@@ -215,6 +215,55 @@ class SettingsPlaybackSection extends HookConsumerWidget {
           ),
         ),
         ListTile(
+          leading: const Icon(SpotubeIcons.delete),
+          title: const Text("Clear cache"),
+          subtitle: const Text("Delete all cached tracks to free up storage"),
+          onTap: () async {
+            final size = await UserPreferencesNotifier.getCacheSize();
+            final sizeStr = size.bytes >= 1073741824
+                ? "${(size.bytes / 1073741824).toStringAsFixed(1)} GB"
+                : size.bytes >= 1048576
+                    ? "${(size.bytes / 1048576).toStringAsFixed(1)} MB"
+                    : "${(size.bytes / 1024).toStringAsFixed(0)} KB";
+            final confirmed = await showDialog<bool>(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: const Text("Clear cache?"),
+                content: Text(
+                  size.files == 0
+                      ? "No cached files to delete."
+                      : "Delete ${size.files} file${size.files == 1 ? "" : "s"} ($sizeStr) from cache?",
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: const Text("Cancel"),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    child: const Text("Clear"),
+                  ),
+                ],
+              ),
+            );
+            if (confirmed == true && size.files > 0) {
+              await UserPreferencesNotifier.clearCache();
+              if (context.mounted) {
+                showToast(
+                  context: context,
+                  builder: (ctx, overlay) {
+                    return const SurfaceCard(
+                      child: Basic(
+                        title: Text("Cache cleared"),
+                      ),
+                    );
+                  },
+                );
+              }
+            }
+          },
+        ),
+        ListTile(
           leading: const Icon(SpotubeIcons.connect),
           title: const Text("Handle Spotify links"),
           subtitle: const Text(

@@ -9,6 +9,7 @@ import 'package:spotube/modules/stats/summary/summary_card.dart';
 import 'package:spotube/extensions/constrains.dart';
 import 'package:spotube/extensions/context.dart';
 import 'package:spotube/provider/history/summary.dart';
+import 'package:spotube/provider/server/routes/playback.dart';
 
 class StatsPageSummarySection extends HookConsumerWidget {
   const StatsPageSummarySection({super.key});
@@ -93,10 +94,27 @@ class StatsPageSummarySection extends HookConsumerWidget {
                   context.navigateTo(const StatsPlaylistsRoute());
                 },
               ),
+              SummaryCard.unformatted(
+                title: _formatBytes(ServerPlaybackRoutes.totalBytesStreamed),
+                unit: "",
+                description: "Data streamed\n(since app start)",
+                color: Colors.purple,
+              ),
             ]),
           );
         }),
       ),
     );
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes >= 1073741824) {
+      return "${(bytes / 1073741824).toStringAsFixed(1)} GB";
+    } else if (bytes >= 1048576) {
+      return "${(bytes / 1048576).toStringAsFixed(1)} MB";
+    } else if (bytes >= 1024) {
+      return "${(bytes / 1024).toStringAsFixed(0)} KB";
+    }
+    return "$bytes B";
   }
 }

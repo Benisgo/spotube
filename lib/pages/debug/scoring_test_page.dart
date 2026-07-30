@@ -26,6 +26,7 @@ class _ScoredResult {
   int titlePrefix = 0;
   int titleContains = 0;
   int titleTokenOverlap = 0;
+  int wordOrderBonus = 0;
   int artistTokenOverlap = 0;
   int titleLengthPenalty = 0;
   int artistExactMatch = 0;
@@ -33,6 +34,7 @@ class _ScoredResult {
   int noArtistPenalty = 0;
   int artistPrefixBonus = 0;
   int durationPoints = 0;
+  int editionBonus = 0;
   int ytMusicBonus = 0;
   int officialAudioBonus = 0;
   int officialMusicBonus = 0;
@@ -58,6 +60,7 @@ class _ScoredResult {
       titlePrefix +
       titleContains +
       titleTokenOverlap +
+      wordOrderBonus +
       artistTokenOverlap +
       titleLengthPenalty +
       artistExactMatch +
@@ -65,6 +68,7 @@ class _ScoredResult {
       noArtistPenalty +
       artistPrefixBonus +
       durationPoints +
+      editionBonus +
       ytMusicBonus +
       officialAudioBonus +
       officialMusicBonus +
@@ -233,6 +237,7 @@ class DebugScoringTestPage extends HookConsumerWidget {
       add("Prefix", r.titlePrefix);
       add("Contain", r.titleContains);
       add("Token", r.titleTokenOverlap);
+      add("Order", r.wordOrderBonus);
       add("ArtTok", r.artistTokenOverlap);
       add("LenP", r.titleLengthPenalty);
       add("Art", r.artistExactMatch);
@@ -240,6 +245,7 @@ class DebugScoringTestPage extends HookConsumerWidget {
       add("NoArt", r.noArtistPenalty);
       add("ArtPre", r.artistPrefixBonus);
       add("Dur", r.durationPoints);
+      add("Ed", r.editionBonus);
       add("YT", r.ytMusicBonus);
       add("OffAud", r.officialAudioBonus);
       add("OffMus", r.officialMusicBonus);
@@ -519,6 +525,29 @@ _ScoredResult _scoreBreakdown(
   final titleOverlap = _overlapST(titleTokens, trackTokens);
   result.titleTokenOverlap = (titleOverlap * 28).round();
 
+  // Sequential word bonus
+  final normTrackTokens =
+      _normalizeST(track.name).split(' ').where((t) => t.isNotEmpty).toList();
+  final normTitleTokens = _normalizeST(sibling.title)
+      .split(' ')
+      .where((t) => t.isNotEmpty)
+      .toList();
+  {
+    int ti = 0;
+    int matched = 0;
+    for (final tw in normTrackTokens) {
+      while (ti < normTitleTokens.length) {
+        if (normTitleTokens[ti] == tw) {
+          matched++;
+          ti++;
+          break;
+        }
+        ti++;
+      }
+    }
+    result.wordOrderBonus = matched * 3;
+  }
+
   final artistOverlap = _overlapST(combinedSiblingTokens, artistTokens);
   result.artistTokenOverlap = (artistOverlap * 18).round();
 
@@ -559,6 +588,15 @@ _ScoredResult _scoreBreakdown(
   else if (dd <= 20)
     result.durationPoints = 1;
   else if (dd >= 30) result.durationPoints = -12;
+
+  // Edition/mix/remix bonus
+  final editionR = RegExp(
+      r'\b(mix|remix|version|edit|rework|flip|bootleg|refix)\b',
+      caseSensitive: false);
+  if (editionR.hasMatch(_normalizeST(track.name)) &&
+      editionR.hasMatch(_normalizeST(sibling.title))) {
+    result.editionBonus = 10;
+  }
 
   // Content type bonuses
   if (RegExp(ytMusicR, caseSensitive: false).hasMatch(title) ||

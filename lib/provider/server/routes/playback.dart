@@ -26,6 +26,10 @@ import 'package:spotube/utils/service_utils.dart';
 
 class ServerPlaybackRoutes {
   static const _streamFailureCooldown = Duration(seconds: 8);
+
+  /// Total bytes streamed through the proxy (in-memory, resets on restart).
+  static int totalBytesStreamed = 0;
+
   final Ref ref;
   UserPreferences get userPreferences => ref.read(userPreferencesProvider);
   AudioPlayerState get playlist => ref.read(audioPlayerProvider);
@@ -224,11 +228,33 @@ class ServerPlaybackRoutes {
   bool _shouldBypassStreamingProxy(SourcedTrack track) => false;
 
   Future<String> _getTrackCacheFilePath(SourcedTrack track) async {
+    final cacheDir = await UserPreferencesNotifier.getMusicCacheDir();
+    final baseName = ServiceUtils.sanitizeFilename(
+      '${track.query.name} - ${track.query.artists.map((d) => d.name).join(",")}',
+    );
+    final ext = track.qualityPreset?.getFileExtension() ?? "m4a";
+
+    // Check if any cached file already exists for this track (any YouTube ID).
+    // This prevents accumulating duplicate cache files with different video IDs
+    // when the same Spotify track resolves to different YouTube videos over time.
+    final dir = Directory(cacheDir);
+    if (await dir.exists()) {
+      final entries = await dir.list().toList();
+      final existing = entries
+          .where((e) =>
+              e is File &&
+              !e.path.endsWith('.part') &&
+              basenameWithoutExtension(e.path).startsWith(baseName) &&
+              e.path.endsWith('.$ext'))
+          .firstOrNull;
+      if (existing != null) {
+        return existing.path;
+      }
+    }
+
     return join(
-      await UserPreferencesNotifier.getMusicCacheDir(),
-      ServiceUtils.sanitizeFilename(
-        '${track.query.name} - ${track.query.artists.map((d) => d.name).join(",")} (${track.info.id}).${track.qualityPreset?.getFileExtension() ?? "m4a"}',
-      ),
+      cacheDir,
+      '$baseName (${track.info.id}).$ext',
     );
   }
 
@@ -288,7 +314,9 @@ class ServerPlaybackRoutes {
       data: {'requestedUri': requestedUri},
     );
     _ensurePlaybackRequestRelevant(requestedUri);
-    if (track.url != null) {
+    // Only short-circuit if the stream URL was recently validated.
+    // A stale cached URL will fail when mpv tries to open it.
+    if (track.url != null && track.hasFreshValidatedStream) {
       PlaybackStartTrace.markTrack(
         track.query.id,
         'server.resolve_playable.short_circuit',
@@ -302,7 +330,8 @@ class ServerPlaybackRoutes {
     var resolvedTrack = await notifier.refreshStreamingUrl();
     _ensurePlaybackRequestRelevant(requestedUri);
     if (resolvedTrack.url != null) {
-      PlaybackStartTrace.markTrack(track.query.id, 'server.resolve_playable.done');
+      PlaybackStartTrace.markTrack(
+          track.query.id, 'server.resolve_playable.done');
       return resolvedTrack;
     }
 
@@ -311,7 +340,8 @@ class ServerPlaybackRoutes {
       resolvedTrack = await notifier.copyWithSibling();
       _ensurePlaybackRequestRelevant(requestedUri);
       if (resolvedTrack.url != null) {
-        PlaybackStartTrace.markTrack(track.query.id, 'server.resolve_playable.done');
+        PlaybackStartTrace.markTrack(
+            track.query.id, 'server.resolve_playable.done');
         return resolvedTrack;
       }
     }
@@ -334,7 +364,8 @@ class ServerPlaybackRoutes {
       resolvedTrack = await notifier.swapWithSibling(nextSibling);
       _ensurePlaybackRequestRelevant(requestedUri);
       if (resolvedTrack.url != null) {
-        PlaybackStartTrace.markTrack(track.query.id, 'server.resolve_playable.done');
+        PlaybackStartTrace.markTrack(
+            track.query.id, 'server.resolve_playable.done');
         return resolvedTrack;
       }
     }
@@ -402,7 +433,9 @@ class ServerPlaybackRoutes {
         statusCode: 200,
         requestOptions: RequestOptions(path: url),
         headers: Headers.fromMap({
-          "content-type": [url.contains("itag=251") ? "audio/webm" : "audio/mp4"],
+          "content-type": [
+            url.contains("itag=251") ? "audio/webm" : "audio/mp4"
+          ],
           "accept-ranges": ["bytes"],
           "connection": ["close"],
         }),
@@ -411,7 +444,8 @@ class ServerPlaybackRoutes {
 
     final options = Options(
       headers: {
-        "user-agent": "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.6367.83 Mobile Safari/537.36",
+        "user-agent":
+            "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.6367.83 Mobile Safari/537.36",
         "referer": "https://www.youtube.com/",
         "Cache-Control": "max-age=3600",
         "Connection": "close",
@@ -429,26 +463,28 @@ class ServerPlaybackRoutes {
         final fallbackEngine = YouTubeExplodeEngine();
         final manifest = await fallbackEngine.getStreamManifest(track.info.id);
         if (manifest.audioOnly.isNotEmpty) {
-           final fallbackStreams = manifest.audioOnly.toList();
-           fallbackStreams.sort((a, b) => b.bitrate.bitsPerSecond.compareTo(a.bitrate.bitsPerSecond));
-           final fallbackUrl = fallbackStreams.first.url.toString();
-           
-           final fallbackOptions = Options(
-             headers: {
-               "user-agent": "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.6367.83 Mobile Safari/537.36",
-               "referer": "https://www.youtube.com/",
-               "Cache-Control": "max-age=3600",
-               "Connection": "close",
-               "host": Uri.parse(fallbackUrl).host,
-             },
-             validateStatus: (status) => status! < 400,
-           );
-           
-           final res = await dio.head(fallbackUrl, options: fallbackOptions);
-           return res;
+          final fallbackStreams = manifest.audioOnly.toList();
+          fallbackStreams.sort((a, b) =>
+              b.bitrate.bitsPerSecond.compareTo(a.bitrate.bitsPerSecond));
+          final fallbackUrl = fallbackStreams.first.url.toString();
+
+          final fallbackOptions = Options(
+            headers: {
+              "user-agent":
+                  "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.6367.83 Mobile Safari/537.36",
+              "referer": "https://www.youtube.com/",
+              "Cache-Control": "max-age=3600",
+              "Connection": "close",
+              "host": Uri.parse(fallbackUrl).host,
+            },
+            validateStatus: (status) => status! < 400,
+          );
+
+          final res = await dio.head(fallbackUrl, options: fallbackOptions);
+          return res;
         }
       } catch (_) {}
-      
+
       rethrow;
     }
   }
@@ -477,7 +513,8 @@ class ServerPlaybackRoutes {
     if (userPreferences.cacheMusic) {
       trackCacheFile = File(await _getTrackCacheFilePath(track));
       if (await trackCacheFile.exists()) {
-        PlaybackStartTrace.markTrack(track.query.id, 'server.stream_route.cache_hit');
+        PlaybackStartTrace.markTrack(
+            track.query.id, 'server.stream_route.cache_hit');
         final cachedFileLength = await trackCacheFile.length();
         final requestedRange = _getRequestedRange(request);
         final resolvedRange = _resolveByteRange(
@@ -485,6 +522,7 @@ class ServerPlaybackRoutes {
           requestedRange,
         );
         final isPartial = requestedRange != null;
+        totalBytesStreamed += resolvedRange.end - resolvedRange.start + 1;
 
         _trace(
           "serve cached uri=$requestedUri track=${track.query.id} partial=$isPartial start=${resolvedRange.start} end=${resolvedRange.end} total=${resolvedRange.total}",
@@ -518,7 +556,8 @@ class ServerPlaybackRoutes {
     try {
       activeTrack = await _resolvePlayableTrack(track, requestedUri);
     } catch (e, stack) {
-      if (e is StateError && e.message.toString().startsWith("Stale playback request:")) {
+      if (e is StateError &&
+          e.message.toString().startsWith("Stale playback request:")) {
         rethrow;
       }
       PlaybackStartTrace.failTrack(
@@ -572,7 +611,8 @@ class ServerPlaybackRoutes {
         if (h != null && h.isNotEmpty) return h;
       } catch (_) {}
       return {
-        "user-agent": "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.6367.83 Mobile Safari/537.36",
+        "user-agent":
+            "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.6367.83 Mobile Safari/537.36",
         "accept": "*/*",
         "accept-language": "en-US,en;q=0.5",
         "origin": "https://www.youtube.com",
@@ -610,12 +650,12 @@ class ServerPlaybackRoutes {
     dio_lib.Response<ResponseBody>? tempRes;
     final triedSiblingIds = <String>{activeTrack.info.id};
     final notifier = ref.read(sourcedTrackProvider(activeTrack.query).notifier);
-    
-    int maxAttempts = activeTrack.siblings.length + 2; 
-    
+
+    int maxAttempts = activeTrack.siblings.length + 2;
+
     for (int attempt = 0; attempt < maxAttempts; attempt++) {
       _ensurePlaybackRequestRelevant(requestedUri);
-      
+
       try {
         PlaybackStartTrace.markTrack(
           activeTrack.query.id,
@@ -628,7 +668,7 @@ class ServerPlaybackRoutes {
           'server.upstream_fetch.connected',
           data: {'statusCode': tempRes.statusCode ?? 0},
         );
-        
+
         if (tempRes.statusCode == 200 || tempRes.statusCode == 206) {
           break; // Success!
         }
@@ -637,8 +677,10 @@ class ServerPlaybackRoutes {
           if (CancelToken.isCancel(e)) {
             rethrow;
           }
-          if (e.error is HttpException && e.error.toString().contains("Connection closed")) {
-            _trace("Upstream connection closed prematurely for uri=$requestedUri");
+          if (e.error is HttpException &&
+              e.error.toString().contains("Connection closed")) {
+            _trace(
+                "Upstream connection closed prematurely for uri=$requestedUri");
             tempRes = null;
           } else {
             AppLogger.reportError(e, stack);
@@ -647,9 +689,9 @@ class ServerPlaybackRoutes {
           AppLogger.reportError(e, stack);
         }
       }
-      
+
       _ensurePlaybackRequestRelevant(requestedUri);
-      
+
       try {
         if (attempt == 0) {
           activeTrack = await _resolvePlayableTrack(
@@ -662,7 +704,7 @@ class ServerPlaybackRoutes {
           );
           if (nextSibling == null) break;
           triedSiblingIds.add(nextSibling.id);
-          
+
           activeTrack = await _resolvePlayableTrack(
             await notifier.swapWithSibling(nextSibling),
             requestedUri,
@@ -670,44 +712,52 @@ class ServerPlaybackRoutes {
         }
         url = activeTrack.url!;
       } catch (resolveError, resolveStack) {
-         if (resolveError is StateError && resolveError.message.toString().startsWith("Stale playback request:")) {
-           rethrow;
-         }
-         AppLogger.reportError(resolveError, resolveStack);
+        if (resolveError is StateError &&
+            resolveError.message
+                .toString()
+                .startsWith("Stale playback request:")) {
+          rethrow;
+        }
+        AppLogger.reportError(resolveError, resolveStack);
       }
     }
-    
-    if (tempRes == null || (tempRes.statusCode != 200 && tempRes.statusCode != 206)) {
+
+    if (tempRes == null ||
+        (tempRes.statusCode != 200 && tempRes.statusCode != 206)) {
       _markStreamFailure(activeTrack);
-      
+
       bool fallbackSuccess = false;
       try {
         final fallbackEngine = YouTubeExplodeEngine();
-        final manifest = await fallbackEngine.getStreamManifest(activeTrack.info.id);
+        final manifest =
+            await fallbackEngine.getStreamManifest(activeTrack.info.id);
         if (manifest.audioOnly.isNotEmpty) {
-           final fallbackStreams = manifest.audioOnly.toList();
-           fallbackStreams.sort((a, b) => b.bitrate.bitsPerSecond.compareTo(a.bitrate.bitsPerSecond));
-           url = fallbackStreams.first.url.toString();
-           tempRes = await fetchStream(url);
-           if (tempRes.statusCode == 200 || tempRes.statusCode == 206) {
-             _clearStreamFailure(activeTrack);
-             fallbackSuccess = true;
-           }
+          final fallbackStreams = manifest.audioOnly.toList();
+          fallbackStreams.sort((a, b) =>
+              b.bitrate.bitsPerSecond.compareTo(a.bitrate.bitsPerSecond));
+          url = fallbackStreams.first.url.toString();
+          tempRes = await fetchStream(url);
+          if (tempRes.statusCode == 200 || tempRes.statusCode == 206) {
+            _clearStreamFailure(activeTrack);
+            fallbackSuccess = true;
+          }
         }
       } catch (fallbackError, fallbackStack) {
-        if (fallbackError is DioException && CancelToken.isCancel(fallbackError)) {
+        if (fallbackError is DioException &&
+            CancelToken.isCancel(fallbackError)) {
           rethrow;
         }
         AppLogger.reportError(fallbackError, fallbackStack);
       }
-      
+
       if (!fallbackSuccess) {
-        throw StateError("Stream ${activeTrack.query.id} returned ${tempRes?.statusCode} after retrying all siblings");
+        throw StateError(
+            "Stream ${activeTrack.query.id} returned ${tempRes?.statusCode} after retrying all siblings");
       }
     }
 
     _clearStreamFailure(activeTrack);
-    
+
     final dio_lib.Response<ResponseBody> res = tempRes!;
 
     _trace(
@@ -821,6 +871,7 @@ class ServerPlaybackRoutes {
     try {
       await for (final chunk in source) {
         cacheSink.add(chunk);
+        totalBytesStreamed += chunk.length;
         yield chunk;
       }
       await cacheSink.close();

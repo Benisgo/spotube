@@ -46,9 +46,13 @@ class CustomPlayer extends Player {
       nativePlayer.setProperty("cache-secs", "600"); // 10 min — full song cache
       nativePlayer.setProperty(
           "cache-pause", "no"); // don't pause while filling
-      // Disable video output on desktop to reduce GPU usage during audio-only playback
+      // Disable video output entirely — audio-only app
       nativePlayer.setProperty("vo", "null");
       nativePlayer.setProperty("video", "no");
+      // Use wasapi for low-overhead audio on Windows
+      nativePlayer.setProperty("ao", "wasapi");
+      // No hardware decoding needed for audio-only
+      nativePlayer.setProperty("hwdec", "no");
     } else {
       nativePlayer.setProperty("network-timeout", "120");
       nativePlayer.setProperty(
@@ -59,9 +63,10 @@ class CustomPlayer extends Player {
         "demuxer-max-back-bytes",
         (1 * 1024 * 1024).toString(),
       );
-      // Disable video output on desktop to reduce GPU usage
+      // Disable video output entirely — audio-only app
       nativePlayer.setProperty("vo", "null");
       nativePlayer.setProperty("video", "no");
+      nativePlayer.setProperty("hwdec", "no");
     }
 
     _subscriptions = [

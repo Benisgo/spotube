@@ -57,82 +57,84 @@ class BottomPlayer extends HookConsumerWidget {
         customTheme.useNowPlayingCoverBackground &&
         playlist.activeTrack?.album.images.isNotEmpty == true;
 
-    return SurfaceCard(
-      borderRadius: BorderRadius.zero,
-      surfaceBlur: hasBackgroundImage ? 20 : context.theme.surfaceBlur,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Expanded(
-            child: PlayerTrackDetails(track: playlist.activeTrack),
-          ),
-          // controls
-          const Flexible(
-            flex: 3,
-            child: Padding(
-              padding: EdgeInsets.only(top: 5),
-              child: PlayerControls(),
+    return RepaintBoundary(
+      child: SurfaceCard(
+        borderRadius: BorderRadius.zero,
+        surfaceBlur: hasBackgroundImage ? 20 : context.theme.surfaceBlur,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: PlayerTrackDetails(track: playlist.activeTrack),
             ),
-          ),
-          // add to saved tracks
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              PlayerActions(
-                extraActions: [
-                  Tooltip(
-                    tooltip:
-                        TooltipContainer(child: Text(context.l10n.mini_player))
-                            .call,
-                    child: IconButton(
-                      variance: ButtonVariance.ghost,
-                      icon: const Icon(SpotubeIcons.miniPlayer),
-                      onPressed: () async {
-                        if (!kIsDesktop) return;
-
-                        final prevSize = await windowManager.getSize();
-                        await windowManager.setMinimumSize(
-                          const Size(260, 120),
-                        );
-                        await windowManager.setAlwaysOnTop(true);
-                        if (!kIsLinux) {
-                          await windowManager.setHasShadow(false);
-                        }
-                        await windowManager.setAlignment(Alignment.topRight);
-                        await windowManager.setSize(const Size(320, 170));
-                        await Future.delayed(
-                          const Duration(milliseconds: 100),
-                          () async {
-                            if (context.mounted) {
-                              context.navigateTo(
-                                MiniLyricsRoute(prevSize: prevSize),
-                              );
-                            }
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                ],
+            // controls
+            const Flexible(
+              flex: 3,
+              child: Padding(
+                padding: EdgeInsets.only(top: 5),
+                child: PlayerControls(),
               ),
-              Container(
-                height: 40,
-                constraints: const BoxConstraints(maxWidth: 250),
-                padding: const EdgeInsets.only(right: 10),
-                child: Consumer(builder: (context, ref, _) {
-                  final volume = ref.watch(volumeProvider);
-                  return VolumeSlider(
-                    fullWidth: true,
-                    value: volume,
-                    onChanged: (value) {
-                      ref.read(volumeProvider.notifier).setVolume(value);
-                    },
-                  );
-                }),
-              )
-            ],
-          ),
-        ],
+            ),
+            // add to saved tracks
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                PlayerActions(
+                  extraActions: [
+                    Tooltip(
+                      tooltip: TooltipContainer(
+                              child: Text(context.l10n.mini_player))
+                          .call,
+                      child: IconButton(
+                        variance: ButtonVariance.ghost,
+                        icon: const Icon(SpotubeIcons.miniPlayer),
+                        onPressed: () async {
+                          if (!kIsDesktop) return;
+
+                          final prevSize = await windowManager.getSize();
+                          await windowManager.setMinimumSize(
+                            const Size(260, 120),
+                          );
+                          await windowManager.setAlwaysOnTop(true);
+                          if (!kIsLinux) {
+                            await windowManager.setHasShadow(false);
+                          }
+                          await windowManager.setAlignment(Alignment.topRight);
+                          await windowManager.setSize(const Size(320, 170));
+                          await Future.delayed(
+                            const Duration(milliseconds: 100),
+                            () async {
+                              if (context.mounted) {
+                                context.navigateTo(
+                                  MiniLyricsRoute(prevSize: prevSize),
+                                );
+                              }
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                Container(
+                  height: 40,
+                  constraints: const BoxConstraints(maxWidth: 250),
+                  padding: const EdgeInsets.only(right: 10),
+                  child: Consumer(builder: (context, ref, _) {
+                    final volume = ref.watch(volumeProvider);
+                    return VolumeSlider(
+                      fullWidth: true,
+                      value: volume,
+                      onChanged: (value) {
+                        ref.read(volumeProvider.notifier).setVolume(value);
+                      },
+                    );
+                  }),
+                )
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

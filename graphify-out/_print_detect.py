@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-d = json.loads(Path('graphify-out/.graphify_detect.json').read_text(encoding='utf-8'))
+d = json.loads(Path('.graphify_detect.json').read_text(encoding='utf-8-sig'))
 cats = d['files']
 code = len(cats.get('code', []))
 doc = len(cats.get('document', []))

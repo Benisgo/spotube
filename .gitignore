@@ -93,5 +93,6 @@ android/app/.cxx
 .github/hooks/
 .github/prompts/
 .github/instructions/
+graphify-out/
 mdFiles/
 /AGENTS.md

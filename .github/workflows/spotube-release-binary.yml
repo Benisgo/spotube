@@ -171,8 +171,16 @@ jobs:
           flutter pub get
           # Ensure flutter_new_pipe_extractor assets directory exists
           # (the assets/*.zip files are gitignored in the repo but pubspec.yaml references assets/)
-          PACKAGE_DIR=$(dart pub cache list 2>/dev/null | head -1 || echo "$HOME/.pub-cache")
-          ASSETS_DIR=$(find "$PACKAGE_DIR/git" -maxdepth 1 -type d -name "flutter_new_pipe_extractor-*" 2>/dev/null | head -1)/assets
+          ASSETS_DIR=""
+          for cache_dir in "${PUB_CACHE:-}" "$HOME/.pub-cache" "$FLUTTER_HOME/.pub-cache"; do
+            [ -z "$cache_dir" ] && continue
+            [ ! -d "$cache_dir/git" ] && continue
+            found=$(find "$cache_dir/git" -maxdepth 2 -type d -name "flutter_new_pipe_extractor-*" 2>/dev/null | head -1)
+            if [ -n "$found" ]; then
+              ASSETS_DIR="$found/assets"
+              break
+            fi
+          done
           if [ -n "$ASSETS_DIR" ] && [ ! -d "$ASSETS_DIR" ]; then
             mkdir -p "$ASSETS_DIR"
             echo "Created missing assets directory: $ASSETS_DIR"

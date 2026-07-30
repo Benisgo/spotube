@@ -11,9 +11,7 @@ import 'package:spotube/provider/metadata_plugin/tracks/track.dart';
 import 'package:spotube/services/youtube_engine/youtube_engine.dart';
 import 'package:spotube/services/youtube_engine/innertube_engine.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
-import 'package:spotube/services/youtube_engine/invidious_engine.dart';
 import 'package:spotube/services/youtube_engine/newpipe_engine.dart';
-import 'package:spotube/services/youtube_engine/verome_engine.dart';
 import 'package:spotube/services/youtube_engine/youtube_explode_engine.dart';
 import 'package:spotube/services/youtube_engine/yt_music_engine.dart';
 import 'package:spotube/services/youtube_engine/yt_dlp_engine.dart';
@@ -40,12 +38,8 @@ final _allEngines = <_EngineEntry>[
       InnerTubeEngine.isAvailableForPlatform),
   _EngineEntry("YouTubeExplode", () => YouTubeExplodeEngine(),
       YouTubeExplodeEngine.isAvailableForPlatform),
-  _EngineEntry("Invidious", () => InvidiousEngine(),
-      InvidiousEngine.isAvailableForPlatform),
   _EngineEntry(
       "NewPipe", () => NewPipeEngine(), NewPipeEngine.isAvailableForPlatform),
-  _EngineEntry(
-      "Verome", () => VeromeEngine(), VeromeEngine.isAvailableForPlatform),
   _EngineEntry(
       "YtDlp", () => YtDlpEngine(), YtDlpEngine.isAvailableForPlatform),
   if (kIsAndroid)

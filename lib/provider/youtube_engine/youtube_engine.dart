@@ -3,9 +3,7 @@ import 'package:spotube/models/database/database.dart';
 import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
 import 'package:spotube/services/youtube_engine/android_yt_dlp_engine.dart';
 import 'package:spotube/services/youtube_engine/innertube_engine.dart';
-import 'package:spotube/services/youtube_engine/invidious_engine.dart';
 import 'package:spotube/services/youtube_engine/newpipe_engine.dart';
-import 'package:spotube/services/youtube_engine/verome_engine.dart';
 import 'package:spotube/services/youtube_engine/youtube_explode_engine.dart';
 import 'package:spotube/services/youtube_engine/yt_music_engine.dart';
 import 'package:spotube/services/youtube_engine/yt_dlp_engine.dart';
@@ -32,12 +30,6 @@ final youtubeEngineProvider = Provider<YouTubeEngine>((ref) {
     } else if (engine == YoutubeClientEngine.ytDlp &&
         AndroidYtDlpEngine.isAvailableForPlatform) {
       instances.add(AndroidYtDlpEngine());
-    } else if (engine == YoutubeClientEngine.invidious &&
-        InvidiousEngine.isAvailableForPlatform) {
-      instances.add(InvidiousEngine());
-    } else if (engine == YoutubeClientEngine.verome &&
-        VeromeEngine.isAvailableForPlatform) {
-      instances.add(VeromeEngine());
     } else if (engine == YoutubeClientEngine.youtubeExplode &&
         YouTubeExplodeEngine.isAvailableForPlatform) {
       instances.add(YouTubeExplodeEngine());

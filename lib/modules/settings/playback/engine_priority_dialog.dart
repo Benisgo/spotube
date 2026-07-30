@@ -23,7 +23,9 @@ class EnginePriorityDialog extends HookConsumerWidget {
     );
 
     final availableEngines = YoutubeClientEngine.values
-        .where((e) => e.isAvailableForPlatform())
+        .where((e) =>
+            e.isAvailableForPlatform() &&
+            e != YoutubeClientEngine.youtubeExplode)
         .toList();
 
     // Sort so that enabled ones are first (in their current order), followed by disabled ones.

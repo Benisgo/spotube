@@ -15,7 +15,6 @@ import 'package:spotube/provider/discord_provider.dart';
 import 'package:spotube/provider/metadata_plugin/metadata_plugin_provider.dart';
 import 'package:spotube/provider/server/server.dart';
 import 'package:spotube/provider/server/sourced_track_provider.dart';
-import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
 import 'package:spotube/services/audio_player/audio_player.dart';
 import 'package:spotube/services/logger/logger.dart';
 import 'package:spotube/services/logger/playback_start_trace.dart';
@@ -676,7 +675,6 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
     int initialIndex = 0,
     bool autoPlay = false,
   }) async {
-    final preferences = ref.read(userPreferencesProvider);
     _playlistOperationId++;
     _isBatchAdding = false;
     _assertAllowedTracks(tracks);
@@ -695,35 +693,10 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
       PlaybackStartTrace.markTrack(targetTrack.id, 'server.ready');
     }
 
-    // Resolve the first track's CDN URL directly when fast playback is enabled
-    // so MPV can skip the local proxy for the active track.
-    String? firstTrackDirectUrl;
-    Map<String, String>? firstTrackDirectHeaders;
-    if (preferences.enableFastPlayback &&
-        targetTrack != null &&
-        targetTrack is SpotubeFullTrackObject) {
-      try {
-        final notifier = ref.read(sourcedTrackProvider(targetTrack).notifier);
-        final sourced = await ref
-            .read(sourcedTrackProvider(targetTrack).future)
-            .timeout(const Duration(seconds: 15));
-        if (sourced.url != null) {
-          final refreshed = await notifier.refreshStreamingUrl();
-          firstTrackDirectUrl = refreshed.url;
-          firstTrackDirectHeaders =
-              SpotubeMedia.headersForDirectUrl(firstTrackDirectUrl);
-        }
-      } catch (_) {}
-    }
-
     final medias = _blacklist
         .filter(tracks)
         .toList()
-        .asMediaList(
-          firstTrackDirectUrl: firstTrackDirectUrl,
-          firstTrackDirectHeaders: firstTrackDirectHeaders,
-          targetTrack: targetTrack,
-        )
+        .asMediaList(targetTrack: targetTrack)
         .unique((a, b) => a.uri == b.uri);
 
     if (medias.isEmpty) {

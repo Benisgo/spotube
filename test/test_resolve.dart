@@ -1,10 +1,9 @@
 import 'package:dio/dio.dart';
-import 'package:spotube/services/youtube_engine/verome_engine.dart';
-import 'package:spotube/services/youtube_engine/invidious_engine.dart';
+// Verome and Invidious engines removed
 
 void main() async {
   final dio = Dio();
-  
+
   Future<void> testEngine(String name, dynamic engine) async {
     print('Testing $name...');
     try {
@@ -21,14 +20,15 @@ void main() async {
         return;
       }
       print('$name: Found ${streams.length} streams');
-      
+
       for (var stream in streams) {
         try {
           final res = await dio.head(
             stream.url.toString(),
             options: Options(
               headers: {
-                "user-agent": "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.6367.83 Mobile Safari/537.36",
+                "user-agent":
+                    "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.6367.83 Mobile Safari/537.36",
                 "referer": "https://www.youtube.com/",
               },
               validateStatus: (status) => status != null && status < 500,
@@ -44,12 +44,5 @@ void main() async {
     }
   }
 
-  final verome = VeromeEngine();
-  final invidious = InvidiousEngine();
-  
-  await testEngine('Verome', verome);
-  await testEngine('Invidious', invidious);
-  
-  verome.dispose();
-  invidious.dispose();
+  // Verome and Invidious engines removed
 }

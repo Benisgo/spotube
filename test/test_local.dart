@@ -1,10 +1,9 @@
 import 'package:dio/dio.dart';
-import 'package:spotube/services/youtube_engine/verome_engine.dart';
-import 'package:spotube/services/youtube_engine/invidious_engine.dart';
+// Invidious engine removed
 
 void main() async {
   final dio = Dio();
-  final invidious = InvidiousEngine();
+  final invidious = null;
 
   try {
     final results = await invidious.searchVideos('bluff by akio');

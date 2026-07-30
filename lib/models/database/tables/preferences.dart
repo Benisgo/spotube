@@ -16,8 +16,6 @@ enum YoutubeClientEngine {
   ytDlp("yt-dlp"),
   youtubeExplode("YouTubeExplode"),
   newPipe("NewPipe"),
-  invidious("Invidious"),
-  verome("Verome"),
   youtubeMusic("YouTube Music");
 
   final String label;
@@ -32,8 +30,6 @@ enum YoutubeClientEngine {
       YoutubeClientEngine.ytDlp => YtDlpEngine.isAvailableForPlatform ||
           AndroidYtDlpEngine.isAvailableForPlatform,
       YoutubeClientEngine.newPipe => NewPipeEngine.isAvailableForPlatform,
-      YoutubeClientEngine.invidious => InvidiousEngine.isAvailableForPlatform,
-      YoutubeClientEngine.verome => VeromeEngine.isAvailableForPlatform,
       YoutubeClientEngine.youtubeMusic => true,
     };
   }
@@ -61,6 +57,24 @@ enum SearchMode {
 
   factory SearchMode.fromString(String key) {
     return SearchMode.values.firstWhere((e) => e.name == key);
+  }
+}
+
+class YoutubeClientEngineConverter
+    extends TypeConverter<YoutubeClientEngine, String> {
+  const YoutubeClientEngineConverter();
+
+  @override
+  YoutubeClientEngine fromSql(String fromDb) {
+    return YoutubeClientEngine.values.firstWhere(
+      (v) => v.name == fromDb,
+      orElse: () => YoutubeClientEngine.youtubeMusic,
+    );
+  }
+
+  @override
+  String toSql(YoutubeClientEngine value) {
+    return value.name;
   }
 }
 
@@ -124,8 +138,9 @@ class PreferencesTable extends Table {
   TextColumn get themeMode =>
       textEnum<ThemeMode>().withDefault(Constant(ThemeMode.system.name))();
   TextColumn get audioSourceId => text().nullable()();
-  TextColumn get youtubeClientEngine => textEnum<YoutubeClientEngine>()
-      .withDefault(Constant(YoutubeClientEngine.youtubeExplode.name))();
+  TextColumn get youtubeClientEngine => text()
+      .map(const YoutubeClientEngineConverter())
+      .withDefault(Constant(YoutubeClientEngine.youtubeMusic.name))();
   TextColumn get youtubeClientEngines => text()
       .map(const YoutubeClientEnginesConverter())
       .withDefault(const Constant('[]'))();
@@ -153,8 +168,6 @@ class PreferencesTable extends Table {
       text().withDefault(const Constant(""))();
   BoolColumn get handleSpotifyLinks =>
       boolean().withDefault(const Constant(true))();
-  BoolColumn get enableFastPlayback =>
-      boolean().withDefault(const Constant(false))();
 
   // Default values as PreferencesTableData
   static PreferencesTableData defaults() {
@@ -177,11 +190,10 @@ class PreferencesTable extends Table {
       localLibraryLocation: [],
       themeMode: ThemeMode.system,
       audioSourceId: null,
-      youtubeClientEngine: YoutubeClientEngine.invidious,
+      youtubeClientEngine: YoutubeClientEngine.youtubeMusic,
       youtubeClientEngines: [
-        YoutubeClientEngine.invidious,
+        YoutubeClientEngine.youtubeMusic,
         YoutubeClientEngine.ytDlp,
-        YoutubeClientEngine.verome,
         YoutubeClientEngine.newPipe,
       ],
       discordPresence: true,
@@ -197,7 +209,6 @@ class PreferencesTable extends Table {
       lyricsCharacterEdge: LyricsCharacterEdge.none,
       multiSessionRelayUrl: "",
       handleSpotifyLinks: true,
-      enableFastPlayback: false,
     );
   }
 }

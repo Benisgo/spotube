@@ -1,8 +1,7 @@
 import 'package:dio/dio.dart';
-import 'package:spotube/services/youtube_engine/verome_engine.dart';
 
 void main() async {
-  final verome = VeromeEngine();
+  final verome = null;
   final dio = Dio();
   try {
     print('Searching Verome...');
@@ -10,7 +9,7 @@ void main() async {
     final streams = await verome.getStreamManifest(results.first.id.value);
     final url = streams.audioOnly.first.url;
     print('Verome URL: $url');
-    
+
     final options = Options(
       headers: {
         "user-agent": "mpv 0.35.0",
@@ -21,7 +20,7 @@ void main() async {
       responseType: ResponseType.stream,
       validateStatus: (_) => true,
     );
-    
+
     final res = await dio.get<ResponseBody>(url.toString(), options: options);
     print('Verome GET status: ${res.statusCode}');
     print('Verome GET headers: ${res.headers.map}');

@@ -19,7 +19,8 @@ class MetadataPluginAudioSourceEndpoint {
           as HTInstance;
 
   List<SpotubeAudioSourceContainerPreset> get supportedPresets {
-    final raw = hetuMetadataAudioSource.memberGet("supportedPresets") as List;
+    final raw = List<dynamic>.from(
+        hetuMetadataAudioSource.memberGet("supportedPresets") as Iterable);
 
     return raw
         .map((e) => SpotubeAudioSourceContainerPreset.fromJson(_hetuToMap(e)))
@@ -29,8 +30,14 @@ class MetadataPluginAudioSourceEndpoint {
   Future<List<SpotubeAudioSourceMatchObject>> matches(
     SpotubeFullTrackObject track,
   ) async {
-    final raw = await hetuMetadataAudioSource
-        .invoke("matches", positionalArgs: [track.toJson()]) as List;
+    // Build query in Dart (Hetu can't handle nested Dart List<Map> types)
+    final queryStr =
+        "${track.name} ${track.artists.map((a) => a.name).join(" ")}";
+    final trackData = Map<String, dynamic>.from(track.toJson())
+      ..['queryString'] = queryStr;
+    final result = await hetuMetadataAudioSource
+        .invoke("matches", positionalArgs: [trackData]);
+    final raw = List<dynamic>.from(result as Iterable);
 
     return raw
         .map((e) => SpotubeAudioSourceMatchObject.fromJson(_hetuToMap(e)))
@@ -40,8 +47,9 @@ class MetadataPluginAudioSourceEndpoint {
   Future<List<SpotubeAudioSourceStreamObject>> streams(
     SpotubeAudioSourceMatchObject match,
   ) async {
-    final raw = await hetuMetadataAudioSource
-        .invoke("streams", positionalArgs: [match.toJson()]) as List;
+    final result = await hetuMetadataAudioSource
+        .invoke("streams", positionalArgs: [match.toJson()]);
+    final raw = List<dynamic>.from(result as Iterable);
 
     return raw
         .map((e) => SpotubeAudioSourceStreamObject.fromJson(_hetuToMap(e)))

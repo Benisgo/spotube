@@ -170,13 +170,15 @@ class YoutubeAudioSource {
   ]
 
   fun matches(track) -> Future {
-    var query = track["title"]
+    var query = track["queryString"]
+    if (query == null || query == "") {
+      query = track["name"]
+    }
+    if (query == null || query == "") {
+      query = track["title"]
+    }
     if (query == null || query == "") return Future.value([])
     query = "" + query
-    var artists = track["artists"] as List
-    if (artists != null && artists.length > 0) {
-      query = query + " " + artists.join(" ")
-    }
     return _engine.search(query).then(fun(results) {
       return results.map(fun(v) {
         var thumb = v["thumbnail"]

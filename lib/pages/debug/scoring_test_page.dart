@@ -5,10 +5,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:spotube/models/metadata/metadata.dart';
+import 'package:spotube/provider/metadata_plugin/core/support.dart';
+import 'package:spotube/provider/metadata_plugin/metadata_plugin_provider.dart';
 import 'package:spotube/provider/metadata_plugin/tracks/track.dart';
+import 'package:spotube/services/metadata/metadata.dart';
 import 'package:spotube/services/sourced_track/sourced_track.dart';
 import 'package:spotube/utils/spotify_link.dart';
-import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
 class _ScoredResult {
   final SpotubeAudioSourceMatchObject match;
@@ -146,38 +148,17 @@ class DebugScoringTestPage extends HookConsumerWidget {
       final durationSec = int.tryParse(durStr) ?? 30;
 
       isSearching.value = true;
-      statusMsg.value = "Searching YouTube for \"$name\"...";
+      statusMsg.value = "Preparing search...";
       results.value = [];
 
       try {
-        // Search YouTube
-        final yt = YoutubeExplode();
-        List<Video> searchResults;
-        try {
-          searchResults =
-              await yt.search.search(name).timeout(const Duration(seconds: 15));
-        } finally {
-          yt.close();
-        }
-
-        if (searchResults.isEmpty) {
-          statusMsg.value = "No YouTube results found";
+        // Get the audio source plugin and search through it (same as engine)
+        final audioSource = await ref.read(audioSourcePluginProvider.future);
+        if (audioSource == null) {
+          statusMsg.value = "No default audio source plugin configured";
           isSearching.value = false;
           return;
         }
-
-        statusMsg.value = "Found ${searchResults.length} results, scoring...";
-
-        // Convert to SpotubeAudioSourceMatchObject
-        final matches = searchResults
-            .map((v) => SpotubeAudioSourceMatchObject(
-                  id: v.id.value,
-                  title: v.title,
-                  artists: [v.author],
-                  duration: v.duration ?? const Duration(),
-                  externalUri: "https://www.youtube.com/watch?v=${v.id.value}",
-                ))
-            .toList();
 
         // Use resolved track or build mock
         final SpotubeFullTrackObject trackObj;
@@ -207,8 +188,21 @@ class DebugScoringTestPage extends HookConsumerWidget {
           ) as SpotubeFullTrackObject;
         }
 
-        // Run experimental scoring
-        final ranked = SourcedTrack.rankResultsExperimental(matches, trackObj);
+        // Search using the actual audio source plugin (same as engine)
+        statusMsg.value = "Searching via ${audioSource.slug}...";
+        final searchResults = await audioSource.audioSource.matches(trackObj);
+
+        if (searchResults.isEmpty) {
+          statusMsg.value = "No results from audio source";
+          isSearching.value = false;
+          return;
+        }
+
+        statusMsg.value = "Found ${searchResults.length} results, scoring...";
+
+        // Run experimental scoring (same function the engine uses)
+        final ranked =
+            SourcedTrack.rankResultsExperimental(searchResults, trackObj);
 
         // Build scored results with breakdown
         final scored = <_ScoredResult>[];

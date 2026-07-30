@@ -35,7 +35,7 @@ class LibraryPage extends HookConsumerWidget {
         ...getSidebarLibraryTileList(context.l10n),
         SideBarTiles(
           id: "downloads",
-          pathPrefix: "library/downloads",
+          pathPrefix: "/library/downloads",
           title: context.l10n.downloads,
           route: const UserDownloadsRoute(),
           icon: SpotubeIcons.download,
@@ -53,7 +53,9 @@ class LibraryPage extends HookConsumerWidget {
     final isAnimating = useRef(false);
     final isFirstFrame = useRef(true);
 
-    // Sync PageView to route changes
+    // Jump PageView to the correct page when route changes (e.g. from sidebar).
+    // Use jumpToPage instead of animateToPage to avoid triggering
+    // onPageChanged callbacks that cause navigation loops.
     useEffect(() {
       if (currentIndex < 0) return null;
       if (isFirstFrame.value) {
@@ -62,11 +64,7 @@ class LibraryPage extends HookConsumerWidget {
       }
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (pageController.hasClients) {
-          pageController.animateToPage(
-            currentIndex,
-            duration: const Duration(milliseconds: 200),
-            curve: Curves.easeInOut,
-          );
+          pageController.jumpToPage(currentIndex);
         }
       });
       return null;
@@ -113,11 +111,13 @@ class LibraryPage extends HookConsumerWidget {
                       index: currentIndex >= 0 ? currentIndex : 0,
                       onChanged: (index) {
                         isAnimating.value = true;
-                        pageController.animateToPage(
-                          index,
-                          duration: const Duration(milliseconds: 200),
-                          curve: Curves.easeInOut,
-                        ).then((_) => isAnimating.value = false);
+                        pageController
+                            .animateToPage(
+                              index,
+                              duration: const Duration(milliseconds: 200),
+                              curve: Curves.easeInOut,
+                            )
+                            .then((_) => isAnimating.value = false);
                         context.navigateTo(
                           sidebarLibraryTileList[index].route,
                         );

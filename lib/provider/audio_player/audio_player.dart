@@ -198,6 +198,7 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
           ..where((tbl) => tbl.id.equals(0)))
         .getSingleOrNull();
     final shouldResumeOnLaunch = preferences?.resumePlaybackOnLaunch ?? false;
+    final downloadLocation = preferences?.downloadLocation ?? "";
 
     var playerState =
         await database.select(database.audioPlayerStateTable).getSingleOrNull();
@@ -241,7 +242,7 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
         currentIndex: safeCurrentIndex,
       );
       await audioPlayer.openPlaylist(
-        tracks.asMediaList(),
+        tracks.asMediaList(downloadLocation: downloadLocation),
         initialIndex: safeCurrentIndex,
         autoPlay: false,
       );
@@ -693,10 +694,19 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
       PlaybackStartTrace.markTrack(targetTrack.id, 'server.ready');
     }
 
+    final database = ref.read(databaseProvider);
+    final preferences = await (database.select(database.preferencesTable)
+          ..where((tbl) => tbl.id.equals(0)))
+        .getSingleOrNull();
+    final downloadLocation = preferences?.downloadLocation ?? "";
+
     final medias = _blacklist
         .filter(tracks)
         .toList()
-        .asMediaList(targetTrack: targetTrack)
+        .asMediaList(
+          targetTrack: targetTrack,
+          downloadLocation: downloadLocation,
+        )
         .unique((a, b) => a.uri == b.uri);
 
     if (medias.isEmpty) {

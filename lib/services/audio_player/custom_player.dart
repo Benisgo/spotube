@@ -53,6 +53,13 @@ class CustomPlayer extends Player {
       nativePlayer.setProperty("ao", "wasapi");
       // No hardware decoding needed for audio-only
       nativePlayer.setProperty("hwdec", "no");
+      // Reduce mpv event rate to prevent Windows task runner flooding.
+      // mpv fires time-pos/percent-pos events at video frame rate which
+      // overwhelms Flutter's Windows message loop, freezing the UI.
+      nativePlayer.setProperty("video-sync", "audio");     // sync to audio clock only
+      nativePlayer.setProperty("video-output", "no");      // completely disable video output
+      nativePlayer.setProperty("audio-buffer", "0.050");   // small audio buffer
+      nativePlayer.setProperty("keep-open", "no");         // no post-EOF idle state
     } else {
       nativePlayer.setProperty("network-timeout", "120");
       nativePlayer.setProperty(

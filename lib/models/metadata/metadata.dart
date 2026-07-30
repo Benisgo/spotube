@@ -12,6 +12,7 @@ import 'package:path/path.dart';
 import 'package:spotube/collections/assets.gen.dart';
 import 'package:spotube/services/audio_player/audio_player.dart';
 import 'package:spotube/utils/primitive_utils.dart';
+import 'package:spotube/utils/service_utils.dart';
 
 part 'metadata.g.dart';
 part 'metadata.freezed.dart';

@@ -53,18 +53,25 @@ class SpotubeMedia extends mk.Media {
   }
 
   final SpotubeTrackObject track;
+
+  /// The local file path if this track should play from a downloaded file.
+  final String? localFilePath;
+
   SpotubeMedia(
     this.track, {
     String? directUrl,
     Map<String, String>? httpHeaders,
+    this.localFilePath,
   })  : assert(
           track is SpotubeLocalTrackObject || track is SpotubeFullTrackObject,
           "Track must be a either a local track or a full track object with ISRC",
         ),
         super(
-          track is SpotubeLocalTrackObject
-              ? track.path
-              : directUrl ?? "http://$_host:$serverPort/stream/${track.id}",
+          localFilePath ??
+              (track is SpotubeLocalTrackObject
+                  ? track.path
+                  : directUrl ??
+                      "http://$_host:$serverPort/stream/${track.id}"),
           extras: {
             ...track.toJson(),
             if (directUrl != null && directUrl.isNotEmpty)

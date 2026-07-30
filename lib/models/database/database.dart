@@ -38,6 +38,7 @@ part 'tables/scrobbler.dart';
 part 'tables/skip_segment.dart';
 part 'tables/source_match.dart';
 part 'tables/audio_player_state.dart';
+part 'tables/data_usage.dart';
 part 'tables/history.dart';
 part 'tables/lyrics.dart';
 part 'tables/metadata_plugins.dart';
@@ -59,6 +60,7 @@ part 'typeconverters/subtitle.dart';
     SkipSegmentTable,
     SourceMatchTable,
     AudioPlayerStateTable,
+    DataUsageTable,
     HistoryTable,
     LyricsTable,
     PluginsTable,
@@ -75,7 +77,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 18;
+  int get schemaVersion => 19;
 
   @override
   MigrationStrategy get migration {
@@ -358,6 +360,15 @@ class AppDatabase extends _$AppDatabase {
             if (!error.toString().contains('duplicate column name')) {
               throw error;
             }
+          });
+        }
+        if (from < 19 && to >= 19) {
+          await customStatement("CREATE TABLE IF NOT EXISTS data_usage_table ("
+                  "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
+                  "date INTEGER NOT NULL, "
+                  "bytes INTEGER NOT NULL DEFAULT 0)")
+              .catchError((e, stack) {
+            AppLogger.reportError(e, stack);
           });
         }
       },

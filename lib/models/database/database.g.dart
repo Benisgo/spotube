@@ -810,7 +810,7 @@ class $PreferencesTableTable extends PreferencesTable
       requiredDuringInsert: false,
       defaultConstraints: GeneratedColumn.constraintIsAlways(
           'CHECK ("experimental_scoring" IN (0, 1))'),
-      defaultValue: const Constant(false));
+      defaultValue: const Constant(true));
   static const VerificationMeta _miniPlayerTransparencyMeta =
       const VerificationMeta('miniPlayerTransparency');
   @override
@@ -3464,6 +3464,221 @@ class AudioPlayerStateTableCompanion
   }
 }
 
+class $DataUsageTableTable extends DataUsageTable
+    with TableInfo<$DataUsageTableTable, DataUsageTableData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DataUsageTableTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+      'id', aliasedName, false,
+      hasAutoIncrement: true,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('PRIMARY KEY AUTOINCREMENT'));
+  static const VerificationMeta _dateMeta = const VerificationMeta('date');
+  @override
+  late final GeneratedColumn<DateTime> date = GeneratedColumn<DateTime>(
+      'date', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  static const VerificationMeta _bytesMeta = const VerificationMeta('bytes');
+  @override
+  late final GeneratedColumn<int> bytes = GeneratedColumn<int>(
+      'bytes', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0));
+  @override
+  List<GeneratedColumn> get $columns => [id, date, bytes];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'data_usage_table';
+  @override
+  VerificationContext validateIntegrity(Insertable<DataUsageTableData> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('date')) {
+      context.handle(
+          _dateMeta, date.isAcceptableOrUnknown(data['date']!, _dateMeta));
+    } else if (isInserting) {
+      context.missing(_dateMeta);
+    }
+    if (data.containsKey('bytes')) {
+      context.handle(
+          _bytesMeta, bytes.isAcceptableOrUnknown(data['bytes']!, _bytesMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  DataUsageTableData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DataUsageTableData(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
+      date: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}date'])!,
+      bytes: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}bytes'])!,
+    );
+  }
+
+  @override
+  $DataUsageTableTable createAlias(String alias) {
+    return $DataUsageTableTable(attachedDatabase, alias);
+  }
+}
+
+class DataUsageTableData extends DataClass
+    implements Insertable<DataUsageTableData> {
+  final int id;
+  final DateTime date;
+  final int bytes;
+  const DataUsageTableData(
+      {required this.id, required this.date, required this.bytes});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['date'] = Variable<DateTime>(date);
+    map['bytes'] = Variable<int>(bytes);
+    return map;
+  }
+
+  DataUsageTableCompanion toCompanion(bool nullToAbsent) {
+    return DataUsageTableCompanion(
+      id: Value(id),
+      date: Value(date),
+      bytes: Value(bytes),
+    );
+  }
+
+  factory DataUsageTableData.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DataUsageTableData(
+      id: serializer.fromJson<int>(json['id']),
+      date: serializer.fromJson<DateTime>(json['date']),
+      bytes: serializer.fromJson<int>(json['bytes']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'date': serializer.toJson<DateTime>(date),
+      'bytes': serializer.toJson<int>(bytes),
+    };
+  }
+
+  DataUsageTableData copyWith({int? id, DateTime? date, int? bytes}) =>
+      DataUsageTableData(
+        id: id ?? this.id,
+        date: date ?? this.date,
+        bytes: bytes ?? this.bytes,
+      );
+  DataUsageTableData copyWithCompanion(DataUsageTableCompanion data) {
+    return DataUsageTableData(
+      id: data.id.present ? data.id.value : this.id,
+      date: data.date.present ? data.date.value : this.date,
+      bytes: data.bytes.present ? data.bytes.value : this.bytes,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DataUsageTableData(')
+          ..write('id: $id, ')
+          ..write('date: $date, ')
+          ..write('bytes: $bytes')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, date, bytes);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DataUsageTableData &&
+          other.id == this.id &&
+          other.date == this.date &&
+          other.bytes == this.bytes);
+}
+
+class DataUsageTableCompanion extends UpdateCompanion<DataUsageTableData> {
+  final Value<int> id;
+  final Value<DateTime> date;
+  final Value<int> bytes;
+  const DataUsageTableCompanion({
+    this.id = const Value.absent(),
+    this.date = const Value.absent(),
+    this.bytes = const Value.absent(),
+  });
+  DataUsageTableCompanion.insert({
+    this.id = const Value.absent(),
+    required DateTime date,
+    this.bytes = const Value.absent(),
+  }) : date = Value(date);
+  static Insertable<DataUsageTableData> custom({
+    Expression<int>? id,
+    Expression<DateTime>? date,
+    Expression<int>? bytes,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (date != null) 'date': date,
+      if (bytes != null) 'bytes': bytes,
+    });
+  }
+
+  DataUsageTableCompanion copyWith(
+      {Value<int>? id, Value<DateTime>? date, Value<int>? bytes}) {
+    return DataUsageTableCompanion(
+      id: id ?? this.id,
+      date: date ?? this.date,
+      bytes: bytes ?? this.bytes,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (date.present) {
+      map['date'] = Variable<DateTime>(date.value);
+    }
+    if (bytes.present) {
+      map['bytes'] = Variable<int>(bytes.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DataUsageTableCompanion(')
+          ..write('id: $id, ')
+          ..write('date: $date, ')
+          ..write('bytes: $bytes')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $HistoryTableTable extends HistoryTable
     with TableInfo<$HistoryTableTable, HistoryTableData> {
   @override
@@ -4614,6 +4829,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $SourceMatchTableTable(this);
   late final $AudioPlayerStateTableTable audioPlayerStateTable =
       $AudioPlayerStateTableTable(this);
+  late final $DataUsageTableTable dataUsageTable = $DataUsageTableTable(this);
   late final $HistoryTableTable historyTable = $HistoryTableTable(this);
   late final $LyricsTableTable lyricsTable = $LyricsTableTable(this);
   late final $PluginsTableTable pluginsTable = $PluginsTableTable(this);
@@ -4631,6 +4847,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         skipSegmentTable,
         sourceMatchTable,
         audioPlayerStateTable,
+        dataUsageTable,
         historyTable,
         lyricsTable,
         pluginsTable,
@@ -6350,6 +6567,144 @@ typedef $$AudioPlayerStateTableTableProcessedTableManager
         ),
         AudioPlayerStateTableData,
         PrefetchHooks Function()>;
+typedef $$DataUsageTableTableCreateCompanionBuilder = DataUsageTableCompanion
+    Function({
+  Value<int> id,
+  required DateTime date,
+  Value<int> bytes,
+});
+typedef $$DataUsageTableTableUpdateCompanionBuilder = DataUsageTableCompanion
+    Function({
+  Value<int> id,
+  Value<DateTime> date,
+  Value<int> bytes,
+});
+
+class $$DataUsageTableTableFilterComposer
+    extends Composer<_$AppDatabase, $DataUsageTableTable> {
+  $$DataUsageTableTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get date => $composableBuilder(
+      column: $table.date, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get bytes => $composableBuilder(
+      column: $table.bytes, builder: (column) => ColumnFilters(column));
+}
+
+class $$DataUsageTableTableOrderingComposer
+    extends Composer<_$AppDatabase, $DataUsageTableTable> {
+  $$DataUsageTableTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get date => $composableBuilder(
+      column: $table.date, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get bytes => $composableBuilder(
+      column: $table.bytes, builder: (column) => ColumnOrderings(column));
+}
+
+class $$DataUsageTableTableAnnotationComposer
+    extends Composer<_$AppDatabase, $DataUsageTableTable> {
+  $$DataUsageTableTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get date =>
+      $composableBuilder(column: $table.date, builder: (column) => column);
+
+  GeneratedColumn<int> get bytes =>
+      $composableBuilder(column: $table.bytes, builder: (column) => column);
+}
+
+class $$DataUsageTableTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $DataUsageTableTable,
+    DataUsageTableData,
+    $$DataUsageTableTableFilterComposer,
+    $$DataUsageTableTableOrderingComposer,
+    $$DataUsageTableTableAnnotationComposer,
+    $$DataUsageTableTableCreateCompanionBuilder,
+    $$DataUsageTableTableUpdateCompanionBuilder,
+    (
+      DataUsageTableData,
+      BaseReferences<_$AppDatabase, $DataUsageTableTable, DataUsageTableData>
+    ),
+    DataUsageTableData,
+    PrefetchHooks Function()> {
+  $$DataUsageTableTableTableManager(
+      _$AppDatabase db, $DataUsageTableTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DataUsageTableTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DataUsageTableTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$DataUsageTableTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            Value<DateTime> date = const Value.absent(),
+            Value<int> bytes = const Value.absent(),
+          }) =>
+              DataUsageTableCompanion(
+            id: id,
+            date: date,
+            bytes: bytes,
+          ),
+          createCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            required DateTime date,
+            Value<int> bytes = const Value.absent(),
+          }) =>
+              DataUsageTableCompanion.insert(
+            id: id,
+            date: date,
+            bytes: bytes,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$DataUsageTableTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $DataUsageTableTable,
+    DataUsageTableData,
+    $$DataUsageTableTableFilterComposer,
+    $$DataUsageTableTableOrderingComposer,
+    $$DataUsageTableTableAnnotationComposer,
+    $$DataUsageTableTableCreateCompanionBuilder,
+    $$DataUsageTableTableUpdateCompanionBuilder,
+    (
+      DataUsageTableData,
+      BaseReferences<_$AppDatabase, $DataUsageTableTable, DataUsageTableData>
+    ),
+    DataUsageTableData,
+    PrefetchHooks Function()>;
 typedef $$HistoryTableTableCreateCompanionBuilder = HistoryTableCompanion
     Function({
   Value<int> id,
@@ -6961,6 +7316,8 @@ class $AppDatabaseManager {
       $$SourceMatchTableTableTableManager(_db, _db.sourceMatchTable);
   $$AudioPlayerStateTableTableTableManager get audioPlayerStateTable =>
       $$AudioPlayerStateTableTableTableManager(_db, _db.audioPlayerStateTable);
+  $$DataUsageTableTableTableManager get dataUsageTable =>
+      $$DataUsageTableTableTableManager(_db, _db.dataUsageTable);
   $$HistoryTableTableTableManager get historyTable =>
       $$HistoryTableTableTableManager(_db, _db.historyTable);
   $$LyricsTableTableTableManager get lyricsTable =>

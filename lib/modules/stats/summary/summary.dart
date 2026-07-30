@@ -8,8 +8,8 @@ import 'package:spotube/collections/routes.gr.dart';
 import 'package:spotube/modules/stats/summary/summary_card.dart';
 import 'package:spotube/extensions/constrains.dart';
 import 'package:spotube/extensions/context.dart';
+import 'package:spotube/provider/data_usage/data_usage_provider.dart';
 import 'package:spotube/provider/history/summary.dart';
-import 'package:spotube/provider/server/routes/playback.dart';
 
 class StatsPageSummarySection extends HookConsumerWidget {
   const StatsPageSummarySection({super.key});
@@ -95,10 +95,12 @@ class StatsPageSummarySection extends HookConsumerWidget {
                 },
               ),
               SummaryCard.unformatted(
-                title: _formatBytes(ServerPlaybackRoutes.totalBytesStreamed),
+                title: _formatBytes(
+                    ref.watch(dataUsageThisMonthProvider).valueOrNull ?? 0),
                 unit: "",
-                description: "Data streamed\n(since app start)",
+                description: "Data streamed\nthis month",
                 color: Colors.purple,
+                onTap: () => _showDataUsageDialog(context, ref),
               ),
             ]),
           );
@@ -116,5 +118,65 @@ class StatsPageSummarySection extends HookConsumerWidget {
       return "${(bytes / 1024).toStringAsFixed(0)} KB";
     }
     return "$bytes B";
+  }
+
+  Future<void> _showDataUsageDialog(BuildContext context, WidgetRef ref) async {
+    final data = await ref.read(dataUsageProvider.future);
+
+    if (!context.mounted) return;
+
+    // Sort days descending
+    final sorted = data.entries.toList()
+      ..sort((a, b) => b.key.compareTo(a.key));
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Data Usage"),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: sorted.isEmpty
+              ? const Text("No data usage recorded yet.")
+              : ListBody(
+                  children: [
+                    ...sorted.take(30).map((entry) {
+                      final dayStr =
+                          "${entry.key.year}-${entry.key.month.toString().padLeft(2, '0')}-${entry.key.day.toString().padLeft(2, '0')}";
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(dayStr),
+                            Text(_formatBytes(entry.value),
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold)),
+                          ],
+                        ),
+                      );
+                    }),
+                    if (sorted.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 16),
+                        child: Text("Tap a song to start tracking data usage."),
+                      ),
+                  ],
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              clearDataUsage(ref as Ref<Object?>);
+            },
+            child: const Text("Clear all data"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Close"),
+          ),
+        ],
+      ),
+    );
   }
 }

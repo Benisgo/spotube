@@ -14,6 +14,7 @@ import 'package:spotube/models/parser/range_headers.dart';
 import 'package:spotube/provider/audio_player/audio_player.dart';
 import 'package:spotube/provider/audio_player/state.dart';
 
+import 'package:spotube/provider/data_usage/data_usage_provider.dart';
 import 'package:spotube/provider/server/sourced_track_provider.dart';
 import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
 import 'package:spotube/services/audio_player/audio_player.dart';
@@ -26,10 +27,6 @@ import 'package:spotube/utils/service_utils.dart';
 
 class ServerPlaybackRoutes {
   static const _streamFailureCooldown = Duration(seconds: 8);
-
-  /// Total bytes streamed through the proxy (in-memory, resets on restart).
-  static int totalBytesStreamed = 0;
-
   final Ref ref;
   UserPreferences get userPreferences => ref.read(userPreferencesProvider);
   AudioPlayerState get playlist => ref.read(audioPlayerProvider);
@@ -254,7 +251,7 @@ class ServerPlaybackRoutes {
 
     return join(
       cacheDir,
-      '$baseName (${track.info.id}).$ext',
+      '$baseName.$ext',
     );
   }
 
@@ -522,7 +519,8 @@ class ServerPlaybackRoutes {
           requestedRange,
         );
         final isPartial = requestedRange != null;
-        totalBytesStreamed += resolvedRange.end - resolvedRange.start + 1;
+        unawaited(
+            recordDataUsage(ref, resolvedRange.end - resolvedRange.start + 1));
 
         _trace(
           "serve cached uri=$requestedUri track=${track.query.id} partial=$isPartial start=${resolvedRange.start} end=${resolvedRange.end} total=${resolvedRange.total}",
@@ -871,7 +869,7 @@ class ServerPlaybackRoutes {
     try {
       await for (final chunk in source) {
         cacheSink.add(chunk);
-        totalBytesStreamed += chunk.length;
+        unawaited(recordDataUsage(ref, chunk.length));
         yield chunk;
       }
       await cacheSink.close();

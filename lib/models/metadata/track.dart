@@ -87,13 +87,27 @@ extension AsMediaListSpotubeTrackObject on Iterable<SpotubeTrackObject> {
     String? firstTrackDirectUrl,
     Map<String, String>? firstTrackDirectHeaders,
     SpotubeTrackObject? targetTrack,
+    String? downloadLocation,
   }) {
-    return map((track) => SpotubeMedia(
-          track,
-          directUrl: track.id == targetTrack?.id ? firstTrackDirectUrl : null,
-          httpHeaders:
-              track.id == targetTrack?.id ? firstTrackDirectHeaders : null,
-        )).toList();
+    return map((track) {
+      String? localPath;
+      if (track is SpotubeFullTrackObject &&
+          downloadLocation != null &&
+          downloadLocation.isNotEmpty) {
+        localPath = ServiceUtils.findDownloadedFile(
+          downloadLocation,
+          track.name,
+          track.artists.map((a) => a.name).toList(),
+        );
+      }
+      return SpotubeMedia(
+        track,
+        directUrl: track.id == targetTrack?.id ? firstTrackDirectUrl : null,
+        httpHeaders:
+            track.id == targetTrack?.id ? firstTrackDirectHeaders : null,
+        localFilePath: localPath,
+      );
+    }).toList();
   }
 }
 

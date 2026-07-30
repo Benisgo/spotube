@@ -1,6 +1,9 @@
 import 'dart:math';
 import 'dart:typed_data';
 
+import 'dart:io';
+
+import 'package:path/path.dart' show basenameWithoutExtension;
 import 'package:dio/dio.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 
@@ -352,6 +355,32 @@ abstract class ServiceUtils {
     } else {
       return "Mozilla/5.0 (Linux; Android ${randomNumber(8, 13)}) AppleWebKit/${randomNumber(530, 537)}.${randomNumber(30, 36)} (KHTML, like Gecko) Chrome/${randomNumber(101, 116)}.0.${randomNumber(3000, 6000)}.${randomNumber(60, 125)} Mobile Safari/${randomNumber(530, 537)}.${randomNumber(30, 36)}";
     }
+  }
+
+  /// Check if a downloaded file exists for the given track in the download directory.
+  /// Returns the file path if found, null otherwise.
+  static String? findDownloadedFile(
+    String downloadDir,
+    String trackName,
+    List<String> artists,
+  ) {
+    final dir = Directory(downloadDir);
+    if (!dir.existsSync()) return null;
+
+    final baseName = sanitizeFilename(
+      '$trackName - ${artists.join(", ")}',
+    );
+
+    final entries = dir.listSync(followLinks: false);
+    for (final entry in entries) {
+      if (entry is File) {
+        final nameWithoutExt = basenameWithoutExtension(entry.path);
+        if (nameWithoutExt == baseName) {
+          return entry.path;
+        }
+      }
+    }
+    return null;
   }
 
   static String sanitizeFilename(String input, {String replacement = ''}) {

@@ -12,6 +12,7 @@ import 'package:spotube/components/dialogs/replace_downloaded_dialog.dart';
 import 'package:spotube/extensions/dio.dart';
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/provider/metadata_plugin/audio_source/quality_presets.dart';
+import 'package:spotube/provider/local_tracks/local_tracks_provider.dart';
 import 'package:spotube/provider/server/sourced_track_provider.dart';
 import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
 import 'package:spotube/services/logger/logger.dart';
@@ -234,6 +235,8 @@ class DownloadManagerNotifier extends Notifier<List<DownloadTask>> {
       );
       if (response.statusCode != null && response.statusCode! < 400) {
         _setStatus(track.query, DownloadStatus.completed);
+        // Invalidate the local tracks provider so the downloads page auto-refreshes
+        ref.invalidate(localTracksProvider);
       } else {
         _setStatus(track.query, DownloadStatus.failed);
         return;

@@ -519,8 +519,11 @@ class ServerPlaybackRoutes {
           requestedRange,
         );
         final isPartial = requestedRange != null;
-        unawaited(
-            recordDataUsage(ref, resolvedRange.end - resolvedRange.start + 1));
+        unawaited(recordDataUsage(
+            ref, resolvedRange.end - resolvedRange.start + 1,
+            trackId: track.query.id,
+            trackName: track.query.name,
+            trackArtist: track.query.artists.map((a) => a.name).join(", ")));
 
         _trace(
           "serve cached uri=$requestedUri track=${track.query.id} partial=$isPartial start=${resolvedRange.start} end=${resolvedRange.end} total=${resolvedRange.total}",
@@ -820,6 +823,9 @@ class ServerPlaybackRoutes {
     res.data?.stream = _streamWithCachePassthrough(
       upstream,
       partialCacheFileSink,
+      trackId: track.query.id,
+      trackName: track.query.name,
+      trackArtist: track.query.artists.map((a) => a.name).join(", "),
       onComplete: () async {
         final fileLength = await trackPartialCacheFile.length();
         if (fileLength != contentRange.total) {
@@ -865,11 +871,15 @@ class ServerPlaybackRoutes {
     IOSink cacheSink, {
     required Future<void> Function() onComplete,
     required void Function(Object error) onError,
+    String? trackId,
+    String? trackName,
+    String? trackArtist,
   }) async* {
     try {
       await for (final chunk in source) {
         cacheSink.add(chunk);
-        unawaited(recordDataUsage(ref, chunk.length));
+        unawaited(recordDataUsage(ref, chunk.length,
+            trackId: trackId, trackName: trackName, trackArtist: trackArtist));
         yield chunk;
       }
       await cacheSink.close();

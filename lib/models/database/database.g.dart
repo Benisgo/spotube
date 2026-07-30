@@ -3679,6 +3679,348 @@ class DataUsageTableCompanion extends UpdateCompanion<DataUsageTableData> {
   }
 }
 
+class $DataUsageDetailTableTable extends DataUsageDetailTable
+    with TableInfo<$DataUsageDetailTableTable, DataUsageDetailTableData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DataUsageDetailTableTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+      'id', aliasedName, false,
+      hasAutoIncrement: true,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('PRIMARY KEY AUTOINCREMENT'));
+  static const VerificationMeta _dateMeta = const VerificationMeta('date');
+  @override
+  late final GeneratedColumn<DateTime> date = GeneratedColumn<DateTime>(
+      'date', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  static const VerificationMeta _trackIdMeta =
+      const VerificationMeta('trackId');
+  @override
+  late final GeneratedColumn<String> trackId = GeneratedColumn<String>(
+      'track_id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _trackNameMeta =
+      const VerificationMeta('trackName');
+  @override
+  late final GeneratedColumn<String> trackName = GeneratedColumn<String>(
+      'track_name', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _trackArtistMeta =
+      const VerificationMeta('trackArtist');
+  @override
+  late final GeneratedColumn<String> trackArtist = GeneratedColumn<String>(
+      'track_artist', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _bytesMeta = const VerificationMeta('bytes');
+  @override
+  late final GeneratedColumn<int> bytes = GeneratedColumn<int>(
+      'bytes', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0));
+  @override
+  List<GeneratedColumn> get $columns =>
+      [id, date, trackId, trackName, trackArtist, bytes];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'data_usage_detail_table';
+  @override
+  VerificationContext validateIntegrity(
+      Insertable<DataUsageDetailTableData> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('date')) {
+      context.handle(
+          _dateMeta, date.isAcceptableOrUnknown(data['date']!, _dateMeta));
+    } else if (isInserting) {
+      context.missing(_dateMeta);
+    }
+    if (data.containsKey('track_id')) {
+      context.handle(_trackIdMeta,
+          trackId.isAcceptableOrUnknown(data['track_id']!, _trackIdMeta));
+    } else if (isInserting) {
+      context.missing(_trackIdMeta);
+    }
+    if (data.containsKey('track_name')) {
+      context.handle(_trackNameMeta,
+          trackName.isAcceptableOrUnknown(data['track_name']!, _trackNameMeta));
+    } else if (isInserting) {
+      context.missing(_trackNameMeta);
+    }
+    if (data.containsKey('track_artist')) {
+      context.handle(
+          _trackArtistMeta,
+          trackArtist.isAcceptableOrUnknown(
+              data['track_artist']!, _trackArtistMeta));
+    } else if (isInserting) {
+      context.missing(_trackArtistMeta);
+    }
+    if (data.containsKey('bytes')) {
+      context.handle(
+          _bytesMeta, bytes.isAcceptableOrUnknown(data['bytes']!, _bytesMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  DataUsageDetailTableData map(Map<String, dynamic> data,
+      {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DataUsageDetailTableData(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
+      date: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}date'])!,
+      trackId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}track_id'])!,
+      trackName: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}track_name'])!,
+      trackArtist: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}track_artist'])!,
+      bytes: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}bytes'])!,
+    );
+  }
+
+  @override
+  $DataUsageDetailTableTable createAlias(String alias) {
+    return $DataUsageDetailTableTable(attachedDatabase, alias);
+  }
+}
+
+class DataUsageDetailTableData extends DataClass
+    implements Insertable<DataUsageDetailTableData> {
+  final int id;
+  final DateTime date;
+  final String trackId;
+  final String trackName;
+  final String trackArtist;
+  final int bytes;
+  const DataUsageDetailTableData(
+      {required this.id,
+      required this.date,
+      required this.trackId,
+      required this.trackName,
+      required this.trackArtist,
+      required this.bytes});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['date'] = Variable<DateTime>(date);
+    map['track_id'] = Variable<String>(trackId);
+    map['track_name'] = Variable<String>(trackName);
+    map['track_artist'] = Variable<String>(trackArtist);
+    map['bytes'] = Variable<int>(bytes);
+    return map;
+  }
+
+  DataUsageDetailTableCompanion toCompanion(bool nullToAbsent) {
+    return DataUsageDetailTableCompanion(
+      id: Value(id),
+      date: Value(date),
+      trackId: Value(trackId),
+      trackName: Value(trackName),
+      trackArtist: Value(trackArtist),
+      bytes: Value(bytes),
+    );
+  }
+
+  factory DataUsageDetailTableData.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DataUsageDetailTableData(
+      id: serializer.fromJson<int>(json['id']),
+      date: serializer.fromJson<DateTime>(json['date']),
+      trackId: serializer.fromJson<String>(json['trackId']),
+      trackName: serializer.fromJson<String>(json['trackName']),
+      trackArtist: serializer.fromJson<String>(json['trackArtist']),
+      bytes: serializer.fromJson<int>(json['bytes']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'date': serializer.toJson<DateTime>(date),
+      'trackId': serializer.toJson<String>(trackId),
+      'trackName': serializer.toJson<String>(trackName),
+      'trackArtist': serializer.toJson<String>(trackArtist),
+      'bytes': serializer.toJson<int>(bytes),
+    };
+  }
+
+  DataUsageDetailTableData copyWith(
+          {int? id,
+          DateTime? date,
+          String? trackId,
+          String? trackName,
+          String? trackArtist,
+          int? bytes}) =>
+      DataUsageDetailTableData(
+        id: id ?? this.id,
+        date: date ?? this.date,
+        trackId: trackId ?? this.trackId,
+        trackName: trackName ?? this.trackName,
+        trackArtist: trackArtist ?? this.trackArtist,
+        bytes: bytes ?? this.bytes,
+      );
+  DataUsageDetailTableData copyWithCompanion(
+      DataUsageDetailTableCompanion data) {
+    return DataUsageDetailTableData(
+      id: data.id.present ? data.id.value : this.id,
+      date: data.date.present ? data.date.value : this.date,
+      trackId: data.trackId.present ? data.trackId.value : this.trackId,
+      trackName: data.trackName.present ? data.trackName.value : this.trackName,
+      trackArtist:
+          data.trackArtist.present ? data.trackArtist.value : this.trackArtist,
+      bytes: data.bytes.present ? data.bytes.value : this.bytes,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DataUsageDetailTableData(')
+          ..write('id: $id, ')
+          ..write('date: $date, ')
+          ..write('trackId: $trackId, ')
+          ..write('trackName: $trackName, ')
+          ..write('trackArtist: $trackArtist, ')
+          ..write('bytes: $bytes')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, date, trackId, trackName, trackArtist, bytes);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DataUsageDetailTableData &&
+          other.id == this.id &&
+          other.date == this.date &&
+          other.trackId == this.trackId &&
+          other.trackName == this.trackName &&
+          other.trackArtist == this.trackArtist &&
+          other.bytes == this.bytes);
+}
+
+class DataUsageDetailTableCompanion
+    extends UpdateCompanion<DataUsageDetailTableData> {
+  final Value<int> id;
+  final Value<DateTime> date;
+  final Value<String> trackId;
+  final Value<String> trackName;
+  final Value<String> trackArtist;
+  final Value<int> bytes;
+  const DataUsageDetailTableCompanion({
+    this.id = const Value.absent(),
+    this.date = const Value.absent(),
+    this.trackId = const Value.absent(),
+    this.trackName = const Value.absent(),
+    this.trackArtist = const Value.absent(),
+    this.bytes = const Value.absent(),
+  });
+  DataUsageDetailTableCompanion.insert({
+    this.id = const Value.absent(),
+    required DateTime date,
+    required String trackId,
+    required String trackName,
+    required String trackArtist,
+    this.bytes = const Value.absent(),
+  })  : date = Value(date),
+        trackId = Value(trackId),
+        trackName = Value(trackName),
+        trackArtist = Value(trackArtist);
+  static Insertable<DataUsageDetailTableData> custom({
+    Expression<int>? id,
+    Expression<DateTime>? date,
+    Expression<String>? trackId,
+    Expression<String>? trackName,
+    Expression<String>? trackArtist,
+    Expression<int>? bytes,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (date != null) 'date': date,
+      if (trackId != null) 'track_id': trackId,
+      if (trackName != null) 'track_name': trackName,
+      if (trackArtist != null) 'track_artist': trackArtist,
+      if (bytes != null) 'bytes': bytes,
+    });
+  }
+
+  DataUsageDetailTableCompanion copyWith(
+      {Value<int>? id,
+      Value<DateTime>? date,
+      Value<String>? trackId,
+      Value<String>? trackName,
+      Value<String>? trackArtist,
+      Value<int>? bytes}) {
+    return DataUsageDetailTableCompanion(
+      id: id ?? this.id,
+      date: date ?? this.date,
+      trackId: trackId ?? this.trackId,
+      trackName: trackName ?? this.trackName,
+      trackArtist: trackArtist ?? this.trackArtist,
+      bytes: bytes ?? this.bytes,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (date.present) {
+      map['date'] = Variable<DateTime>(date.value);
+    }
+    if (trackId.present) {
+      map['track_id'] = Variable<String>(trackId.value);
+    }
+    if (trackName.present) {
+      map['track_name'] = Variable<String>(trackName.value);
+    }
+    if (trackArtist.present) {
+      map['track_artist'] = Variable<String>(trackArtist.value);
+    }
+    if (bytes.present) {
+      map['bytes'] = Variable<int>(bytes.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DataUsageDetailTableCompanion(')
+          ..write('id: $id, ')
+          ..write('date: $date, ')
+          ..write('trackId: $trackId, ')
+          ..write('trackName: $trackName, ')
+          ..write('trackArtist: $trackArtist, ')
+          ..write('bytes: $bytes')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $HistoryTableTable extends HistoryTable
     with TableInfo<$HistoryTableTable, HistoryTableData> {
   @override
@@ -4830,6 +5172,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $AudioPlayerStateTableTable audioPlayerStateTable =
       $AudioPlayerStateTableTable(this);
   late final $DataUsageTableTable dataUsageTable = $DataUsageTableTable(this);
+  late final $DataUsageDetailTableTable dataUsageDetailTable =
+      $DataUsageDetailTableTable(this);
   late final $HistoryTableTable historyTable = $HistoryTableTable(this);
   late final $LyricsTableTable lyricsTable = $LyricsTableTable(this);
   late final $PluginsTableTable pluginsTable = $PluginsTableTable(this);
@@ -4848,6 +5192,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         sourceMatchTable,
         audioPlayerStateTable,
         dataUsageTable,
+        dataUsageDetailTable,
         historyTable,
         lyricsTable,
         pluginsTable,
@@ -6705,6 +7050,194 @@ typedef $$DataUsageTableTableProcessedTableManager = ProcessedTableManager<
     ),
     DataUsageTableData,
     PrefetchHooks Function()>;
+typedef $$DataUsageDetailTableTableCreateCompanionBuilder
+    = DataUsageDetailTableCompanion Function({
+  Value<int> id,
+  required DateTime date,
+  required String trackId,
+  required String trackName,
+  required String trackArtist,
+  Value<int> bytes,
+});
+typedef $$DataUsageDetailTableTableUpdateCompanionBuilder
+    = DataUsageDetailTableCompanion Function({
+  Value<int> id,
+  Value<DateTime> date,
+  Value<String> trackId,
+  Value<String> trackName,
+  Value<String> trackArtist,
+  Value<int> bytes,
+});
+
+class $$DataUsageDetailTableTableFilterComposer
+    extends Composer<_$AppDatabase, $DataUsageDetailTableTable> {
+  $$DataUsageDetailTableTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get date => $composableBuilder(
+      column: $table.date, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get trackId => $composableBuilder(
+      column: $table.trackId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get trackName => $composableBuilder(
+      column: $table.trackName, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get trackArtist => $composableBuilder(
+      column: $table.trackArtist, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get bytes => $composableBuilder(
+      column: $table.bytes, builder: (column) => ColumnFilters(column));
+}
+
+class $$DataUsageDetailTableTableOrderingComposer
+    extends Composer<_$AppDatabase, $DataUsageDetailTableTable> {
+  $$DataUsageDetailTableTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get date => $composableBuilder(
+      column: $table.date, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get trackId => $composableBuilder(
+      column: $table.trackId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get trackName => $composableBuilder(
+      column: $table.trackName, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get trackArtist => $composableBuilder(
+      column: $table.trackArtist, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get bytes => $composableBuilder(
+      column: $table.bytes, builder: (column) => ColumnOrderings(column));
+}
+
+class $$DataUsageDetailTableTableAnnotationComposer
+    extends Composer<_$AppDatabase, $DataUsageDetailTableTable> {
+  $$DataUsageDetailTableTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get date =>
+      $composableBuilder(column: $table.date, builder: (column) => column);
+
+  GeneratedColumn<String> get trackId =>
+      $composableBuilder(column: $table.trackId, builder: (column) => column);
+
+  GeneratedColumn<String> get trackName =>
+      $composableBuilder(column: $table.trackName, builder: (column) => column);
+
+  GeneratedColumn<String> get trackArtist => $composableBuilder(
+      column: $table.trackArtist, builder: (column) => column);
+
+  GeneratedColumn<int> get bytes =>
+      $composableBuilder(column: $table.bytes, builder: (column) => column);
+}
+
+class $$DataUsageDetailTableTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $DataUsageDetailTableTable,
+    DataUsageDetailTableData,
+    $$DataUsageDetailTableTableFilterComposer,
+    $$DataUsageDetailTableTableOrderingComposer,
+    $$DataUsageDetailTableTableAnnotationComposer,
+    $$DataUsageDetailTableTableCreateCompanionBuilder,
+    $$DataUsageDetailTableTableUpdateCompanionBuilder,
+    (
+      DataUsageDetailTableData,
+      BaseReferences<_$AppDatabase, $DataUsageDetailTableTable,
+          DataUsageDetailTableData>
+    ),
+    DataUsageDetailTableData,
+    PrefetchHooks Function()> {
+  $$DataUsageDetailTableTableTableManager(
+      _$AppDatabase db, $DataUsageDetailTableTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DataUsageDetailTableTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DataUsageDetailTableTableOrderingComposer(
+                  $db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$DataUsageDetailTableTableAnnotationComposer(
+                  $db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            Value<DateTime> date = const Value.absent(),
+            Value<String> trackId = const Value.absent(),
+            Value<String> trackName = const Value.absent(),
+            Value<String> trackArtist = const Value.absent(),
+            Value<int> bytes = const Value.absent(),
+          }) =>
+              DataUsageDetailTableCompanion(
+            id: id,
+            date: date,
+            trackId: trackId,
+            trackName: trackName,
+            trackArtist: trackArtist,
+            bytes: bytes,
+          ),
+          createCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            required DateTime date,
+            required String trackId,
+            required String trackName,
+            required String trackArtist,
+            Value<int> bytes = const Value.absent(),
+          }) =>
+              DataUsageDetailTableCompanion.insert(
+            id: id,
+            date: date,
+            trackId: trackId,
+            trackName: trackName,
+            trackArtist: trackArtist,
+            bytes: bytes,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$DataUsageDetailTableTableProcessedTableManager
+    = ProcessedTableManager<
+        _$AppDatabase,
+        $DataUsageDetailTableTable,
+        DataUsageDetailTableData,
+        $$DataUsageDetailTableTableFilterComposer,
+        $$DataUsageDetailTableTableOrderingComposer,
+        $$DataUsageDetailTableTableAnnotationComposer,
+        $$DataUsageDetailTableTableCreateCompanionBuilder,
+        $$DataUsageDetailTableTableUpdateCompanionBuilder,
+        (
+          DataUsageDetailTableData,
+          BaseReferences<_$AppDatabase, $DataUsageDetailTableTable,
+              DataUsageDetailTableData>
+        ),
+        DataUsageDetailTableData,
+        PrefetchHooks Function()>;
 typedef $$HistoryTableTableCreateCompanionBuilder = HistoryTableCompanion
     Function({
   Value<int> id,
@@ -7318,6 +7851,8 @@ class $AppDatabaseManager {
       $$AudioPlayerStateTableTableTableManager(_db, _db.audioPlayerStateTable);
   $$DataUsageTableTableTableManager get dataUsageTable =>
       $$DataUsageTableTableTableManager(_db, _db.dataUsageTable);
+  $$DataUsageDetailTableTableTableManager get dataUsageDetailTable =>
+      $$DataUsageDetailTableTableTableManager(_db, _db.dataUsageDetailTable);
   $$HistoryTableTableTableManager get historyTable =>
       $$HistoryTableTableTableManager(_db, _db.historyTable);
   $$LyricsTableTableTableManager get lyricsTable =>

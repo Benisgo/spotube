@@ -217,6 +217,10 @@ class AppRouter extends RootStackRouter {
               path: "stats/playlists",
               page: StatsPlaylistsRoute.page,
             ),
+            AutoRoute(
+              path: "stats/data-usage",
+              page: StatsDataUsageRoute.page,
+            ),
           ],
         ),
         CustomRoute(

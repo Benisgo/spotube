@@ -758,6 +758,14 @@ packages:
       url: "https://github.com/maeltoukap/fk_user_agent.git"
     source: git
     version: "2.1.0"
+  fl_chart:
+    dependency: "direct main"
+    description:
+      name: fl_chart
+      sha256: b938f77d042cbcd822936a7a359a7235bad8bd72070de1f827efc2cc297ac888
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.2.0"
   fluentui_system_icons:
     dependency: "direct main"
     description:

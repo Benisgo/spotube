@@ -3,7 +3,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:spotube/models/database/database.dart';
 import 'package:spotube/provider/database/database.dart';
 
-/// Tracks total bytes streamed per day, persisted in the database.
+/// Tracks total bytes streamed per day.
 final dataUsageProvider = FutureProvider<Map<DateTime, int>>((ref) async {
   final db = ref.read(databaseProvider);
   final rows = await db.select(db.dataUsageTable).get();
@@ -13,6 +13,31 @@ final dataUsageProvider = FutureProvider<Map<DateTime, int>>((ref) async {
     map[day] = (map[day] ?? 0) + row.bytes;
   }
   return map;
+});
+
+/// Per-song data usage grouped by date.
+final dataUsageDetailProvider =
+    FutureProvider<Map<DateTime, List<TrackUsage>>>((ref) async {
+  final db = ref.read(databaseProvider);
+  final rows = await db.select(db.dataUsageDetailTable).get();
+  final map = <DateTime, List<TrackUsage>>{};
+  for (final row in rows) {
+    final day = DateTime(row.date.year, row.date.month, row.date.day);
+    map.putIfAbsent(day, () => []).add(TrackUsage(
+          trackId: row.trackId,
+          trackName: row.trackName,
+          trackArtist: row.trackArtist,
+          bytes: row.bytes,
+        ));
+  }
+  return map;
+});
+
+/// Usage details for a specific day.
+final dataUsageForDayProvider =
+    FutureProvider.family<List<TrackUsage>, DateTime>((ref, day) async {
+  final all = await ref.watch(dataUsageDetailProvider.future);
+  return all[day] ?? [];
 });
 
 /// Returns total bytes for the current month.
@@ -30,13 +55,28 @@ final dataUsageThisMonthProvider = FutureProvider<int>((ref) async {
   return total;
 });
 
+class TrackUsage {
+  final String trackId;
+  final String trackName;
+  final String trackArtist;
+  final int bytes;
+  const TrackUsage({
+    required this.trackId,
+    required this.trackName,
+    required this.trackArtist,
+    required this.bytes,
+  });
+}
+
 /// Record bytes streamed for today.
-Future<void> recordDataUsage(Ref ref, int bytes) async {
+Future<void> recordDataUsage(Ref ref, int bytes,
+    {String? trackId, String? trackName, String? trackArtist}) async {
   if (bytes <= 0) return;
   final db = ref.read(databaseProvider);
   final today = DateTime.now();
   final startOfDay = DateTime(today.year, today.month, today.day);
 
+  // Update daily total
   final existing = await (db.select(db.dataUsageTable)
         ..where((t) => t.date.equals(startOfDay)))
       .get()
@@ -55,12 +95,28 @@ Future<void> recordDataUsage(Ref ref, int bytes) async {
           ),
         );
   }
+
+  // Track per-song usage if we have track info
+  if (trackId != null && trackName != null) {
+    await db.into(db.dataUsageDetailTable).insert(
+          DataUsageDetailTableCompanion.insert(
+            date: startOfDay,
+            trackId: trackId,
+            trackName: trackName,
+            trackArtist: trackArtist ?? '',
+            bytes: Value(bytes),
+          ),
+        );
+  }
+
   ref.invalidate(dataUsageProvider);
+  ref.invalidate(dataUsageDetailProvider);
 }
 
 /// Clear all data usage records.
-Future<void> clearDataUsage(Ref<Object?> ref) async {
-  final db = ref.read(databaseProvider);
+Future<void> clearDataUsage() async {
+  final db = AppDatabase.current;
+  if (db == null) return;
   await db.delete(db.dataUsageTable).go();
-  ref.invalidate(dataUsageProvider);
+  await db.delete(db.dataUsageDetailTable).go();
 }

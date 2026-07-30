@@ -39,6 +39,7 @@ part 'tables/skip_segment.dart';
 part 'tables/source_match.dart';
 part 'tables/audio_player_state.dart';
 part 'tables/data_usage.dart';
+part 'tables/data_usage_detail.dart';
 part 'tables/history.dart';
 part 'tables/lyrics.dart';
 part 'tables/metadata_plugins.dart';
@@ -61,6 +62,7 @@ part 'typeconverters/subtitle.dart';
     SourceMatchTable,
     AudioPlayerStateTable,
     DataUsageTable,
+    DataUsageDetailTable,
     HistoryTable,
     LyricsTable,
     PluginsTable,
@@ -77,7 +79,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 19;
+  int get schemaVersion => 20;
 
   @override
   MigrationStrategy get migration {
@@ -366,6 +368,19 @@ class AppDatabase extends _$AppDatabase {
           await customStatement("CREATE TABLE IF NOT EXISTS data_usage_table ("
                   "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
                   "date INTEGER NOT NULL, "
+                  "bytes INTEGER NOT NULL DEFAULT 0)")
+              .catchError((e, stack) {
+            AppLogger.reportError(e, stack);
+          });
+        }
+        if (from < 20 && to >= 20) {
+          await customStatement(
+                  "CREATE TABLE IF NOT EXISTS data_usage_detail_table ("
+                  "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
+                  "date INTEGER NOT NULL, "
+                  "track_id TEXT NOT NULL, "
+                  "track_name TEXT NOT NULL, "
+                  "track_artist TEXT NOT NULL, "
                   "bytes INTEGER NOT NULL DEFAULT 0)")
               .catchError((e, stack) {
             AppLogger.reportError(e, stack);

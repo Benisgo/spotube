@@ -49,10 +49,12 @@ type RoomState = {
   lastQueueUpdateBy: string | null;
   /** Member whose playback/queue update most recently changed state (for echo detection). */
   lastPlaybackUpdateBy: string | null;
-  /** Client-clock (epoch ms) of the last applied ACTIVE playback/queue change. */
-  lastPlaybackChangeAt: number;
+  /** Per-member client-clock of the last applied ACTIVE change (clock-skew-proof stale gate). */
+  lastChangeAtByMember: Record<string, number>;
   /** Server-receive time of the last ACTIVE change, for passive-tick protection. */
   lastActiveChangeAt: number;
+  /** Member who made the last ACTIVE change, so passive ticks only get gated cross-member. */
+  lastActiveChangeBy: string | null;
 };
 
 const customPermissions = {
@@ -240,8 +242,9 @@ export class SpotubeRoom {
         discordJoinEnabled: false,
         lastQueueUpdateBy: hostId,
         lastPlaybackUpdateBy: hostId,
-        lastPlaybackChangeAt: 0,
+        lastChangeAtByMember: {},
         lastActiveChangeAt: 0,
+        lastActiveChangeBy: null,
       };
       await this.persist();
       await this.scheduleIdleCleanup();
@@ -385,8 +388,9 @@ export class SpotubeRoom {
     return {
       ...this.stateValue,
       hostToken: undefined,
-      lastPlaybackChangeAt: undefined,
+      lastChangeAtByMember: undefined,
       lastActiveChangeAt: undefined,
+      lastActiveChangeBy: undefined,
       members: Object.values(this.stateValue?.members ?? {}),
     };
   }
@@ -447,6 +451,12 @@ export class SpotubeRoom {
     if (this.stateValue.queue.length === 0) {
       this.stateValue.queue = [nextTrack];
       this.stateValue.activeTrackId = nextTrackId;
+      this.stateValue.lastQueueUpdateBy = "worker";
+      // A worker-driven active-track change: mark it so stale passive ticks
+      // (host position) don't clobber the promoted track's position, and so
+      // the promotion is attributed to no real member.
+      this.stateValue.lastActiveChangeAt = Date.now();
+      this.stateValue.lastActiveChangeBy = "worker";
       return;
     }
 
@@ -498,18 +508,29 @@ export class SpotubeRoom {
       const isPassive = data.passive === true;
       const now = Date.now();
       // Background position syncs (passive, e.g. the host's 1s tick) must not
-      // clobber a recent ACTIVE action (seek/play). This prevents the host's
-      // stale tick from rubber-banding other members after a seek.
-      if (isPassive && now - this.stateValue.lastActiveChangeAt < 2000) {
+      // clobber a recent ACTIVE action (seek/play) made by a DIFFERENT member.
+      // The host's own tick after its own active change reflects the
+      // post-action position, so gating by member (not by time alone) avoids
+      // delaying position sync after the host seeks, while still protecting
+      // a co-host's seek from the host's stale tick.
+      if (
+        isPassive &&
+        this.stateValue.lastActiveChangeBy != null &&
+        this.stateValue.lastActiveChangeBy !== memberId &&
+        now - this.stateValue.lastActiveChangeAt < 2000
+      ) {
         return;
       }
-      // Reject genuinely stale updates: a message sent BEFORE the last applied
-      // active change (per client clock) must not overwrite newer state, even
-      // if it arrives at the relay later.
+      // Reject same-client out-of-order messages. WebSocket already guarantees
+      // in-order delivery per connection, so this only guards against replays
+      // after a reconnect. Tracking per member makes the gate clock-skew-proof:
+      // timestamps are never compared across different clients' clocks.
+      const lastChangeByThisMember =
+        this.stateValue.lastChangeAtByMember[memberId] ?? 0;
       if (
         typeof changeAt === "number" &&
         changeAt > 0 &&
-        changeAt < this.stateValue.lastPlaybackChangeAt
+        changeAt < lastChangeByThisMember
       ) {
         return;
       }
@@ -530,9 +551,10 @@ export class SpotubeRoom {
             ? this.stateValue.activeSource
             : data.activeSource;
         if (typeof changeAt === "number" && changeAt > 0) {
-          this.stateValue.lastPlaybackChangeAt = changeAt;
+          this.stateValue.lastChangeAtByMember[memberId] = changeAt;
         }
         this.stateValue.lastActiveChangeAt = now;
+        this.stateValue.lastActiveChangeBy = memberId;
       }
       this.stateValue.lastPlaybackUpdateBy = memberId;
       await this.bump();
@@ -552,12 +574,14 @@ export class SpotubeRoom {
         changeAt?: number;
       };
       const changeAt = data.changeAt;
-      // A stale queue push (sent before the last applied active change) must
-      // not revert newer playback state (e.g. a play action made moments ago).
+      // Reject same-client out-of-order queue pushes. Per-member tracking is
+      // clock-skew-proof — never compare timestamps across different clients.
+      const lastQueueChangeByThisMember =
+        this.stateValue.lastChangeAtByMember[memberId] ?? 0;
       if (
         typeof changeAt === "number" &&
         changeAt > 0 &&
-        changeAt < this.stateValue.lastPlaybackChangeAt
+        changeAt < lastQueueChangeByThisMember
       ) {
         return;
       }
@@ -586,18 +610,32 @@ export class SpotubeRoom {
       const previousActiveTrackId = this.stateValue.activeTrackId;
       this.stateValue.activeTrackId =
         data.activeTrackId ?? this.stateValue.activeTrackId;
-      this.stateValue.activeSource =
-        data.activeSource !== undefined
-          ? data.activeSource
-          : previousActiveTrackId !== this.stateValue.activeTrackId
-            ? null
-            : this.stateValue.activeSource;
-      this.stateValue.positionMs =
-        (data as { positionMs?: number }).positionMs ?? this.stateValue.positionMs;
-      if (typeof changeAt === "number" && changeAt > 0) {
-        this.stateValue.lastPlaybackChangeAt = changeAt;
+      const activeTrackChanged =
+        previousActiveTrackId !== this.stateValue.activeTrackId;
+      // Only treat a queue push as an ACTIVE playback change when the active
+      // track actually changed (e.g. the sender's player advanced). A pure
+      // queue edit (add/remove/reorder with the same active track) must NOT
+      // reset the room's position or freeze passive position syncs: the
+      // editor's local position can be stale, and broadcasting it made every
+      // member's position jump/rewind (rubber-banding).
+      if (activeTrackChanged) {
+        this.stateValue.activeSource =
+          data.activeSource === undefined
+            ? this.stateValue.activeSource
+            : data.activeSource;
+        this.stateValue.positionMs =
+          (data as { positionMs?: number }).positionMs ??
+          this.stateValue.positionMs;
+        if (typeof changeAt === "number" && changeAt > 0) {
+          this.stateValue.lastChangeAtByMember[memberId] = changeAt;
+        }
+        this.stateValue.lastActiveChangeAt = Date.now();
+        this.stateValue.lastActiveChangeBy = memberId;
+      } else if (data.activeSource != null) {
+        // Same active track: only refresh the resolved source, never the
+        // room position (avoid rubber-banding from a stale editor position).
+        this.stateValue.activeSource = data.activeSource;
       }
-      this.stateValue.lastActiveChangeAt = Date.now();
       this.stateValue.lastPlaybackUpdateBy = memberId;
       await this.bump();
     }

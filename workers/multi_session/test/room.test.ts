@@ -152,7 +152,7 @@ describe("multi-session room contract", () => {
     await expect(metadata.json()).resolves.toMatchObject({ members: 1 });
   });
 
-  it("supports suggestions, deduplicated votes, and top-voted promotion", async () => {
+  it("supports suggestions, deduplicated votes, and explicit promotion", async () => {
     const create = await SELF.fetch("https://spotube.test/rooms", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -178,10 +178,13 @@ describe("multi-session room contract", () => {
     const guestASocket = await openSocket(room.code, guestA.token);
     const guestBSocket = await openSocket(room.code, guestB.token);
 
+    // Suggesting adds to the suggestions list; there is no auto-promotion
+    // unless autoAcceptSuggestedTracks is enabled (defaults to false).
     guestASocket.ws.send(JSON.stringify({ type: "suggestion:add", data: { track: demoTrack } }));
     const afterSuggest = await nextSnapshot(hostSocket.ws);
-    expect(afterSuggest.suggestions).toHaveLength(0);
-    expect(afterSuggest.queue[0].id).toBe(demoTrack.id);
+    expect(afterSuggest.suggestions).toHaveLength(1);
+    expect(afterSuggest.suggestions[0].track.id).toBe(demoTrack.id);
+    expect(afterSuggest.queue).toHaveLength(0);
 
     hostSocket.ws.send(
       JSON.stringify({
@@ -192,19 +195,30 @@ describe("multi-session room contract", () => {
       }),
     );
     const afterSecondSuggestion = await nextSnapshot(hostSocket.ws);
-    const secondSuggestionId = afterSecondSuggestion.suggestions[0]?.id;
+    const secondSuggestionId = afterSecondSuggestion.suggestions[1]?.id;
     expect(secondSuggestionId).toBeTruthy();
 
+    // Votes are deduplicated per member (submitter auto-votes: the host's
+    // track-2 starts at 1, guestA's vote makes it 2, guestB's makes it 3).
     guestASocket.ws.send(JSON.stringify({ type: "suggestion:vote", data: { suggestionId: secondSuggestionId } }));
     const afterVote = await nextSnapshot(hostSocket.ws);
-    expect(afterVote.suggestions[0].voteCount).toBe(2);
+    expect(afterVote.suggestions[1].voteCount).toBe(2);
 
     guestASocket.ws.send(JSON.stringify({ type: "suggestion:vote", data: { suggestionId: secondSuggestionId } }));
     await new Promise((resolve) => setTimeout(resolve, 10));
 
     guestBSocket.ws.send(JSON.stringify({ type: "suggestion:vote", data: { suggestionId: secondSuggestionId } }));
     const afterThirdVote = await nextSnapshot(hostSocket.ws);
-    expect(afterThirdVote.suggestions[0].voteCount).toBe(3);
+    expect(afterThirdVote.suggestions[1].voteCount).toBe(3);
+
+    // Explicit promotion moves the suggestion into the queue (empty queue →
+    // becomes the active track).
+    hostSocket.ws.send(JSON.stringify({ type: "suggestion:promote", data: { suggestionId: secondSuggestionId } }));
+    const afterPromote = await nextSnapshot(hostSocket.ws);
+    expect(afterPromote.suggestions).toHaveLength(1);
+    expect(afterPromote.queue).toHaveLength(1);
+    expect(afterPromote.queue[0].id).toBe("track-2");
+    expect(afterPromote.activeTrackId).toBe("track-2");
 
     hostSocket.ws.close();
     guestASocket.ws.close();
@@ -275,5 +289,127 @@ describe("multi-session room contract", () => {
     expect(snapshot.activeSource.id).toBe("video-1");
 
     hostSocket.ws.close();
+  });
+
+  it("does not reset the room position on a pure queue edit (same active track)", async () => {
+    const create = await SELF.fetch("https://spotube.test/rooms", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Host" }),
+    });
+    const room = await create.json<{ code: string; token: string }>();
+    const hostSocket = await openSocket(room.code, room.token);
+
+    // Seed the room: a queue push that changes the active track (null → demo)
+    // is an ACTIVE change and may set the position.
+    hostSocket.ws.send(
+      JSON.stringify({
+        type: "queue",
+        data: {
+          queue: [demoTrack],
+          activeTrackId: demoTrack.id,
+          positionMs: 50000,
+        },
+      }),
+    );
+    const seeded = await nextSnapshot(hostSocket.ws);
+    expect(seeded.positionMs).toBe(50000);
+
+    // A pure queue edit (same active track) must NOT move the room position —
+    // otherwise a member's stale local position would jump everyone (rubber-banding).
+    hostSocket.ws.send(
+      JSON.stringify({
+        type: "queue",
+        data: {
+          queue: [demoTrack],
+          activeTrackId: demoTrack.id,
+          positionMs: 99999,
+        },
+      }),
+    );
+    const afterEdit = await nextSnapshot(hostSocket.ws);
+    expect(afterEdit.positionMs).toBe(50000);
+    expect(afterEdit.activeTrackId).toBe(demoTrack.id);
+
+    hostSocket.ws.close();
+  });
+
+  it("accepts playback from members with skewed clocks and rejects same-member replays", async () => {
+    const create = await SELF.fetch("https://spotube.test/rooms", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Host" }),
+    });
+    const room = await create.json<{ code: string; token: string }>();
+
+    const join = await SELF.fetch(`https://spotube.test/rooms/${room.code}/join`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Guest" }),
+    });
+    const guest = await join.json<{ token: string; memberId: string }>();
+
+    const hostSocket = await openSocket(room.code, room.token);
+    const guestSocket = await openSocket(room.code, guest.token);
+
+    // Grant the guest controlPlayback (DJ) so it can send playback events.
+    hostSocket.ws.send(
+      JSON.stringify({
+        type: "permissions",
+        data: { memberId: guest.memberId, preset: "dj" },
+      }),
+    );
+    await nextSnapshot(hostSocket.ws);
+
+    // Host sends an update stamped with changeAt 1_000_000 (normal clock).
+    hostSocket.ws.send(
+      JSON.stringify({
+        type: "playback",
+        data: { positionMs: 10000, changeAt: 1_000_000 },
+      }),
+    );
+    const afterHost = await nextSnapshot(hostSocket.ws);
+    expect(afterHost.positionMs).toBe(10000);
+
+    // The guest's clock is BEHIND the host (changeAt 500_000 < host's
+    // 1_000_000). A cross-client clock gate would reject this as "stale"; the
+    // per-member gate only compares against the guest's OWN prior value (0),
+    // so it is accepted — this is the clock-skew-proofing being tested.
+    guestSocket.ws.send(
+      JSON.stringify({
+        type: "playback",
+        data: { positionMs: 20000, changeAt: 500_000 },
+      }),
+    );
+    const afterGuest = await nextSnapshot(hostSocket.ws);
+    expect(afterGuest.positionMs).toBe(20000);
+    const acceptedSequence = afterGuest.sequence;
+
+    // Same guest sends an out-of-order (older) message: the per-member gate
+    // rejects it (500_000 -> 499_999 is a regression for this member), so the
+    // room state must not change.
+    guestSocket.ws.send(
+      JSON.stringify({
+        type: "playback",
+        data: { positionMs: 30000, changeAt: 499_999 },
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    // A fresh valid host update (changeAt 2_000_000 > host's own 1_000_000)
+    // is applied. The sequence must advance by EXACTLY one: had the replay
+    // landed, it would have bumped first and the sequence would be +2.
+    hostSocket.ws.send(
+      JSON.stringify({
+        type: "playback",
+        data: { positionMs: 40000, changeAt: 2_000_000 },
+      }),
+    );
+    const afterValid = await nextSnapshot(hostSocket.ws);
+    expect(afterValid.positionMs).toBe(40000);
+    expect(afterValid.sequence).toBe(acceptedSequence + 1);
+
+    hostSocket.ws.close();
+    guestSocket.ws.close();
   });
 });

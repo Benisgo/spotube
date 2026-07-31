@@ -2,6 +2,23 @@ part of 'audio_player.dart';
 
 final audioPlayer = SpotubeAudioPlayer();
 
+bool _appClosing = false;
+
+/// Best-effort, idempotent audio shutdown shared by every app-exit path.
+/// Aborts the active stream so libmpv doesn't block process teardown for 3-5s.
+/// The `_appClosing` guard (plus the `_isDisposed` guard inside dispose) makes
+/// repeated calls safe across the window-X, tray, notification, keyboard
+/// shortcut, and sleep-timer close paths.
+Future<void> disposeAudioPlayerForClose() async {
+  if (_appClosing) return;
+  _appClosing = true;
+  try {
+    await audioPlayer.dispose().timeout(const Duration(seconds: 2));
+  } catch (_) {
+    // Never let audio teardown block the close.
+  }
+}
+
 class SpotubeAudioPlayer extends AudioPlayerInterface
     with SpotubeAudioPlayersStreams {
   Future<void> pause() async {
@@ -41,6 +58,7 @@ class SpotubeAudioPlayer extends AudioPlayerInterface
 
   Future<void> stop() async {
     _trace("stop");
+    if (_isDisposed) return;
     await _stopCrossfade(restoreActiveVolume: false);
     await _primaryPlayer.stop();
     await _mirrorSecondary((player) => player.stop());
@@ -51,6 +69,7 @@ class SpotubeAudioPlayer extends AudioPlayerInterface
   }
 
   Future<void> seek(Duration position) async {
+    if (_isDisposed) return;
     await _activePlayer.seek(position);
   }
 
@@ -86,6 +105,8 @@ class SpotubeAudioPlayer extends AudioPlayerInterface
   }
 
   Future<void> dispose() async {
+    if (_isDisposed) return;
+    _isDisposed = true;
     await _stopCrossfade(restoreActiveVolume: false);
     for (final subscription in _playerSubscriptions) {
       await subscription.cancel();
@@ -100,6 +121,7 @@ class SpotubeAudioPlayer extends AudioPlayerInterface
     bool autoPlay = true,
     int initialIndex = 0,
   }) async {
+    if (_isDisposed) return;
     await _executeSkip(() async {
       assert(tracks.isNotEmpty);
       assert(initialIndex <= tracks.length - 1);
@@ -145,6 +167,7 @@ class SpotubeAudioPlayer extends AudioPlayerInterface
   }
 
   Future<void> skipToNext() async {
+    if (_isDisposed) return;
     await _executeSkip(() async {
       _trace("skipToNext");
       final nextIndex = _nextIndexFrom(_currentIndex);
@@ -163,6 +186,7 @@ class SpotubeAudioPlayer extends AudioPlayerInterface
   }
 
   Future<void> skipToPrevious() async {
+    if (_isDisposed) return;
     await _executeSkip(() async {
       _trace("skipToPrevious");
       final previousIndex = _previousIndexFrom(_currentIndex);
@@ -181,6 +205,7 @@ class SpotubeAudioPlayer extends AudioPlayerInterface
   }
 
   Future<void> jumpTo(int index) async {
+    if (_isDisposed) return;
     await _executeSkip(() async {
       _trace("jumpTo index=$index");
       await _stopCrossfade();
@@ -196,7 +221,26 @@ class SpotubeAudioPlayer extends AudioPlayerInterface
 
   Future<void> addTrack(mk.Media media) async {
     _trace("addTrack uri=${media.uri}");
-    await _primaryPlayer.add(media);
+    if (_isDisposed) {
+      return;
+    }
+    try {
+      await _primaryPlayer.add(media);
+    } catch (_) {
+      if (_isDisposed) {
+        return; // player disposed mid-command (app closing) — swallow
+      }
+      rethrow;
+    }
+    if (_isBatching) {
+      // Sync from the primary — NOT the active player. If a crossfade completes
+      // mid-batch the secondary becomes active and its bound listener drops these
+      // events (it is gated on _isActivePlayer(isPrimary)), so _playlist would
+      // silently stop growing. O(1): Playlist stores medias by ref and the sync
+      // skips emission while batching.
+      _syncPlaylistFromActive(_primaryPlayer.state.playlist);
+      return;
+    }
     await _mirrorSecondary((player) => player.add(media));
     _syncPlaylistFromActive(_activePlayer.state.playlist);
     await _prepareInactivePlayer();
@@ -204,12 +248,26 @@ class SpotubeAudioPlayer extends AudioPlayerInterface
 
   Future<void> addTrackAt(mk.Media media, int index) async {
     _trace("addTrackAt uri=${media.uri} index=$index");
+    if (_isDisposed) {
+      return;
+    }
     if (_playlist.medias.isEmpty || _currentIndex < 0) {
       await addTrack(media);
       return;
     }
 
-    await _primaryPlayer.insert(index, media);
+    try {
+      await _primaryPlayer.insert(index, media);
+    } catch (_) {
+      if (_isDisposed) {
+        return;
+      }
+      rethrow;
+    }
+    if (_isBatching) {
+      _syncPlaylistFromActive(_primaryPlayer.state.playlist);
+      return;
+    }
     await _mirrorSecondary((player) => player.insert(index, media));
     _syncPlaylistFromActive(_activePlayer.state.playlist);
     await _prepareInactivePlayer();

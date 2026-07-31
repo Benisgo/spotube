@@ -6,6 +6,7 @@ import 'package:spotube/hooks/configurators/use_window_listener.dart';
 import 'package:spotube/models/database/database.dart';
 import 'package:spotube/provider/multi_session/multi_session.dart';
 import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
+import 'package:spotube/services/audio_player/audio_player.dart';
 
 import 'package:local_notifier/local_notifier.dart';
 import 'package:spotube/utils/platform.dart';
@@ -33,6 +34,11 @@ void useCloseBehavior(WidgetRef ref) {
         .catchError((_) {}));
 
     if (kIsDesktop) {
+      // Abort the active stream so libmpv doesn't block process teardown for
+      // 3-5s. Best-effort: the shared helper is idempotent and bounded, so the
+      // window-X, notification, tray, keyboard-shortcut, and sleep-timer close
+      // paths can all call it without double-disposing the singleton.
+      await disposeAudioPlayerForClose();
       await windowManager.setPreventClose(false);
       await windowManager.destroy();
       return;

@@ -7,6 +7,7 @@ import 'package:spotube/collections/routes.gr.dart';
 import 'package:spotube/collections/spotube_icons.dart';
 import 'package:spotube/models/database/database.dart';
 import 'package:spotube/modules/connect/connect_device.dart';
+import 'package:spotube/modules/connect/multi_session_button.dart';
 import 'package:spotube/modules/home/sections/featured.dart';
 import 'package:spotube/modules/home/sections/sections.dart';
 import 'package:spotube/modules/home/sections/new_releases.dart';
@@ -36,7 +37,8 @@ class HomePage extends HookConsumerWidget {
         bottom: false,
         child: Scaffold(
           headers: [
-            if (kTitlebarVisible && !showMobileHeader) const TitleBar(height: 30),
+            if (kTitlebarVisible && !showMobileHeader)
+              const TitleBar(height: 30),
             if (showMobileHeader)
               TitleBar(
                 showWindowButtons: false,
@@ -51,7 +53,8 @@ class HomePage extends HookConsumerWidget {
                   child: const Text("Spotube", textAlign: TextAlign.center),
                 ),
                 trailing: [
-                  const ConnectDeviceButton(),
+                  const ConnectDeviceButton.sidebar(),
+                  const MultiSessionButton.sidebar(),
                   const Gap(10),
                   IconButton.ghost(
                     icon: const Icon(SpotubeIcons.settings, size: 20),

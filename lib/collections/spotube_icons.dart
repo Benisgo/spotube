@@ -111,6 +111,7 @@ abstract class SpotubeIcons {
   static const discord = Icons.chat_bubble_outline_rounded;
   static const youtube = Icons.play_circle_outline_rounded;
   static const radio = Icons.radio_rounded;
+  static const groups = Icons.groups_rounded;
   static const github = Icons.code_rounded;
   static const openCollective = Icons.volunteer_activism_outlined;
   static const anonymous = Icons.person_outline_rounded;

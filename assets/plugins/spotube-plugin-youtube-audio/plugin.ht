@@ -64,10 +64,14 @@ external class YouTubeEngine {
 class YoutubeAuth {
   var _controller
   var _authenticated
+  var _cookieAttempts
+  var _closed
 
   construct() {
     _controller = StreamController()
     _authenticated = false
+    _cookieAttempts = 0
+    _closed = false
   }
 
   get authStateStream => _controller.stream
@@ -75,6 +79,8 @@ class YoutubeAuth {
   // authenticate() opens a WebView for the user to log into Google/YouTube.
   // Reads cookies WHILE the WebView is alive (session cookies are lost on close).
   fun authenticate() -> Future {
+    _cookieAttempts = 0
+    _closed = false
     var wv = Webview(
       uri: "https://accounts.google.com/ServiceLogin?service=youtube&continue=https://www.youtube.com&hl=en"
     )
@@ -140,12 +146,26 @@ class YoutubeAuth {
       LocalStorage.setString("yt_cookie_header", parts.join("; "))
       _authenticated = true
       _controller.add(true)
-      wv.close()
+      if (!_closed) {
+        _closed = true
+        wv.close()
+      }
     } else {
-      // No auth cookies found — retry once after another delay
-      std.Future.delayed(Duration(seconds: 2)).then(fun(_) {
-        _collectCookies(wv)
-      })
+      // No auth cookies found yet. On Android the WebView cookie store may
+      // still be flushing auth cookies, so retry a bounded number of times -
+      // then give up and close so the user is never stuck on the login page.
+      _cookieAttempts = _cookieAttempts + 1
+      if (_cookieAttempts < 6) {
+        std.Future.delayed(Duration(seconds: 2)).then(fun(_) {
+          _collectCookies(wv)
+        })
+      } else {
+        _controller.add(false)
+        if (!_closed) {
+          _closed = true
+          wv.close()
+        }
+      }
     }
   }
 

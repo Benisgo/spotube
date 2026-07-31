@@ -1,6 +1,7 @@
 #include "win32_window.h"
 
 #include <flutter_windows.h>
+#include <wchar.h>
 
 #include "resource.h"
 #include "app_links/app_links_plugin_c_api.h"
@@ -251,8 +252,23 @@ void Win32Window::OnDestroy() {
 
 // app_links
 bool Win32Window::SendAppLinkToInstance(const std::wstring& title) {
-  // Find our exact window
-  HWND hwnd = ::FindWindow(kWindowClassName, title.c_str());
+  // Find our exact window. ::FindWindow() compares the title case-sensitively,
+  // but window_manager changes the window title from "spotube" to "Spotube"
+  // during startup (waitUntilReadyToShow -> setTitle), which would make the
+  // exact-title lookup miss and spawn a second instance (e.g. from a pinned
+  // taskbar shortcut). Enumerate windows of our runner's class and match the
+  // title case-insensitively instead. The title check is load-bearing: the
+  // class name FLUTTER_RUNNER_WIN32_WINDOW is shared by every default Flutter
+  // runner, so a class-only lookup could match another Flutter app's window.
+  HWND hwnd = nullptr;
+  while ((hwnd = ::FindWindowExW(nullptr, hwnd, kWindowClassName, nullptr)) !=
+         nullptr) {
+    wchar_t window_title[256] = {0};
+    ::GetWindowTextW(hwnd, window_title, 256);
+    if (::_wcsicmp(window_title, title.c_str()) == 0) {
+      break;
+    }
+  }
 
   if (hwnd) {
     // Dispatch new link to current window
@@ -274,7 +290,7 @@ bool Win32Window::SendAppLinkToInstance(const std::wstring& title) {
           break;
     }
 
-    SetWindowPos(0, HWND_TOP, 0, 0, 0, 0, SWP_SHOWWINDOW | SWP_NOSIZE | SWP_NOMOVE);
+    SetWindowPos(hwnd, HWND_TOP, 0, 0, 0, 0, SWP_SHOWWINDOW | SWP_NOSIZE | SWP_NOMOVE);
     SetForegroundWindow(hwnd);
     // END Restore
 

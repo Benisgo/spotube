@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:spotube/services/audio_player/audio_player.dart';
 
 class SleepTimerNotifier extends StateNotifier<Duration?> {
   SleepTimerNotifier() : super(null);
@@ -13,7 +14,8 @@ class SleepTimerNotifier extends StateNotifier<Duration?> {
 
     _timer = Timer(duration, () {
       //! This can be a reason  for app termination in iOS AppStore
-      exit(0);
+      // Graceful audio teardown first so the app doesn't freeze on mpv teardown.
+      unawaited(disposeAudioPlayerForClose().then((_) => exit(0)));
     });
   }
 

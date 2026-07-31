@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/cupertino.dart';
@@ -44,24 +45,51 @@ class PlayPauseAction extends Action<PlayPauseIntent> {
 }
 
 class PlayIntent extends Intent {
-  const PlayIntent();
+  final WidgetRef ref;
+  const PlayIntent(this.ref);
 }
 
 class PlayAction extends Action<PlayIntent> {
   @override
   invoke(intent) async {
+    final multiSession = intent.ref.read(multiSessionProvider);
+    if (multiSession.connected &&
+        !multiSession.can(MultiSessionPermission.controlPlayback)) {
+      // A listener can only control their OWN playback. If they locally
+      // paused, resume them (catching up to the room); otherwise the room
+      // governs playback and there is nothing to do.
+      final notifier = intent.ref.read(multiSessionProvider.notifier);
+      if (multiSession.locallyPaused) {
+        await notifier.toggleLocalPlaybackPaused();
+      }
+      return null;
+    }
     await audioPlayer.resume();
     return null;
   }
 }
 
 class PauseIntent extends Intent {
-  const PauseIntent();
+  final WidgetRef ref;
+  const PauseIntent(this.ref);
 }
 
 class PauseAction extends Action<PauseIntent> {
   @override
   invoke(intent) async {
+    final multiSession = intent.ref.read(multiSessionProvider);
+    if (multiSession.connected &&
+        !multiSession.can(MultiSessionPermission.controlPlayback)) {
+      // A listener pauses only their own playback (locallyPaused). This must
+      // go through the notifier so it persists — a bare audioPlayer.pause()
+      // would be reverted by the next snapshot (the "pause button keeps
+      // pausing" bug).
+      final notifier = intent.ref.read(multiSessionProvider.notifier);
+      if (!multiSession.locallyPaused) {
+        await notifier.toggleLocalPlaybackPaused();
+      }
+      return null;
+    }
     await audioPlayer.pause();
     return null;
   }
@@ -209,7 +237,9 @@ class CloseAppAction extends Action<CloseAppIntent> {
   @override
   invoke(intent) {
     if (kIsDesktop) {
-      exit(0);
+      // Graceful audio teardown before the hard exit, matching the window-close
+      // path, so closing via the shortcut can't freeze on mpv teardown.
+      unawaited(disposeAudioPlayerForClose().then((_) => exit(0)));
     } else {
       SystemNavigator.pop();
     }

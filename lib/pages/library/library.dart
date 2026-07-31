@@ -10,6 +10,7 @@ import 'package:spotube/components/titlebar/titlebar.dart';
 import 'package:spotube/extensions/constrains.dart';
 import 'package:spotube/extensions/context.dart';
 import 'package:spotube/modules/connect/connect_device.dart';
+import 'package:spotube/modules/connect/multi_session_button.dart';
 import 'package:spotube/pages/library/user_albums.dart';
 import 'package:spotube/pages/library/user_artists.dart';
 import 'package:spotube/pages/library/user_downloads.dart';
@@ -96,7 +97,8 @@ class LibraryPage extends HookConsumerWidget {
                   showWindowButtons: false,
                   automaticallyImplyLeading: false,
                   trailing: [
-                    const ConnectDeviceButton(),
+                    const ConnectDeviceButton.sidebar(),
+                    const MultiSessionButton.sidebar(),
                     const Gap(8),
                     IconButton.ghost(
                       icon: const Icon(SpotubeIcons.settings, size: 20),

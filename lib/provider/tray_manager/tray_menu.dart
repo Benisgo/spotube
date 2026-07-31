@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -100,7 +101,9 @@ final trayMenuProvider = Provider((ref) {
       MenuItem(
         label: "Quit",
         onClick: (menuItem) {
-          exit(0);
+          // Same graceful audio teardown as the window-close path before the
+          // hard exit, so quitting from the tray can't freeze on mpv teardown.
+          unawaited(disposeAudioPlayerForClose().then((_) => exit(0)));
         },
       ),
     ],

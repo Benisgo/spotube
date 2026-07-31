@@ -5,7 +5,6 @@ import 'package:collection/collection.dart';
 import 'package:drift/drift.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
-import 'package:spotube/extensions/list.dart';
 import 'package:spotube/models/database/database.dart';
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/provider/audio_player/state.dart';
@@ -34,6 +33,11 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
   int? _lastPersistedIndex;
   int _playlistOperationId = 0;
   bool _isBatchAdding = false;
+
+  /// How many tracks are added per native call before yielding to the event
+  /// loop. Keeps large queue operations (e.g. queueing a 3300-track playlist)
+  /// cooperative on the UI isolate.
+  static const int _addBatchYieldInterval = 100;
 
   bool _isExpectedBackgroundPrefetchSkip(Object error) {
     final message = error.toString().toLowerCase();
@@ -271,6 +275,23 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
         .write(companion);
   }
 
+  /// Reconciles the queue state against the player's ACTUAL playlist content.
+  /// `state.tracks` is set optimistically up-front before the batch adds, so if
+  /// a batch was partially applied (a track failed to add, or a concurrent
+  /// batch op was superseded mid-flight), the player is the source of truth.
+  /// Without this, the queue UI and DB would show tracks that were never added
+  /// (the pre-batch per-add snapshots that used to self-heal are suppressed).
+  void _reconcileQueueWithPlayer() {
+    final actual = audioPlayer.playlist.medias
+        .map((media) => SpotubeMedia.media(media).track)
+        .toList();
+    if (actual.length == state.tracks.length) return;
+    final safeIndex = actual.isEmpty
+        ? -1
+        : state.currentIndex.clamp(0, actual.length - 1).toInt();
+    state = state.copyWith(tracks: actual, currentIndex: safeIndex);
+  }
+
   @override
   build() {
     var lastSavedPositionMs = -1;
@@ -332,7 +353,9 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
 
           // Skip if nothing changed at all.
           if (_lastPersistedIndex == playlist.index &&
-              _lastPersistedPlaylistLength == playlistLength) return;
+              _lastPersistedPlaylistLength == playlistLength) {
+            return;
+          }
 
           if (onlyIndexChanged) {
             // Quick path — just the index changed (track advance, seek).
@@ -530,15 +553,30 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
       return addTracks(addableTracks, allowDuplicates: true);
     }
 
+    // Build the local queue in the SAME order the media_kit playlist will
+    // actually have after the insertions below (insert after the current
+    // track). Previously this PREPENDED the new tracks to state.tracks while
+    // addTrackAt inserted them after currentIndex; the mismatch was never
+    // reconciled (the _isBatchAdding flag suppresses the playlistStream
+    // listener during the batch), so the queue UI and the room broadcast
+    // showed \"Play Next\" tracks at the FRONT instead of right after the
+    // current track.
+    final insertIndex = max(state.currentIndex, 0) + 1;
     state = state.copyWith(
-      tracks: [...addableTracks, ...state.tracks],
+      tracks: [
+        ...state.tracks.sublist(0, insertIndex),
+        ...addableTracks,
+        ...state.tracks.sublist(insertIndex),
+      ],
     );
 
     _playlistOperationId++;
     final currentOperationId = _playlistOperationId;
     _isBatchAdding = true;
+    audioPlayer.beginBatchAdd();
 
     try {
+      var added = 0;
       for (int i = 0; i < addableTracks.length; i++) {
         if (_playlistOperationId != currentOperationId) break;
         final track = addableTracks.elementAt(i);
@@ -547,10 +585,20 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
           SpotubeMedia(track),
           max(state.currentIndex, 0) + i + 1,
         );
+        if (++added % _addBatchYieldInterval == 0) {
+          // Yield to the frame scheduler so long batches stay cooperative.
+          await Future<void>.delayed(Duration.zero);
+        }
       }
     } finally {
+      // Always end the service batch (ref-counted, idempotent); it never emits
+      // a snapshot, so a superseded batch can't clobber a newer op's state.
+      await audioPlayer.endBatchAdd();
       if (_playlistOperationId == currentOperationId) {
         _isBatchAdding = false;
+        // Reconcile against the player's ACTUAL content (partial-add failure or
+        // a superseded concurrent op) before persisting.
+        _reconcileQueueWithPlayer();
         await _updatePlayerState(
           AudioPlayerStateTableCompanion(
             tracks: Value(state.tracks),
@@ -558,6 +606,12 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
             positionMs: const Value(0),
           ),
         );
+        // Refresh the persisted bookkeeping: the playlistStream listener never
+        // fired during the batch, so without this the first post-batch index
+        // change would be misclassified as a structural change (one full O(n)
+        // remap + redundant 3000-track DB write on the next skip).
+        _lastPersistedPlaylistLength = state.tracks.length;
+        _lastPersistedIndex = state.currentIndex;
       }
     }
   }
@@ -634,15 +688,27 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
     _playlistOperationId++;
     final currentOperationId = _playlistOperationId;
     _isBatchAdding = true;
+    audioPlayer.beginBatchAdd();
 
     try {
+      var added = 0;
       for (final track in tracks) {
         if (_playlistOperationId != currentOperationId) break;
         await audioPlayer.addTrack(SpotubeMedia(track));
+        if (++added % _addBatchYieldInterval == 0) {
+          // Yield to the frame scheduler so long batches stay cooperative.
+          await Future<void>.delayed(Duration.zero);
+        }
       }
     } finally {
+      // Always end the service batch (ref-counted, idempotent); it never emits
+      // a snapshot, so a superseded batch can't clobber a newer op's state.
+      await audioPlayer.endBatchAdd();
       if (_playlistOperationId == currentOperationId) {
         _isBatchAdding = false;
+        // Reconcile against the player's ACTUAL content (partial-add failure or
+        // a superseded concurrent op) before persisting.
+        _reconcileQueueWithPlayer();
         await _updatePlayerState(
           AudioPlayerStateTableCompanion(
             tracks: Value(state.tracks),
@@ -650,6 +716,12 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
             positionMs: const Value(0),
           ),
         );
+        // Refresh the persisted bookkeeping: the playlistStream listener never
+        // fired during the batch, so without this the first post-batch index
+        // change would be misclassified as a structural change (one full O(n)
+        // remap + redundant 3000-track DB write on the next skip).
+        _lastPersistedPlaylistLength = state.tracks.length;
+        _lastPersistedIndex = state.currentIndex;
         // Prefetch the active track's sources once now that the batch
         // is done (it was skipped during the batch to avoid the 429 storm).
         _prefetchAdjacentSources();

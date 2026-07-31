@@ -16,6 +16,7 @@ import 'package:spotube/extensions/string.dart';
 import 'package:spotube/hooks/controllers/use_shadcn_text_editing_controller.dart';
 import 'package:spotube/models/database/database.dart';
 import 'package:spotube/modules/connect/connect_device.dart';
+import 'package:spotube/modules/connect/multi_session_button.dart';
 import 'package:spotube/pages/search/tabs/albums.dart';
 import 'package:spotube/pages/search/tabs/all.dart';
 import 'package:spotube/pages/search/tabs/artists.dart';
@@ -97,12 +98,12 @@ class SearchPage extends HookConsumerWidget {
                 automaticallyImplyLeading: false,
                 title: Text(context.l10n.search, textAlign: TextAlign.center),
                 trailing: [
-                  const ConnectDeviceButton(),
+                  const ConnectDeviceButton.sidebar(),
+                  const MultiSessionButton.sidebar(),
                   const Gap(8),
                   IconButton.ghost(
                     icon: const Icon(SpotubeIcons.settings, size: 20),
-                    onPressed: () =>
-                        context.navigateTo(const SettingsRoute()),
+                    onPressed: () => context.navigateTo(const SettingsRoute()),
                   ),
                   const Gap(8),
                 ],

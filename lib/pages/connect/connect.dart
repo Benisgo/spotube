@@ -43,19 +43,6 @@ class ConnectPage extends HookConsumerWidget {
                 ),
               ),
               const SliverGap(10),
-              SliverToBoxAdapter(
-                child: ButtonTile(
-                  leading: const Icon(Icons.groups_rounded),
-                  title: const Text("Multi-Session / Listening Room"),
-                  subtitle: const Text(
-                    "Listen together with friends in real-time",
-                  ),
-                  trailing: const Icon(SpotubeIcons.angleRight),
-                  onPressed: () {
-                    context.navigateTo(const MultiSessionRoute());
-                  },
-                ),
-              ),
               SliverList.separated(
                 itemCount: discoveredDevices?.length ?? 0,
                 separatorBuilder: (context, index) => const Gap(10),

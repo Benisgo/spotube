@@ -142,6 +142,12 @@ abstract class AudioPlayerInterface {
   bool _skipInProgress = false;
   bool _crossfadeHandoffPending = false;
   bool _isStoppingCrossfade = false;
+  // Batch queue-append support (see beginBatchAdd/endBatchAdd). Suppresses the
+  // per-track playlist snapshot storm when adding thousands of tracks at once
+  // (e.g. queueing a large playlist), which otherwise froze/crashed the app.
+  int _batchAddDepth = 0;
+  bool _isBatching = false;
+  bool _isDisposed = false;
   int _consecutiveFailedTracks = 0;
   static const int _maxConsecutiveFailures = 3;
   Timer? _completedAdvanceTimer;
@@ -154,6 +160,13 @@ abstract class AudioPlayerInterface {
       '${playlist.medias.length}:${playlist.index}:${playlist.medias.map((m) => m.uri).join("|")}';
 
   void _emitPlaylistSnapshot(mk.Playlist playlist) {
+    if (_playlistStreamController.isClosed) return;
+    if (_isBatching) {
+      // Suppress the per-add snapshot storm during a batch add. This gate lives
+      // in the emitter (not only in _syncPlaylistFromActive) so index/playback
+      // snapshots can't leak a partial playlist either.
+      return;
+    }
     final signature = _playlistSignature(playlist);
     if (_lastEmittedPlaylistSignature == signature) return;
     _lastEmittedPlaylistSignature = signature;
@@ -210,6 +223,53 @@ abstract class AudioPlayerInterface {
     _secondarySubscriptions.clear();
     await _secondaryPlayer!.dispose();
     _secondaryPlayer = null;
+  }
+
+  /// Enters batch-add mode. While active, per-track playlist snapshots are
+  /// suppressed and crossfade/preload mirroring is deferred, so adding
+  /// thousands of tracks at once (e.g. queueing a large playlist) does not
+  /// trigger an O(n²) snapshot/remap storm on the UI isolate.
+  ///
+  /// Reference-counted: safe for nested/concurrent queue operations. Must be
+  /// paired with an [endBatchAdd] call (ideally in a `finally` block).
+  void beginBatchAdd() {
+    if (_isDisposed) return;
+    _batchAddDepth++;
+    _isBatching = true;
+  }
+
+  /// Leaves batch-add mode. Only the outermost [beginBatchAdd]/[endBatchAdd]
+  /// pair actually finalizes: it re-enables snapshots, prepares the
+  /// crossfade-preload (inactive) player once, and — if a crossfade handoff
+  /// made the secondary player active mid-batch — re-opens it with the final
+  /// playlist so a later sync cannot clobber the queued tracks.
+  Future<void> endBatchAdd() async {
+    if (_isDisposed) return;
+    if (_batchAddDepth > 0) _batchAddDepth--;
+    if (_batchAddDepth > 0) return;
+    _isBatching = false;
+    await _prepareInactivePlayer();
+    // Crossfade-handoff safety: batch adds only go to the primary player, so if
+    // a handoff flipped the secondary to active, its playlist is frozen at the
+    // handoff moment. If the ACTIVE player is genuinely SHORTER than our final
+    // _playlist, re-open it with the full list at the current index, preserving
+    // play state and the current position, so a later sync can't truncate the
+    // queue and the user doesn't hear the current song restart.
+    final active = _activePlayer;
+    if (active.state.playlist.medias.length < _playlist.medias.length) {
+      final wasPlaying = active.state.playing;
+      final position = active.state.position;
+      await _bestEffortPlayerCommand(
+        _openPlayerWithPlaylist(active, _currentIndex, play: wasPlaying),
+        'endBatchAdd.active.reopen',
+      );
+      if (wasPlaying && position > Duration.zero) {
+        await _bestEffortPlayerCommand(
+          active.seek(position),
+          'endBatchAdd.active.reseek',
+        );
+      }
+    }
   }
 
   AudioPlayerInterface() {
@@ -455,6 +515,8 @@ abstract class AudioPlayerInterface {
         ? -1
         : min(max(_currentIndex, 0), playlist.medias.length - 1);
     _playlist = mk.Playlist(playlist.medias, index: max(safeIndex, 0));
+    // Emission is gated inside _emitPlaylistSnapshot (which also covers
+    // index/playback snapshots), so a batch add can't leak partial playlists.
     _emitPlaylistSnapshot(_playlist);
   }
 
@@ -471,6 +533,7 @@ abstract class AudioPlayerInterface {
   }
 
   void _emitIndexSnapshot() {
+    if (_currentIndexStreamController.isClosed) return;
     _currentIndexStreamController.add(_currentIndex);
     final activeSource = currentSource;
     if (activeSource != null) {
@@ -482,6 +545,7 @@ abstract class AudioPlayerInterface {
   }
 
   void _emitPlaybackSnapshot({bool includePlaylist = false}) {
+    if (_playlistStreamController.isClosed) return;
     _durationStreamController.add(duration);
     _positionStreamController.add(position);
     _bufferedPositionStreamController.add(bufferedPosition);

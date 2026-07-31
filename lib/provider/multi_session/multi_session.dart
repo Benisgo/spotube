@@ -38,6 +38,7 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
   int _connectionGeneration = 0;
   int? _lastObservedPositionMs;
   DateTime? _lastObservedAt;
+  String? _lastObservedTrackId;
   double? _preMuteVolume;
 
   /// Tracks tracks that failed to load, mapped to when they failed.
@@ -265,7 +266,11 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
 
     ref.listen(audioPlayerProvider, (previous, next) {
       if (!_canEditQueue) return;
-      if (_shouldSuppressOutboundSync) return;
+      // Never re-broadcast changes that we ourselves caused while applying a
+      // snapshot (e.g. the jumpTo for a remote skip). Those flow back through
+      // the playlist/index streams mid-apply and would otherwise echo as if
+      // they were our own action.
+      if (_applyingRemote) return;
 
       final previousIds = previous?.tracks.map((track) => track.id).join(",");
       final nextIds = next.tracks.map((track) => track.id).join(",");
@@ -273,10 +278,14 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
           previous?.currentIndex != next.currentIndex) {
         final localTrackIds =
             next.tracks.map((track) => track.id).toList(growable: false);
-        final remoteTrackIds = _queueIds(state.snapshot?.queue ?? const []);
-        final activeIndex = state.snapshot?.activeTrackId == null
+        // Compare against the snapshot we actually APPLIED (not the newest
+        // state.snapshot, which can be a newer trivial tick), so a queue that
+        // still matches our applied queue is recognized as a sync echo.
+        final syncSnapshot = _lastAppliedSnapshot ?? state.snapshot;
+        final remoteTrackIds = _queueIds(syncSnapshot?.queue ?? const []);
+        final activeIndex = syncSnapshot?.activeTrackId == null
             ? 0
-            : remoteTrackIds.indexOf(state.snapshot!.activeTrackId!);
+            : remoteTrackIds.indexOf(syncSnapshot!.activeTrackId!);
         final index = activeIndex < 0 ? 0 : activeIndex;
 
         final isSnapshotSync =
@@ -299,25 +308,58 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
             _pushNotice("${addedTrack.name} added to queue by $_actorName");
           }
         }
-        // Debounce sendQueue to avoid re-serializing large queues
-        // on every track advance (e.g., 3000-song playlist).
-        _sendQueueTimer?.cancel();
-        _sendQueueTimer = Timer(const Duration(milliseconds: 200), sendQueue);
+        if (previousIds == nextIds &&
+            previous?.currentIndex != next.currentIndex) {
+          // Track advance (or jumpTo) with the SAME queue: broadcast the new
+          // active track via a playback update, which updates activeTrackId /
+          // position WITHOUT replacing the room's queue list. A full queue
+          // push here would clobber other members' edits (e.g. a co-host's
+          // "Play Next" / add that this member hasn't loaded yet).
+          sendPlayback(bypassSuppress: true);
+        } else {
+          // Structural queue change (add/remove/reorder/load): debounce the
+          // full queue push to avoid re-serializing large queues on every
+          // track advance (e.g., 3000-song playlist).
+          _sendQueueTimer?.cancel();
+          _sendQueueTimer = Timer(const Duration(milliseconds: 200), sendQueue);
+        }
       }
     });
 
     final playingSubscription = audioPlayer.playingStream.listen((playing) {
       if (!_canControlPlayback) return;
-      if (_shouldSuppressOutboundSync) return;
-      // Only count genuine local play/pause (not snapshots we applied).
-      if (!_applyingRemote) _lastLocalActionAt = DateTime.now();
-      _pushNotice(
-        playing
-            ? "Playback resumed by $_actorName"
-            : "Playback paused by $_actorName",
-      );
+      // A playing/pause event triggered while we were applying a snapshot is
+      // our own echo of that apply (resume/pause toward the snapshot state) —
+      // never re-broadcast it.
+      if (_applyingRemote) return;
+      // A late media_kit event right after an apply that matches the applied
+      // state is also an echo.
+      if (_shouldSuppressOutboundSync &&
+          _lastAppliedSnapshot?.playing == playing) {
+        return;
+      }
+      // Genuine local play/pause (user action, or the host's completed-advance
+      // recovery resuming after a track ended). Always broadcast it, even
+      // within the post-apply suppression window — otherwise the "next song
+      // plays but stays paused" bug happens.
+      _lastLocalActionAt = DateTime.now();
+      // Don't toast for the transient pause/resume that accompanies a natural
+      // track change (mpv pauses at the boundary, then the completed-advance
+      // recovery resumes). Only notice genuine user toggles.
+      final duration = audioPlayer.duration;
+      final position = audioPlayer.position;
+      final atTrackBoundary = duration > Duration.zero &&
+          (position >= (duration - const Duration(seconds: 2)) ||
+              position <= const Duration(seconds: 1));
+      if (!atTrackBoundary) {
+        _pushNotice(
+          playing
+              ? "Playback resumed by $_actorName"
+              : "Playback paused by $_actorName",
+        );
+      }
       _rememberObservedPosition(audioPlayer.position);
-      sendPlayback();
+      sendPlayback(bypassSuppress: true);
     });
 
     final positionSubscription = audioPlayer.positionStream.listen((position) {
@@ -326,6 +368,15 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
       final previousPositionMs = _lastObservedPositionMs;
       final previousObservedAt = _lastObservedAt;
       _rememberObservedPosition(position);
+
+      // When the active track changed (natural end / skip), sendQueue already
+      // broadcasts the new track + position. Don't fire a non-passive playback
+      // send here: it could carry a stale playing=false captured during the
+      // track transition and broadcast a false "paused" to the whole room.
+      final currentTrackId = ref.read(audioPlayerProvider).activeTrack?.id;
+      final trackChanged = currentTrackId != _lastObservedTrackId;
+      _lastObservedTrackId = currentTrackId;
+      if (trackChanged) return;
 
       if (!_canControlPlayback ||
           previousPositionMs == null ||
@@ -692,6 +743,10 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
     _lastAppliedSnapshot = null;
     _lastSentPositionMs = null;
     _lastSentPositionAt = null;
+    _lastObservedPositionMs = null;
+    _lastObservedAt = null;
+    _lastObservedTrackId = null;
+    _lastLocalActionAt = null;
     _failedSessionTracks.clear();
     _lastErrorPauseAt = null;
     _errorRetryTimer?.cancel();
@@ -852,6 +907,30 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
       final remoteTrackIds = _queueIds(snapshot.queue);
       final isMyQueue = snapshot.lastQueueUpdateBy == state.memberId;
 
+      // Don't treat this snapshot as remote if it reflects OUR OWN last send
+      // (the relay attributes it via lastPlaybackUpdateBy). Fall back to the
+      // old proximity heuristic only when the relay doesn't provide
+      // attribution (older worker). Computed early so a stale own-echo (e.g.
+      // our own "paused" send arriving after our player already advanced to
+      // the next track) can't make us jump back to a track we've left — the
+      // "host replays the ended track" variant of the natural-end bug.
+      final isOurOwnEcho = snapshot.lastPlaybackUpdateBy != null
+          ? snapshot.lastPlaybackUpdateBy == state.memberId
+          : _lastSentPositionMs != null &&
+              _lastSentPositionAt != null &&
+              (snapshot.positionMs - _lastSentPositionMs!).abs() <
+                  _remoteSeekThresholdMs &&
+              DateTime.now().difference(_lastSentPositionAt!).inMilliseconds <
+                  1500;
+
+      // We just performed a local seek/play/pause/queue action. For a short
+      // grace window, suppress REMOTE position-only updates so a stale echo
+      // or the host's 1s position tick (captured before our action reached
+      // the relay) can't rewind us.
+      final recentlyActedLocally = _lastLocalActionAt != null &&
+          DateTime.now().difference(_lastLocalActionAt!).inMilliseconds <
+              _localActionGraceMs;
+
       if (remoteTrackIds.isEmpty && !isMyQueue) {
         if (localTracks.isNotEmpty) {
           await ref.read(audioPlayerProvider.notifier).load(
@@ -940,7 +1019,9 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
         // Skip full load to avoid interrupting playback (Bug C2).
         // The promoted/added track will appear when the next snapshot
         // triggers load() on actual track transition.
-      } else if (indexChanged) {
+      } else if (indexChanged && !isOurOwnEcho) {
+        // Never jump the player because of our own stale echo (we may have
+        // already advanced past the track the echo claims is active).
         final playlistLength = audioPlayer.playlist.medias.length;
         if (playlistLength > 0 && index < playlistLength) {
           await audioPlayer.jumpTo(index);
@@ -958,32 +1039,14 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
             DateTime.now().difference(failedAt).inMilliseconds > 30000,
       );
 
-      // Don't treat this snapshot as remote if it reflects OUR OWN last send
-      // (the relay attributes it via lastPlaybackUpdateBy). Fall back to the
-      // old proximity heuristic only when the relay doesn't provide
-      // attribution (older worker).
-      final isOurOwnEcho = snapshot.lastPlaybackUpdateBy != null
-          ? snapshot.lastPlaybackUpdateBy == state.memberId
-          : _lastSentPositionMs != null &&
-              _lastSentPositionAt != null &&
-              (snapshot.positionMs - _lastSentPositionMs!).abs() <
-                  _remoteSeekThresholdMs &&
-              DateTime.now().difference(_lastSentPositionAt!).inMilliseconds <
-                  1500;
-
-      // We just performed a local seek/play/pause/queue action. For a short
-      // grace window, suppress REMOTE position-only updates so a stale echo
-      // or the host's 1s position tick (captured before our action reached
-      // the relay) can't rewind us.
-      final recentlyActedLocally = _lastLocalActionAt != null &&
-          DateTime.now().difference(_lastLocalActionAt!).inMilliseconds <
-              _localActionGraceMs;
-
       // Skip source swap if load() was already called — the new playlist
       // already resolved the correct source. Avoids nested load(). Also
       // skip during the local-action grace window so a stale snapshot can't
-      // swap our just-selected source out from under us.
-      if (!queueIdsChanged &&
+      // swap our just-selected source out from under us, and skip while the
+      // user is locally paused (swapActiveSource reloads with autoPlay: true
+      // and would yank a paused listener back into playback).
+      if (!state.locallyPaused &&
+          !queueIdsChanged &&
           !recentlyActedLocally &&
           shouldSyncActiveSource &&
           activeTrack is SpotubeFullTrackObject &&
@@ -1006,9 +1069,11 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
       // Only seek when the active track changed (switching to a new track),
       // OR when it's a pure position update with significant drift AND we
       // haven't just acted locally. Skip seeking on queue-only or index-only
-      // changes, and skip it during the local-action grace window (Bug: seek
-      // rubber-banding).
+      // changes, during the local-action grace window (Bug: seek
+      // rubber-banding), and while the user is locally paused (a listener's
+      // local pause is a real pause — the progress bar must not crawl).
       final shouldSeek = !isOurOwnEcho &&
+          !state.locallyPaused &&
           (activeTrackChanged ||
               (!queueIdsChanged &&
                   !indexChanged &&
@@ -1024,9 +1089,10 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
       // Respect local pause: don't override playback if user locally paused.
       // During the local-action grace window, only sync play/pause when the
       // active track or queue actually changed (a real remote action), so a
-      // stale snapshot can't undo our just-performed play/pause.
-      final shouldSyncPlayback =
-          !recentlyActedLocally || activeTrackChanged || queueIdsChanged;
+      // stale snapshot can't undo our just-performed play/pause. Never sync
+      // play/pause from our own echo (we know our own playing state).
+      final shouldSyncPlayback = !isOurOwnEcho &&
+          (!recentlyActedLocally || activeTrackChanged || queueIdsChanged);
       if (!state.locallyPaused && shouldSyncPlayback) {
         if (snapshot.playing && !audioPlayer.isPlaying) {
           await audioPlayer.resume();
@@ -1070,6 +1136,30 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
     }
 
     state = state.copyWith(locallyPaused: paused);
+    if (paused) {
+      // Actually pause the local player (not just mute) so a listener's
+      // Pause button behaves like a real pause. Snapshots never resume us
+      // while locallyPaused is set, so the pause persists across the room's
+      // position ticks. Call pause() unconditionally (it is idempotent): a
+      // stale audioPlayer.isPlaying must not let a mid-apply snapshot skip
+      // the listener's pause.
+      await audioPlayer.pause();
+    } else {
+      // Resume and catch up to the room's authoritative position, so the
+      // listener rejoins the live playback instead of resuming from where
+      // they paused (which could be minutes behind).
+      final snapshot = state.snapshot;
+      if (snapshot != null && snapshot.playing) {
+        if (!audioPlayer.isPlaying) {
+          await audioPlayer.resume();
+        }
+        final driftMs =
+            (snapshot.positionMs - audioPlayer.position.inMilliseconds).abs();
+        if (driftMs >= _remoteSeekThresholdMs) {
+          await audioPlayer.seek(Duration(milliseconds: snapshot.positionMs));
+        }
+      }
+    }
   }
 
   Future<void> toggleLocalPlaybackPaused() async {
@@ -1166,9 +1256,20 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
 
   void sendQueue() {
     unawaited(() async {
-      if (_shouldSuppressOutboundSync) return;
       if (!_canSendRoomState) return;
       final playerState = ref.read(audioPlayerProvider);
+      // Echo guard: if the local queue is exactly what we last applied from a
+      // snapshot, this is just the apply's echo — don't re-broadcast it. A
+      // genuine local change (add/remove/reorder/advance) differs, so it is
+      // still sent even right after an apply.
+      final applied = _lastAppliedSnapshot;
+      if (applied != null) {
+        final localIds =
+            playerState.tracks.map((track) => track.id).toList(growable: false);
+        if (_stringListEquality.equals(localIds, _queueIds(applied.queue))) {
+          return;
+        }
+      }
       // Include ALL track types in the queue snapshot (Bug B2). Local
       // tracks are sent with metadata so members can see what's playing.
       final tracks = playerState.tracks.toList();
@@ -1208,8 +1309,12 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
     }());
   }
 
-  void sendPlayback({bool passive = false}) async {
-    if (_shouldSuppressOutboundSync) return;
+  void sendPlayback({bool passive = false, bool bypassSuppress = false}) async {
+    // Genuine local play/pause must always reach the relay (bypassSuppress),
+    // otherwise the completed-advance recovery's resume gets dropped and the
+    // room is left stuck paused. Position-only syncs stay suppressed right
+    // after an apply to avoid echoing back the snapshot we just applied.
+    if (!bypassSuppress && _shouldSuppressOutboundSync) return;
     if (!_canSendRoomState) return;
     final positionMs = audioPlayer.position.inMilliseconds;
     _lastSentPositionMs = positionMs;

@@ -809,16 +809,31 @@ class ServerPlaybackRoutes {
       return res;
     }
 
+    final contentRange = res.headers.value("content-range") != null
+        ? ContentRangeHeader.parse(res.headers.value("content-range") ?? "")
+        : ContentRangeHeader(0, 0, 0);
+
+    // Only write to the disk cache when downloading from the START of the
+    // file. A partial (Range) response from a seek must NOT be appended to
+    // the cache file — mixing byte ranges corrupts it so it never matches
+    // contentRange.total and forces re-download on every play. Serve the
+    // ranged response as a plain passthrough instead.
+    if (contentRange.start > 0) {
+      res.data?.stream = upstream;
+      return res;
+    }
+
     final trackPartialCacheFile = File("${effectiveTrackCacheFile.path}.part");
     if (!await trackPartialCacheFile.exists()) {
       await trackPartialCacheFile.create(recursive: true);
     }
 
+    // Use writeOnly (truncate) instead of writeOnlyAppend: if a stale
+    // .part from an interrupted download exists, start fresh rather than
+    // appending new bytes onto old garbage (which would never match
+    // contentRange.total, so the song would re-download every time).
     final partialCacheFileSink =
-        trackPartialCacheFile.openWrite(mode: FileMode.writeOnlyAppend);
-    final contentRange = res.headers.value("content-range") != null
-        ? ContentRangeHeader.parse(res.headers.value("content-range") ?? "")
-        : ContentRangeHeader(0, 0, 0);
+        trackPartialCacheFile.openWrite(mode: FileMode.writeOnly);
 
     res.data?.stream = _streamWithCachePassthrough(
       upstream,
@@ -875,11 +890,14 @@ class ServerPlaybackRoutes {
     String? trackName,
     String? trackArtist,
   }) async* {
+    // Accumulate bytes across chunks and record ONCE per stream instead
+    // of one DB row per chunk — prevents the stats page from showing the
+    // same track dozens of times with fragmentary sizes (80kb/40kb/4kb).
+    var totalBytes = 0;
     try {
       await for (final chunk in source) {
         cacheSink.add(chunk);
-        unawaited(recordDataUsage(ref, chunk.length,
-            trackId: trackId, trackName: trackName, trackArtist: trackArtist));
+        totalBytes += chunk.length;
         yield chunk;
       }
       await cacheSink.close();
@@ -888,6 +906,12 @@ class ServerPlaybackRoutes {
       onError(error);
       await cacheSink.close();
       Error.throwWithStackTrace(error, stackTrace);
+    } finally {
+      // Record once per stream (even on interruption, for partial bytes).
+      if (totalBytes > 0) {
+        unawaited(recordDataUsage(ref, totalBytes,
+            trackId: trackId, trackName: trackName, trackArtist: trackArtist));
+      }
     }
   }
 

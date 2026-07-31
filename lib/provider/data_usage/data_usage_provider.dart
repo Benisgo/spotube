@@ -96,17 +96,34 @@ Future<void> recordDataUsage(Ref ref, int bytes,
         );
   }
 
-  // Track per-song usage if we have track info
+  // Track per-song usage if we have track info.
+  // UPSERT per (trackId + day): accumulate bytes into a single row
+  // instead of inserting a new row per call. Otherwise the same track
+  // shows up dozens of times in the stats (per chunk) — see Bug: data
+  // usage duplication.
   if (trackId != null && trackName != null) {
-    await db.into(db.dataUsageDetailTable).insert(
-          DataUsageDetailTableCompanion.insert(
-            date: startOfDay,
-            trackId: trackId,
-            trackName: trackName,
-            trackArtist: trackArtist ?? '',
-            bytes: Value(bytes),
-          ),
-        );
+    final existingDetail = await (db.select(db.dataUsageDetailTable)
+          ..where((t) => t.trackId.equals(trackId) & t.date.equals(startOfDay)))
+        .get()
+        .then((r) => r.isNotEmpty ? r.first : null);
+
+    if (existingDetail != null) {
+      await (db.update(db.dataUsageDetailTable)
+            ..where((t) => t.id.equals(existingDetail.id)))
+          .write(DataUsageDetailTableCompanion(
+        bytes: Value(existingDetail.bytes + bytes),
+      ));
+    } else {
+      await db.into(db.dataUsageDetailTable).insert(
+            DataUsageDetailTableCompanion.insert(
+              date: startOfDay,
+              trackId: trackId,
+              trackName: trackName,
+              trackArtist: trackArtist ?? '',
+              bytes: Value(bytes),
+            ),
+          );
+    }
   }
 
   ref.invalidate(dataUsageProvider);

@@ -54,8 +54,10 @@ Future<void> Function(SpotubeTrackObject track, int index)
     if (isRemoteDevice) {
       final remotePlayback = ref.read(connectProvider.notifier);
       final remoteQueue = ref.read(queueProvider);
-      if (remoteQueue.collections.contains(options.collectionId) ||
-          remoteQueue.tracks.any((s) => s.id == track.id)) {
+      // Same rule as local playback: only jump within the remote queue if the
+      // clicked track's collection is the ACTIVE one. A shared song in a
+      // different playlist must load the new playlist instead.
+      if (remoteQueue.collections.contains(options.collectionId)) {
         await playlistNotifier.jumpToTrack(track);
       } else {
         final tracks = await options.pagination.onFetchAll();
@@ -98,7 +100,13 @@ Future<void> Function(SpotubeTrackObject track, int index)
       final hasActiveLocalSource =
           audioPlayer.hasSource && playlist.currentIndex >= 0;
       final isTrackQueued = playlist.tracks.containsBy(track, (a) => a.id);
-      final canJumpInCurrentQueue = hasActiveLocalSource && isTrackQueued;
+      // Only jump within the current queue when the clicked track belongs to
+      // the currently ACTIVE collection. If the user is viewing a different
+      // playlist that happens to share a song with the active one, we must
+      // load the new playlist instead of just seeking to that song in the
+      // old queue (otherwise queue reflects the wrong playlist).
+      final canJumpInCurrentQueue =
+          isActive && hasActiveLocalSource && isTrackQueued;
 
       // Fire-and-forget the prime — it's just cache-warming.
       // Don't block jumpToTrack/load on it (was previously awaited with

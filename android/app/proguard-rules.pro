@@ -58,3 +58,10 @@
 -dontwarn jdk.dynalink.linker.support.CompositeTypeBasedGuardingDynamicLinker
 -dontwarn jdk.dynalink.linker.support.Guards
 -dontwarn jdk.dynalink.support.ChainedCallSite
+
+## Keep JNI native method names and their classes.
+## media_kit, metadata_god, sqlite3_flutter_libs, flutter_discord_rpc, etc.
+## register natives by exact method name; R8 must not rename/remove them.
+-keepclasseswithmembernames class * {
+    native <methods>;
+}

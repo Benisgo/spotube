@@ -78,9 +78,11 @@ android {
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
         multiDexEnabled true
-        ndk {
-            abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
-        }
+        // NOTE: no ndk.abiFilters here — the Flutter Gradle plugin overrides
+        // them anyway (FlutterPlugin.kt clears abiFilters and uses its own
+        // DEFAULT_PLATFORMS list), and setting them breaks `--split-per-abi`
+        // ("conflicting configuration"). Control ABIs via `--target-platform`
+        // on the flutter build command instead (see cli/commands/build/android.dart).
     }
 
     if (keystorePropertiesFile.exists()) {
@@ -99,6 +101,11 @@ android {
             if (keystorePropertiesFile.exists()) {
                 signingConfig signingConfigs.release
             }
+            // Shrink Java/Kotlin bytecode and strip unused resources (R8).
+            // proguard-rules.pro keeps reflection/JNI-heavy plugins working.
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
         }
         debug {
         }
@@ -137,6 +144,11 @@ android {
     packagingOptions {
         resources.excludes += "DebugProbesKt.bin"
         doNotStrip "**/libpython.zip.so"
+        // The flutter_new_pipe_extractor plugin's pubspec declares `assets: - assets/`,
+        // so Flutter bundles its NewPipeCLI-windows-x64.zip into EVERY platform build.
+        // It is only needed on Windows (Android uses the in-process extractor), so drop
+        // it from the APK (~11 MB). resources.excludes filters packaged assets too.
+        resources.excludes += "**/flutter_new_pipe_extractor/assets/NewPipeCLI-windows-x64.zip"
     }
 }
 

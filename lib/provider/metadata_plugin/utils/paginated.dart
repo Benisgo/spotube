@@ -11,10 +11,21 @@ import 'package:spotube/services/logger/logger.dart';
 mixin PaginatedAsyncNotifierMixin<K>
     // ignore: invalid_use_of_internal_member
     on AsyncNotifierBase<SpotubePaginationResponseObject<K>> {
+  DateTime? _lastFetchMoreFailureAt;
+  static const _fetchMoreRetryCooldown = Duration(seconds: 15);
+
   Future<SpotubePaginationResponseObject<K>> fetch(int offset, int limit);
 
   Future<void> fetchMore() async {
     if (state.value == null || !state.value!.hasMore) return;
+
+    // Throttle retries after a failure (429) — don't hammer a rate-limited
+    // endpoint. hasMore stays true so fetchAll() can still load everything.
+    if (_lastFetchMoreFailureAt != null &&
+        DateTime.now().difference(_lastFetchMoreFailureAt!) <
+            _fetchMoreRetryCooldown) {
+      return;
+    }
 
     final oldState = state.value;
     try {
@@ -32,9 +43,8 @@ mixin PaginatedAsyncNotifierMixin<K>
       state = AsyncData(newState.copyWith(items: <K>[...oldItems, ...items]));
     } catch (e, stack) {
       AppLogger.reportError(e, stack);
-      // Stop the InfiniteList from auto-retrying in a tight loop (a 429/network
-      // error previously kept hasMore=true → refetch → 429 → flood + freeze).
-      state = AsyncData(oldState!.copyWith(hasMore: false));
+      _lastFetchMoreFailureAt = DateTime.now();
+      state = AsyncData(oldState!);
     }
   }
 

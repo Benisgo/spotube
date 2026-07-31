@@ -20,10 +20,24 @@ bool _isRecoverablePaginationError(Object error) {
 abstract class FamilyPaginatedAsyncNotifier<K, A>
     extends FamilyAsyncNotifier<SpotubePaginationResponseObject<K>, A>
     with MetadataPluginMixin<K> {
+  DateTime? _lastFetchMoreFailureAt;
+  static const _fetchMoreRetryCooldown = Duration(seconds: 15);
+
   Future<SpotubePaginationResponseObject<K>> fetch(int offset, int limit);
 
   Future<void> fetchMore() async {
     if (state.value == null || !state.value!.hasMore) return;
+
+    // Throttle retries after a failure so a rate-limited (429) endpoint is
+    // not hammered by the InfiniteList in a tight loop. NOTE: hasMore is
+    // intentionally left true here — setting it false on error would make
+    // fetchAll() short-circuit and load only the first page when playing a
+    // large playlist.
+    if (_lastFetchMoreFailureAt != null &&
+        DateTime.now().difference(_lastFetchMoreFailureAt!) <
+            _fetchMoreRetryCooldown) {
+      return;
+    }
 
     final oldState = state.value;
 
@@ -42,9 +56,8 @@ abstract class FamilyPaginatedAsyncNotifier<K, A>
       state = AsyncData(newState.copyWith(items: <K>[...oldItems, ...items]));
     } catch (e, stack) {
       AppLogger.reportError(e, stack);
-      // Stop the InfiniteList from auto-retrying in a tight loop (a 429/network
-      // error previously kept hasMore=true → refetch → 429 → flood + freeze).
-      state = AsyncData(oldState!.copyWith(hasMore: false));
+      _lastFetchMoreFailureAt = DateTime.now();
+      state = AsyncData(oldState!);
     }
   }
 
@@ -96,10 +109,22 @@ abstract class FamilyPaginatedAsyncNotifier<K, A>
 abstract class AutoDisposeFamilyPaginatedAsyncNotifier<K, A>
     extends AutoDisposeFamilyAsyncNotifier<SpotubePaginationResponseObject<K>,
         A> with MetadataPluginMixin<K> {
+  DateTime? _lastFetchMoreFailureAt;
+  static const _fetchMoreRetryCooldown = Duration(seconds: 15);
+
   Future<SpotubePaginationResponseObject<K>> fetch(int offset, int limit);
 
   Future<void> fetchMore() async {
     if (state.value == null || !state.value!.hasMore) return;
+
+    // Throttle retries after a failure (429) — don't hammer a rate-limited
+    // endpoint. hasMore stays true so fetchAll() can still load everything.
+    if (_lastFetchMoreFailureAt != null &&
+        DateTime.now().difference(_lastFetchMoreFailureAt!) <
+            _fetchMoreRetryCooldown) {
+      return;
+    }
+
     final oldState = state.value;
 
     try {
@@ -118,9 +143,8 @@ abstract class AutoDisposeFamilyPaginatedAsyncNotifier<K, A>
       );
     } catch (e, stack) {
       AppLogger.reportError(e, stack);
-      // Stop the InfiniteList from auto-retrying in a tight loop (a 429/network
-      // error previously kept hasMore=true → refetch → 429 → flood + freeze).
-      state = AsyncData(oldState!.copyWith(hasMore: false));
+      _lastFetchMoreFailureAt = DateTime.now();
+      state = AsyncData(oldState!);
     }
   }
 

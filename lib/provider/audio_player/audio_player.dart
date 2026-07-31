@@ -371,6 +371,17 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
             }
             if (_playlistOperationId != streamSeq) return;
           }
+          // Clear the pending-track id regardless of batch mode. If the
+          // batch (addTracks for load_remaining) starts before this event
+          // is processed and clearing were gated on !_isBatchAdding, the id
+          // would get stuck and jumpToTrack() would silently ignore every
+          // other queue item (its guard: pendingId != track.id → return).
+          final pendingTrackId = ref.read(pendingPlaybackTrackIdProvider);
+          if (pendingTrackId != null &&
+              state.activeTrack?.id == pendingTrackId) {
+            clearPendingPlaybackTrackId(pendingTrackId);
+          }
+
           // Skip per-event trace spam + prefetch while batch-adding a large
           // playlist (e.g. 3000 liked songs). Prefetching per added track
           // hammered YouTube -> 429 and froze the UI. Prefetch once after
@@ -385,11 +396,6 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
                   'currentIndex': playlist.index,
                 },
               );
-            }
-            final pendingTrackId = ref.read(pendingPlaybackTrackIdProvider);
-            if (pendingTrackId != null &&
-                state.activeTrack?.id == pendingTrackId) {
-              clearPendingPlaybackTrackId(pendingTrackId);
             }
             _prefetchAdjacentSources();
           }

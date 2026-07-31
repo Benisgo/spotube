@@ -189,17 +189,57 @@ class SourcedTrack extends BasicSourcedTrack {
       data: {'resultCount': deferredSiblings.length, 'siblingsDeferred': true},
     );
 
-    final manifest = await _fetchStreams(
-      ref: ref,
-      match: primaryMatch,
-      sourceSlug: audioSource.slug,
-      trackId: query.id,
-    );
+    // Fetch the primary match's streams, but if it's unplayable (e.g. the
+    // top-scored video was removed / region / age restricted), fall back to
+    // the other ranked search results instead of failing the whole song.
+    var chosenMatch = primaryMatch;
+    // Initializer only satisfies the flow analysis; on the rethrow path below
+    // it is never used.
+    List<SpotubeAudioSourceStreamObject> manifest = const [];
+    try {
+      manifest = await _fetchStreams(
+        ref: ref,
+        match: primaryMatch,
+        sourceSlug: audioSource.slug,
+        trackId: query.id,
+      );
+    } catch (primaryError) {
+      PlaybackStartTrace.markTrack(
+        query.id,
+        'sourced_track.primary_unplayable',
+        data: {'error': primaryError.toString()},
+      );
+      SpotubeAudioSourceMatchObject? fallback;
+      for (final sibling in deferredSiblings) {
+        try {
+          manifest = await _fetchStreams(
+            ref: ref,
+            match: sibling,
+            sourceSlug: audioSource.slug,
+            trackId: query.id,
+          );
+          fallback = sibling;
+          break;
+        } catch (_) {
+          // Try the next sibling
+        }
+      }
+      if (fallback == null) {
+        // All ranked matches are unplayable — surface the original error.
+        rethrow;
+      }
+      chosenMatch = fallback;
+      PlaybackStartTrace.markTrack(
+        query.id,
+        'sourced_track.sibling_fallback',
+        data: {'fromId': primaryMatch.id, 'toId': fallback.id},
+      );
+    }
 
     final sourcedTrack = SourcedTrack(
       ref: ref,
       siblings: const [],
-      info: primaryMatch,
+      info: chosenMatch,
       source: audioSource.slug,
       sources: manifest,
       query: query,

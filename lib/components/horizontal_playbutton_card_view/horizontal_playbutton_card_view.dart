@@ -80,6 +80,14 @@ class HorizontalPlaybuttonCardView<T> extends HookWidget {
                   ),
                   child: items.isEmpty
                       ? ListView.builder(
+                          // Attach the same controller to both branches so it
+                          // is always bound to exactly one ScrollPosition. When
+                          // the list flip-flops between the empty skeleton and
+                          // the real InfiniteList (e.g. during a failed
+                          // pagination), a controller attached in one branch
+                          // but not the other could transiently end up on two
+                          // positions, tripping RawScrollbar's assertion.
+                          controller: scrollController,
                           scrollDirection: Axis.horizontal,
                           itemCount: 5,
                           itemBuilder: (context, index) {

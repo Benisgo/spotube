@@ -363,27 +363,36 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
             );
             if (_playlistOperationId != streamSeq) return;
           } else {
-            state = state.copyWith(
-              currentIndex: playlist.index,
-            );
+            // During batch add the playlist only grows; currentIndex stays
+            // put. Avoid a state.copyWith (and thus 3000 Riverpod listener
+            // notifications) per added track when the index is unchanged.
+            if (state.currentIndex != playlist.index) {
+              state = state.copyWith(currentIndex: playlist.index);
+            }
             if (_playlistOperationId != streamSeq) return;
           }
-          if (state.activeTrack != null) {
-            PlaybackStartTrace.markTrack(
-              state.activeTrack!.id,
-              'playlist_stream.updated',
-              data: {
-                'playlistLength': tracks.length,
-                'currentIndex': playlist.index,
-              },
-            );
+          // Skip per-event trace spam + prefetch while batch-adding a large
+          // playlist (e.g. 3000 liked songs). Prefetching per added track
+          // hammered YouTube -> 429 and froze the UI. Prefetch once after
+          // the batch completes instead.
+          if (!_isBatchAdding) {
+            if (state.activeTrack != null) {
+              PlaybackStartTrace.markTrack(
+                state.activeTrack!.id,
+                'playlist_stream.updated',
+                data: {
+                  'playlistLength': tracks.length,
+                  'currentIndex': playlist.index,
+                },
+              );
+            }
+            final pendingTrackId = ref.read(pendingPlaybackTrackIdProvider);
+            if (pendingTrackId != null &&
+                state.activeTrack?.id == pendingTrackId) {
+              clearPendingPlaybackTrackId(pendingTrackId);
+            }
+            _prefetchAdjacentSources();
           }
-          final pendingTrackId = ref.read(pendingPlaybackTrackIdProvider);
-          if (pendingTrackId != null &&
-              state.activeTrack?.id == pendingTrackId) {
-            clearPendingPlaybackTrackId(pendingTrackId);
-          }
-          _prefetchAdjacentSources();
 
           if (!_isBatchAdding) {
             if (_playlistOperationId != streamSeq) return;
@@ -635,6 +644,9 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
             positionMs: const Value(0),
           ),
         );
+        // Prefetch the active track's sources once now that the batch
+        // is done (it was skipped during the batch to avoid the 429 storm).
+        _prefetchAdjacentSources();
       }
     }
   }

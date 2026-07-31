@@ -38,29 +38,11 @@ class AudioSourceAvailableQualityPresetsNotifier
 
     _initialize(audioSourceSnapshot, audioSourceConfigSnapshot);
 
-    listenSelf((previous, next) {
-      final isNewLossless =
-          next.presets.elementAtOrNull(next.selectedStreamingContainerIndex)
-              is SpotubeAudioSourceContainerPresetLossless;
-      final isOldLossless = previous?.presets
-              .elementAtOrNull(previous.selectedStreamingContainerIndex)
-          is SpotubeAudioSourceContainerPresetLossless;
-      if (!isOldLossless && isNewLossless) {
-        audioPlayer.setDemuxerBufferSize(6 * 1024 * 1024); // 6MB
-      } else if (isOldLossless && !isNewLossless) {
-        audioPlayer.setDemuxerBufferSize(4 * 1024 * 1024); // 4MB
-      }
-    });
+    // Use a large demuxer read-ahead buffer (10MB) so mpv loads the full
+    // song ahead — full seekbar highlight and faster disk-cache completion.
+    audioPlayer.setDemuxerBufferSize(10 * 1024 * 1024);
 
-    final initialState = AudioSourcePresetsState();
-    final isInitialLossless = initialState.presets
-            .elementAtOrNull(initialState.selectedStreamingContainerIndex)
-        is SpotubeAudioSourceContainerPresetLossless;
-    audioPlayer.setDemuxerBufferSize(
-      isInitialLossless ? 6 * 1024 * 1024 : 4 * 1024 * 1024,
-    );
-
-    return initialState;
+    return AudioSourcePresetsState();
   }
 
   void _initialize(

@@ -42,7 +42,9 @@ abstract class FamilyPaginatedAsyncNotifier<K, A>
       state = AsyncData(newState.copyWith(items: <K>[...oldItems, ...items]));
     } catch (e, stack) {
       AppLogger.reportError(e, stack);
-      state = AsyncData(oldState!);
+      // Stop the InfiniteList from auto-retrying in a tight loop (a 429/network
+      // error previously kept hasMore=true → refetch → 429 → flood + freeze).
+      state = AsyncData(oldState!.copyWith(hasMore: false));
     }
   }
 
@@ -65,8 +67,7 @@ abstract class FamilyPaginatedAsyncNotifier<K, A>
         return fetch(nextOffset, retryLimit);
       }
 
-      final newState = await fetch(nextOffset, max(limit, 100))
-          .catchError((e) {
+      final newState = await fetch(nextOffset, max(limit, 100)).catchError((e) {
         if (_isRecoverablePaginationError(e)) throw e;
         return retry(max(limit, 50));
       }).catchError((e) {
@@ -117,7 +118,9 @@ abstract class AutoDisposeFamilyPaginatedAsyncNotifier<K, A>
       );
     } catch (e, stack) {
       AppLogger.reportError(e, stack);
-      state = AsyncData(oldState!);
+      // Stop the InfiniteList from auto-retrying in a tight loop (a 429/network
+      // error previously kept hasMore=true → refetch → 429 → flood + freeze).
+      state = AsyncData(oldState!.copyWith(hasMore: false));
     }
   }
 
@@ -140,8 +143,7 @@ abstract class AutoDisposeFamilyPaginatedAsyncNotifier<K, A>
         return fetch(nextOffset, retryLimit);
       }
 
-      final newState = await fetch(nextOffset, max(limit, 100))
-          .catchError((e) {
+      final newState = await fetch(nextOffset, max(limit, 100)).catchError((e) {
         if (_isRecoverablePaginationError(e)) throw e;
         return retry(max(limit, 50));
       }).catchError((e) {

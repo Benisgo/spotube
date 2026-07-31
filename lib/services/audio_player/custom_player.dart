@@ -25,14 +25,20 @@ class CustomPlayer extends Player {
       nativePlayer.setProperty("network-timeout", "3");
       nativePlayer.setProperty(
         "demuxer-max-bytes",
-        (256 * 1024).toString(),
+        (10 * 1024 * 1024).toString(), // 10MB — cache entire song
       );
       nativePlayer.setProperty(
         "demuxer-max-back-bytes",
-        (64 * 1024).toString(),
+        (10 * 1024 * 1024).toString(), // 10MB backward seek buffer
       );
-      nativePlayer.setProperty("cache-secs", "2");
+      // Read the whole song ahead so the seekbar is fully highlighted and
+      // the proxy downloads the full file -> small songs get cached after
+      // a single play. Previously cache-secs=2 meant mpv only read ~2s
+      // ahead, so the cache file rarely completed.
+      nativePlayer.setProperty("cache-secs", "600"); // 10 min — full song cache
       nativePlayer.setProperty("cache-pause-initial", "no");
+      nativePlayer.setProperty(
+          "cache-pause", "no"); // don't pause while filling
     } else if (kIsWindows) {
       nativePlayer.setProperty("network-timeout", "5");
       nativePlayer.setProperty(
@@ -56,10 +62,12 @@ class CustomPlayer extends Player {
       // Reduce mpv event rate to prevent Windows task runner flooding.
       // mpv fires time-pos/percent-pos events at video frame rate which
       // overwhelms Flutter's Windows message loop, freezing the UI.
-      nativePlayer.setProperty("video-sync", "audio");     // sync to audio clock only
-      nativePlayer.setProperty("video-output", "no");      // completely disable video output
-      nativePlayer.setProperty("audio-buffer", "0.050");   // small audio buffer
-      nativePlayer.setProperty("keep-open", "no");         // no post-EOF idle state
+      nativePlayer.setProperty(
+          "video-sync", "audio"); // sync to audio clock only
+      nativePlayer.setProperty(
+          "video-output", "no"); // completely disable video output
+      nativePlayer.setProperty("audio-buffer", "0.050"); // small audio buffer
+      nativePlayer.setProperty("keep-open", "no"); // no post-EOF idle state
     } else {
       nativePlayer.setProperty("network-timeout", "120");
       nativePlayer.setProperty(

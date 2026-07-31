@@ -32,7 +32,9 @@ mixin PaginatedAsyncNotifierMixin<K>
       state = AsyncData(newState.copyWith(items: <K>[...oldItems, ...items]));
     } catch (e, stack) {
       AppLogger.reportError(e, stack);
-      state = AsyncData(oldState!);
+      // Stop the InfiniteList from auto-retrying in a tight loop (a 429/network
+      // error previously kept hasMore=true → refetch → 429 → flood + freeze).
+      state = AsyncData(oldState!.copyWith(hasMore: false));
     }
   }
 

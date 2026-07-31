@@ -449,7 +449,10 @@ class ServerPlaybackRoutes {
         "host": Uri.parse(url).host,
         "accept-encoding": "identity",
       },
-      validateStatus: (status) => status! < 400,
+      // Accept 4xx (incl. 429 rate-limit) so the response is returned
+      // instead of throwing a DioException that floods the log / freezes
+      // the UI when YouTube rate-limits the CDN.
+      validateStatus: (status) => status! < 500,
     );
 
     try {
@@ -474,7 +477,7 @@ class ServerPlaybackRoutes {
               "Connection": "close",
               "host": Uri.parse(fallbackUrl).host,
             },
-            validateStatus: (status) => status! < 400,
+            validateStatus: (status) => status! < 500,
           );
 
           final res = await dio.head(fallbackUrl, options: fallbackOptions);
@@ -519,11 +522,10 @@ class ServerPlaybackRoutes {
           requestedRange,
         );
         final isPartial = requestedRange != null;
-        unawaited(recordDataUsage(
-            ref, resolvedRange.end - resolvedRange.start + 1,
-            trackId: track.query.id,
-            trackName: track.query.name,
-            trackArtist: track.query.artists.map((a) => a.name).join(", ")));
+        // NOTE: Serving from the disk cache consumes ZERO network data,
+        // so we intentionally do NOT record data usage here. Previously
+        // the full served range was counted, making every play of a
+        // cached song inflate the data usage stat by the full file size.
 
         _trace(
           "serve cached uri=$requestedUri track=${track.query.id} partial=$isPartial start=${resolvedRange.start} end=${resolvedRange.end} total=${resolvedRange.total}",

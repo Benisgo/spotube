@@ -1,5 +1,3 @@
-import 'dart:math';
-
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart' show Badge;
 import 'package:flutter_hooks/flutter_hooks.dart';
@@ -42,13 +40,9 @@ class SpotubeNavigationBar extends HookConsumerWidget {
     final panelHeight = ref.watch(navigationPanelHeight);
 
     final router = context.watchRouter;
-    final selectedIndex = max(
-      0,
-      navbarTileList.indexWhere(
-        (e) => router.currentPath.startsWith(e.pathPrefix),
-      ),
+    final selectedIndex = navbarTileList.indexWhere(
+      (e) => router.currentPath.startsWith(e.pathPrefix),
     );
-    final selectedTile = navbarTileList[selectedIndex];
 
     if (layoutMode == LayoutMode.extended ||
         (mediaQuery.mdAndUp && layoutMode == LayoutMode.adaptive) ||
@@ -60,7 +54,14 @@ class SpotubeNavigationBar extends HookConsumerWidget {
       duration: const Duration(milliseconds: 100),
       height: panelHeight,
       child: NavigationBar(
-        selectedKey: ValueKey(selectedTile.id),
+        // Don't clamp to 0: when no tab matches (e.g. on /settings),
+        // use null selectedKey so no tab is highlighted. This ensures
+        // onSelected fires when the user taps Home to navigate back
+        // (Bug A2 — previously Home was shown as selected, suppressing
+        // the onSelected callback on tap).
+        selectedKey: selectedIndex >= 0
+            ? ValueKey(navbarTileList[selectedIndex].id)
+            : null,
         alignment: NavigationBarAlignment.spaceEvenly,
         labelType: NavigationLabelType.all,
         labelSize: NavigationLabelSize.large,
@@ -86,7 +87,10 @@ class SpotubeNavigationBar extends HookConsumerWidget {
             final tile = navbarTileList.firstWhere(
               (tile) => tile.id == valueKey.value,
             );
-            context.navigateTo(tile.route);
+            // Pop to root then push target — guaranteed to navigate
+            // regardless of current stack state (Bug A2).
+            context.router.popUntilRoot();
+            context.router.push(tile.route);
           }
         },
       ),

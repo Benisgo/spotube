@@ -82,44 +82,71 @@ class YoutubeAuth {
     // Read cookies while WebView is alive, THEN close.
     wv.onUrlRequestStream.listen(fun(url) {
       if (url.contains("https://www.youtube.com/") && !(url.contains("ServiceLogin"))) {
-        // Collect cookies from both www.youtube.com and accounts.youtube.com
-        // since SetSID may set cookies on either domain.
-        wv.getCookies("https://www.youtube.com").then(fun(cookies) {
-          // Also fetch from accounts subdomain and merge
-          wv.getCookies("https://accounts.youtube.com").then(fun(extraCookies) {
-            var all = cookies
-            for (var c in extraCookies) {
-              all.add(c)
-            }
-            var parts = []
-            var seen = {}
-            for (var cookie in all) {
-              var name = cookie.name
-              var value = cookie.value
-              if (seen.containsKey(name)) continue
-              seen[name] = true
-              if (name == "SAPISID" || name == "PSAPISID" ||
-                  name == "SSID" || name == "HSID" ||
-                  name == "APISID" || name == "SID" ||
-                  name == "__Secure-3PSAPISID" ||
-                  name == "__Secure-3PAPISID" || name == "__Secure-3PSID" ||
-                  name == "LOGIN_INFO" || name == "PREF") {
-                LocalStorage.setString("yt_cookie_" + name, value)
-                parts.add(name + "=" + value)
-              }
-            }
-            if (parts.length > 0) {
-              LocalStorage.setString("yt_cookie_header", parts.join("; "))
-              _authenticated = true
-              _controller.add(true)
-            }
-            wv.close()
-          })
+        // Wait for page load & cookies to arrive before reading.
+        // onUrlRequestStream fires at REQUEST time, before the server
+        // responds with Set-Cookie headers. A small delay gives the
+        // browser time to process response cookies (Bug A3).
+        std.Future.delayed(Duration(seconds: 2)).then(fun(_) {
+          _collectCookies(wv)
         })
       }
     })
     // Open the WebView (blocks until close is called from the listener)
     return wv.open()
+  }
+
+  // Collect cookies from multiple domains where Google may set them.
+  fun _collectCookies(wv) {
+    var all = []
+    var domains = [
+      "https://www.youtube.com",
+      "https://accounts.youtube.com",
+      "https://accounts.google.com",
+      "https://google.com",
+    ]
+    fun fetchNext(i) {
+      if (i >= domains.length) {
+        _processCookies(all, wv)
+        return
+      }
+      wv.getCookies(domains[i]).then(fun(cookies) {
+        for (var c in cookies) { all.add(c) }
+        fetchNext(i + 1)
+      })
+    }
+    fetchNext(0)
+  }
+
+  // Filter and store cookies, with retry if SAPISID not found.
+  fun _processCookies(all, wv) {
+    var parts = []
+    var seen = {}
+    for (var cookie in all) {
+      var name = cookie.name
+      var value = cookie.value
+      if (seen.containsKey(name)) continue
+      seen[name] = true
+      if (name == "SAPISID" || name == "PSAPISID" ||
+          name == "SSID" || name == "HSID" ||
+          name == "APISID" || name == "SID" ||
+          name == "__Secure-3PSAPISID" ||
+          name == "__Secure-3PAPISID" || name == "__Secure-3PSID" ||
+          name == "LOGIN_INFO" || name == "PREF") {
+        LocalStorage.setString("yt_cookie_" + name, value)
+        parts.add(name + "=" + value)
+      }
+    }
+    if (parts.length > 0) {
+      LocalStorage.setString("yt_cookie_header", parts.join("; "))
+      _authenticated = true
+      _controller.add(true)
+      wv.close()
+    } else {
+      // No auth cookies found — retry once after another delay
+      std.Future.delayed(Duration(seconds: 2)).then(fun(_) {
+        _collectCookies(wv)
+      })
+    }
   }
 
   fun isAuthenticated() -> bool {

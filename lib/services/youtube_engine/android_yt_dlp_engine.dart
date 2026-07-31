@@ -24,7 +24,10 @@ class AndroidYtDlpEngine implements YouTubeEngine {
     _headersByUrl[url] = headers;
   }
 
-  StreamManifest _parseFormats(List formats, videoId) {
+  static const _extractionTimeout = Duration(seconds: 45);
+
+  StreamManifest _parseFormats(List? formats, videoId) {
+    formats ??= [];
     final audioOnlyStreams = formats
         .where((f) => f["resolution"] == "audio only" || f["vcodec"] == "none")
         .where((f) => f["url"] != null)
@@ -97,7 +100,7 @@ class AndroidYtDlpEngine implements YouTubeEngine {
           "--no-playlist",
         ],
       },
-    );
+    ).timeout(_extractionTimeout);
 
     return jsonDecode(stdout ?? "{}") as Map<String, dynamic>;
   }
@@ -145,14 +148,25 @@ class AndroidYtDlpEngine implements YouTubeEngine {
           "--flat-playlist",
         ],
       },
-    );
+    ).timeout(_extractionTimeout);
 
-    final items = jsonDecode(
-      "[${(stdout ?? "").split("\n").where((s) => s.trim().isNotEmpty).join(",")}]",
-    ) as List;
+    final lines = (stdout ?? "")
+        .split("\n")
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+    // Parse line-by-line so a single malformed line doesn't break all results
+    final items = <Map<String, dynamic>>[];
+    for (final line in lines) {
+      try {
+        items.add(jsonDecode(line) as Map<String, dynamic>);
+      } catch (_) {
+        // Skip malformed lines
+      }
+    }
 
     return items
-        .map((item) => (item as Map).cast<String, dynamic>())
+        .map((item) => item.cast<String, dynamic>())
         .map(_parseInfo)
         .toList();
   }

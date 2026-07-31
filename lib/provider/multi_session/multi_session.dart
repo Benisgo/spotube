@@ -35,7 +35,15 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
   int? _lastObservedPositionMs;
   DateTime? _lastObservedAt;
   double? _preMuteVolume;
-  final Set<String> _failedSessionTracks = {};
+
+  /// Tracks tracks that failed to load, mapped to when they failed.
+  /// Entries older than 30s are evicted before checking (Bug C1).
+  final Map<String, DateTime> _failedSessionTracks = {};
+
+  /// Cooldown timestamp: don't pause on errors more than once per 3s (Bug C3).
+  DateTime? _lastErrorPauseAt;
+  Timer? _errorRetryTimer;
+  Timer? _sendQueueTimer;
   MultiSessionRoomSnapshot? _pendingSnapshot;
   MultiSessionRoomSnapshot? _lastAppliedSnapshot;
   bool _snapshotPumpRunning = false;
@@ -269,7 +277,10 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
             _pushNotice("${addedTrack.name} added to queue by $_actorName");
           }
         }
-        sendQueue();
+        // Debounce sendQueue to avoid re-serializing large queues
+        // on every track advance (e.g., 3000-song playlist).
+        _sendQueueTimer?.cancel();
+        _sendQueueTimer = Timer(const Duration(milliseconds: 200), sendQueue);
       }
     });
 
@@ -311,16 +322,43 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
 
     final errorSubscription = audioPlayer.errorStream.listen((error) {
       if (!state.connected || _canControlPlayback) return;
+
+      // Error cooldown: don't pause more than once per 3s (Bug C3)
+      final now = DateTime.now();
+      if (_lastErrorPauseAt != null &&
+          now.difference(_lastErrorPauseAt!).inMilliseconds < 3000) {
+        return;
+      }
+
       final playerState = ref.read(audioPlayerProvider);
       final currentTrackId = playerState.activeTrack?.id;
       if (currentTrackId != null) {
-        _failedSessionTracks.add(currentTrackId);
+        _failedSessionTracks[currentTrackId] = now;
+        _lastErrorPauseAt = now;
         _pushNotice("Track failed to load - playback paused",
             destructive: true);
       }
       if (audioPlayer.isPlaying) {
         audioPlayer.pause();
       }
+
+      // Schedule retry in 3s (Bug C1): clear this track from failed set
+      // and resume if the snapshot still points to it.
+      _errorRetryTimer?.cancel();
+      final retryTrackId = currentTrackId;
+      _errorRetryTimer = Timer(const Duration(seconds: 3), () async {
+        if (_closingRoom || _intentionalDisconnect || retryTrackId == null)
+          return;
+        _failedSessionTracks.remove(retryTrackId);
+        // If the snapshot still points to this track, resume playback
+        final snapshot = state.snapshot;
+        if (snapshot != null &&
+            snapshot.activeTrackId == retryTrackId &&
+            snapshot.playing &&
+            !state.locallyPaused) {
+          await audioPlayer.resume();
+        }
+      });
     });
 
     _positionTimer = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -337,6 +375,8 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
       errorSubscription.cancel();
       _positionTimer?.cancel();
       _reconnectTimer?.cancel();
+      _errorRetryTimer?.cancel();
+      _sendQueueTimer?.cancel();
       _subscription?.cancel();
       _channel?.sink.close(status.goingAway);
     });
@@ -613,6 +653,7 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
       return;
     }
 
+    _positionTimer?.cancel();
     _reconnectTimer?.cancel();
     _closingRoom = false;
     _intentionalDisconnect = false;
@@ -621,6 +662,8 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
     _lastSentPositionMs = null;
     _lastSentPositionAt = null;
     _failedSessionTracks.clear();
+    _lastErrorPauseAt = null;
+    _errorRetryTimer?.cancel();
     _snapshotPumpRunning = false;
     await _subscription?.cancel();
     await _channel?.sink.close(status.goingAway);
@@ -804,10 +847,17 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
         // Clear ALL failed tracks including the new active one.
         // The old inverted logic kept the new track in the set.
         _failedSessionTracks.clear();
+        _lastErrorPauseAt = null;
       }
 
+      // Evict failed tracks older than 30s (Bug C1)
+      _failedSessionTracks.removeWhere(
+        (_, failedAt) =>
+            DateTime.now().difference(failedAt).inMilliseconds > 30000,
+      );
+
       if (snapshot.activeTrackId != null &&
-          _failedSessionTracks.contains(snapshot.activeTrackId)) {
+          _failedSessionTracks.containsKey(snapshot.activeTrackId)) {
         if (audioPlayer.isPlaying) {
           await audioPlayer.pause();
         }
@@ -823,7 +873,11 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
           _lastAppliedSnapshot?.activeTrackId != snapshot.activeTrackId ||
           _lastAppliedSnapshot?.activeSource?.id != snapshot.activeSource?.id;
 
-      if (queueIdsChanged) {
+      if (queueIdsChanged && activeTrackChanged) {
+        // Full playlist reload: active track changed, need fresh playlist
+        // Filter out local tracks (downloaded files) since they can't
+        // be played by other members (Bug B2). Keep them in snapshot
+        // queue for display but exclude from playback.
         final tracks = snapshot.queue
             .map(SpotubeTrackObject.fromJson)
             .whereType<SpotubeFullTrackObject>()
@@ -836,6 +890,11 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
               // Respect local pause: don't auto-play if user locally paused
               autoPlay: state.locallyPaused ? false : snapshot.playing,
             );
+      } else if (queueIdsChanged && !activeTrackChanged) {
+        // Queue modified (add/remove/promote) but current track unchanged.
+        // Skip full load to avoid interrupting playback (Bug C2).
+        // The promoted/added track will appear when the next snapshot
+        // triggers load() on actual track transition.
       } else if (indexChanged) {
         final playlistLength = audioPlayer.playlist.medias.length;
         if (playlistLength > 0 && index < playlistLength) {
@@ -847,10 +906,12 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
       final activeTrack = postLoadState.activeTrack;
       final activeSource = snapshot.activeSource;
 
-      // Timeout old failed tracks (>30s)
-      if (_failedSessionTracks.isNotEmpty && activeTrackChanged) {
-        _failedSessionTracks.clear();
-      }
+      // Evict old failures again after load() to catch any that aged out
+      // during the async load() call.
+      _failedSessionTracks.removeWhere(
+        (_, failedAt) =>
+            DateTime.now().difference(failedAt).inMilliseconds > 30000,
+      );
       // Skip source swap if load() was already called — the new playlist
       // already resolved the correct source. Avoids nested load().
       if (!queueIdsChanged &&
@@ -880,12 +941,17 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
 
       final localPositionMs = audioPlayer.position.inMilliseconds;
       final positionDriftMs = (snapshot.positionMs - localPositionMs).abs();
+      // Only seek when the active track changed (switching to a new track),
+      // OR when it's a pure position update with significant drift.
+      // Skip seeking on queue-only or index-only changes — seeking when
+      // the queue was edited but the same track plays would rewind the
+      // current track to the host's position (Bug C4).
       final shouldSeek = !isOurOwnEcho &&
-          (queueIdsChanged ||
-              indexChanged ||
-              activeTrackChanged ||
-              localPositionMs == 0 ||
-              positionDriftMs >= _remoteSeekThresholdMs);
+          (activeTrackChanged ||
+              (!queueIdsChanged &&
+                  !indexChanged &&
+                  (localPositionMs == 0 ||
+                      positionDriftMs >= _remoteSeekThresholdMs)));
 
       if (shouldSeek) {
         await audioPlayer.seek(Duration(milliseconds: snapshot.positionMs));
@@ -909,8 +975,12 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
           ),
         );
       }
-      if (audioPlayer.isShuffled != snapshot.shuffle) {
-        await audioPlayer.setShuffle(snapshot.shuffle);
+      // For non-host members, force shuffle OFF — the queue snapshot
+      // order is the source of truth. media_kit's shuffled index
+      // mapping would desync non-host playback (Bug B1).
+      final targetShuffle = state.isHost ? snapshot.shuffle : false;
+      if (audioPlayer.isShuffled != targetShuffle) {
+        await audioPlayer.setShuffle(targetShuffle);
       }
       _lastAppliedSnapshot = snapshot;
     } catch (e, stack) {
@@ -989,12 +1059,14 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
     _debugTrace(
       'shutdown:start notifyRelay=$notifyRelay endedByHost=$endedByHost code=${state.code}',
     );
+    _positionTimer?.cancel();
     _reconnectTimer?.cancel();
     _closingRoom = true;
     _intentionalDisconnect = true;
     _pendingSnapshot = null;
     _lastAppliedSnapshot = null;
     _snapshotPumpRunning = false;
+    _errorRetryTimer?.cancel();
     final previousState = state;
     state = endedByHost
         ? const MultiSessionState(error: "Room ended")
@@ -1027,8 +1099,9 @@ class MultiSessionNotifier extends Notifier<MultiSessionState> {
     unawaited(() async {
       if (_shouldSuppressOutboundSync) return;
       final playerState = ref.read(audioPlayerProvider);
-      final tracks =
-          playerState.tracks.whereType<SpotubeFullTrackObject>().toList();
+      // Include ALL track types in the queue snapshot (Bug B2). Local
+      // tracks are sent with metadata so members can see what's playing.
+      final tracks = playerState.tracks.toList();
 
       // Send full queue (capped at 2000 to avoid WebSocket frame limits)
       final maxTracks = tracks.length > 2000 ? tracks.sublist(0, 2000) : tracks;

@@ -30,7 +30,8 @@ int _trackTapGeneration = 0;
 
 class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
   BlackListNotifier get _blacklist => ref.read(blacklistProvider.notifier);
-  String? _lastPersistedPlaylistSignature;
+  int? _lastPersistedPlaylistLength;
+  int? _lastPersistedIndex;
   int _playlistOperationId = 0;
   bool _isBatchAdding = false;
 
@@ -324,10 +325,33 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
       audioPlayer.playlistStream.listen((playlist) async {
         final streamSeq = _playlistOperationId;
         try {
-          final signature =
-              '${playlist.medias.length}:${playlist.index}:${playlist.medias.map((m) => m.uri).join("|")}';
-          if (_lastPersistedPlaylistSignature == signature) return;
-          _lastPersistedPlaylistSignature = signature;
+          final playlistLength = playlist.medias.length;
+          final onlyIndexChanged =
+              _lastPersistedPlaylistLength == playlistLength &&
+                  _lastPersistedIndex != playlist.index;
+
+          // Skip if nothing changed at all.
+          if (_lastPersistedIndex == playlist.index &&
+              _lastPersistedPlaylistLength == playlistLength) return;
+
+          if (onlyIndexChanged) {
+            // Quick path — just the index changed (track advance, seek).
+            // Don't recompute tracks or write 3000 tracks to DB.
+            _lastPersistedIndex = playlist.index;
+            state = state.copyWith(currentIndex: playlist.index);
+            if (_playlistOperationId != streamSeq) return;
+            await _updatePlayerState(
+              AudioPlayerStateTableCompanion(
+                currentIndex: Value(state.currentIndex),
+                // Don't write tracks — only the index changed.
+              ),
+            );
+            return;
+          }
+
+          // Full path — playlist content structurally changed.
+          _lastPersistedPlaylistLength = playlistLength;
+          _lastPersistedIndex = playlist.index;
 
           final tracks =
               playlist.medias.map((e) => SpotubeMedia.media(e).track).toList();
@@ -700,14 +724,18 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
         .getSingleOrNull();
     final downloadLocation = preferences?.downloadLocation ?? "";
 
-    final medias = _blacklist
-        .filter(tracks)
-        .toList()
+    final filteredTracks = _blacklist.filter(tracks).toList();
+    // Build media list — skip findDownloadedFile for non-target tracks
+    // to avoid N filesystem checks for large playlists on Android.
+    final seenUris = <String>{};
+    final medias = filteredTracks
         .asMediaList(
           targetTrack: targetTrack,
           downloadLocation: downloadLocation,
         )
-        .unique((a, b) => a.uri == b.uri);
+        // O(N) dedup via Set instead of O(N²) .unique()
+        .where((m) => seenUris.add(m.uri))
+        .toList();
 
     if (medias.isEmpty) {
       if (targetTrack != null) {

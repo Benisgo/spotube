@@ -6,8 +6,12 @@ import 'package:spotube/modules/settings/youtube_engine_not_installed_dialog.dar
 import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
 import 'package:spotube/services/youtube_engine/yt_dlp_binary.dart';
 import 'package:spotube/services/youtube_engine/yt_dlp_engine.dart';
+import 'package:spotube/utils/platform.dart';
 
 void useCheckYtDlpInstalled(WidgetRef ref) {
+  // Skip on mobile — Android uses AndroidYtDlpEngine (MethodChannel),
+  // iOS doesn't support yt-dlp at all (Bug A1).
+  if (kIsMobile) return;
   final context = useContext();
 
   useEffect(() {

@@ -178,7 +178,9 @@ class PlayerControls extends HookConsumerWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  if (!isListener)
+                  // Hide shuffle button entirely when in a multi-session
+                  // room — shuffle is synced from the host (Bug B1).
+                  if (!multiSession.connected)
                     Consumer(builder: (context, ref, _) {
                       final shuffled = ref
                           .watch(audioPlayerProvider.select((s) => s.shuffled));

@@ -47,6 +47,12 @@ type RoomState = {
   autoAcceptSuggestedTracks: boolean;
   discordJoinEnabled: boolean;
   lastQueueUpdateBy: string | null;
+  /** Member whose playback/queue update most recently changed state (for echo detection). */
+  lastPlaybackUpdateBy: string | null;
+  /** Client-clock (epoch ms) of the last applied ACTIVE playback/queue change. */
+  lastPlaybackChangeAt: number;
+  /** Server-receive time of the last ACTIVE change, for passive-tick protection. */
+  lastActiveChangeAt: number;
 };
 
 const customPermissions = {
@@ -191,7 +197,7 @@ export class SpotubeRoom {
   private sockets = new Map<WebSocket, string>();
   private readonly idleCleanupMs = 2 * 60 * 60 * 1000;
 
-  constructor(private state: DurableObjectState) {}
+  constructor(private state: DurableObjectState) { }
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
@@ -233,6 +239,9 @@ export class SpotubeRoom {
         autoAcceptSuggestedTracks: false,
         discordJoinEnabled: false,
         lastQueueUpdateBy: hostId,
+        lastPlaybackUpdateBy: hostId,
+        lastPlaybackChangeAt: 0,
+        lastActiveChangeAt: 0,
       };
       await this.persist();
       await this.scheduleIdleCleanup();
@@ -376,6 +385,8 @@ export class SpotubeRoom {
     return {
       ...this.stateValue,
       hostToken: undefined,
+      lastPlaybackChangeAt: undefined,
+      lastActiveChangeAt: undefined,
       members: Object.values(this.stateValue?.members ?? {}),
     };
   }
@@ -441,8 +452,8 @@ export class SpotubeRoom {
 
     const activeIndex = this.stateValue.activeTrackId
       ? this.stateValue.queue.findIndex(
-          (track) => this.trackId(track) === this.stateValue?.activeTrackId,
-        )
+        (track) => this.trackId(track) === this.stateValue?.activeTrackId,
+      )
       : -1;
     const insertionIndex = Math.max(activeIndex, 0) + 1;
     this.stateValue.queue.splice(insertionIndex, 0, nextTrack);
@@ -480,19 +491,50 @@ export class SpotubeRoom {
         activeSource?: Record<string, unknown> | null;
         loopMode?: string;
         shuffle?: boolean;
+        changeAt?: number;
+        passive?: boolean;
       };
+      const changeAt = data.changeAt;
+      const isPassive = data.passive === true;
+      const now = Date.now();
+      // Background position syncs (passive, e.g. the host's 1s tick) must not
+      // clobber a recent ACTIVE action (seek/play). This prevents the host's
+      // stale tick from rubber-banding other members after a seek.
+      if (isPassive && now - this.stateValue.lastActiveChangeAt < 2000) {
+        return;
+      }
+      // Reject genuinely stale updates: a message sent BEFORE the last applied
+      // active change (per client clock) must not overwrite newer state, even
+      // if it arrives at the relay later.
+      if (
+        typeof changeAt === "number" &&
+        changeAt > 0 &&
+        changeAt < this.stateValue.lastPlaybackChangeAt
+      ) {
+        return;
+      }
       this.stateValue.playing = data.playing ?? this.stateValue.playing;
-      this.stateValue.positionMs = data.positionMs ?? this.stateValue.positionMs;
-      this.stateValue.activeTrackId =
-        data.activeTrackId ?? this.stateValue.activeTrackId;
-      this.stateValue.activeSource =
-        data.activeSource === undefined
-          ? this.stateValue.activeSource
-          : data.activeSource;
+      this.stateValue.positionMs =
+        data.positionMs ?? this.stateValue.positionMs;
       this.stateValue.loopMode =
         data.loopMode ?? this.stateValue.loopMode;
       this.stateValue.shuffle =
         data.shuffle ?? this.stateValue.shuffle;
+      if (!isPassive) {
+        // Active updates carry the active track / source; passive ticks
+        // deliberately omit them so they never revert the active track.
+        this.stateValue.activeTrackId =
+          data.activeTrackId ?? this.stateValue.activeTrackId;
+        this.stateValue.activeSource =
+          data.activeSource === undefined
+            ? this.stateValue.activeSource
+            : data.activeSource;
+        if (typeof changeAt === "number" && changeAt > 0) {
+          this.stateValue.lastPlaybackChangeAt = changeAt;
+        }
+        this.stateValue.lastActiveChangeAt = now;
+      }
+      this.stateValue.lastPlaybackUpdateBy = memberId;
       await this.bump();
     }
 
@@ -506,10 +548,40 @@ export class SpotubeRoom {
         queue?: Record<string, unknown>[];
         activeTrackId?: string | null;
         activeSource?: Record<string, unknown> | null;
+        positionMs?: number;
+        changeAt?: number;
       };
+      const changeAt = data.changeAt;
+      // A stale queue push (sent before the last applied active change) must
+      // not revert newer playback state (e.g. a play action made moments ago).
+      if (
+        typeof changeAt === "number" &&
+        changeAt > 0 &&
+        changeAt < this.stateValue.lastPlaybackChangeAt
+      ) {
+        return;
+      }
       if (Array.isArray(data.queue)) {
         this.stateValue.queue = data.queue.slice(0, 100);
         this.stateValue.lastQueueUpdateBy = memberId;
+        // Never lose the active track: if it fell outside the 100-track cap,
+        // keep it at the front so members can always map it to an index.
+        // Otherwise a >100-track playlist's active track vanishes from the
+        // room queue and members map it to index 0 → song restarts at 00:00.
+        const activeId =
+          data.activeTrackId ?? this.stateValue.activeTrackId;
+        if (
+          activeId != null &&
+          !this.stateValue.queue.some((t) => this.trackId(t) === activeId)
+        ) {
+          const active = data.queue.find((t) => this.trackId(t) === activeId);
+          if (active) {
+            this.stateValue.queue = [
+              active,
+              ...this.stateValue.queue,
+            ].slice(0, 100);
+          }
+        }
       }
       const previousActiveTrackId = this.stateValue.activeTrackId;
       this.stateValue.activeTrackId =
@@ -522,6 +594,11 @@ export class SpotubeRoom {
             : this.stateValue.activeSource;
       this.stateValue.positionMs =
         (data as { positionMs?: number }).positionMs ?? this.stateValue.positionMs;
+      if (typeof changeAt === "number" && changeAt > 0) {
+        this.stateValue.lastPlaybackChangeAt = changeAt;
+      }
+      this.stateValue.lastActiveChangeAt = Date.now();
+      this.stateValue.lastPlaybackUpdateBy = memberId;
       await this.bump();
     }
 
@@ -678,7 +755,7 @@ export class SpotubeRoom {
           this.stateValue.suggestions = this.stateValue.suggestions.filter(
             (entry) => entry.suggestedBy !== data.memberId,
           );
-          
+
           for (const [socket, id] of this.sockets.entries()) {
             if (id === data.memberId) {
               socket.send(JSON.stringify({ type: "ended" }));

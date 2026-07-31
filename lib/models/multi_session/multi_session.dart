@@ -290,6 +290,7 @@ class MultiSessionRoomSnapshot {
   final bool autoAcceptSuggestedTracks;
   final bool discordJoinEnabled;
   final String? lastQueueUpdateBy;
+  final String? lastPlaybackUpdateBy;
 
   const MultiSessionRoomSnapshot({
     required this.roomId,
@@ -308,6 +309,7 @@ class MultiSessionRoomSnapshot {
     required this.autoAcceptSuggestedTracks,
     required this.discordJoinEnabled,
     this.lastQueueUpdateBy,
+    this.lastPlaybackUpdateBy,
   });
 
   factory MultiSessionRoomSnapshot.fromJson(Map<String, dynamic> json) {
@@ -346,6 +348,7 @@ class MultiSessionRoomSnapshot {
       autoAcceptSuggestedTracks: json["autoAcceptSuggestedTracks"] == true,
       discordJoinEnabled: json["discordJoinEnabled"] == true,
       lastQueueUpdateBy: json["lastQueueUpdateBy"] as String?,
+      lastPlaybackUpdateBy: json["lastPlaybackUpdateBy"] as String?,
     );
   }
 }

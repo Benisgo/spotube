@@ -108,6 +108,9 @@ class Webview {
     // (CookieManager) results.
     if (Platform.isAndroid) {
       try {
+        // Chromium batches cookie writes and commits to the SQLite store every
+        // ~30s; the plugin retries reading for ~40s (plugin.ht) so the freshly
+        // issued auth cookies land on disk within that window.
         final dbCookies = await _readAndroidWebViewCookies();
         if (dbCookies.isNotEmpty) {
           final seen = <String>{for (final c in cookies) c.name};
@@ -133,10 +136,14 @@ class Webview {
   /// failure (missing store, unsupported schema, busy DB, ...).
   Future<List<Cookie>> _readAndroidWebViewCookies() async {
     final appSupport = await getApplicationSupportDirectory();
-    final webViewRoot = Directory(join(appSupport.parent.path, 'app_webview'));
-    if (!await webViewRoot.exists()) return const [];
+    // Modern Android System WebView stores the cookie DB under
+    // <dataDir>/Default/Cookies (profiles may be hash-named); the legacy
+    // location was <dataDir>/app_webview/... . Search the app data root and
+    // prefer the default profile's store.
+    final dataDir = appSupport.parent;
+    if (!await dataDir.exists()) return const [];
 
-    final dbFile = await _findCookieStore(webViewRoot);
+    final dbFile = await _findCookieStore(dataDir);
     if (dbFile == null) return const [];
 
     final tempDir = await Directory.systemTemp.createTemp('spotube_ytcookies');
@@ -175,13 +182,23 @@ class Webview {
   /// Finds the WebView "Cookies" sqlite file under [root]
   /// (e.g. `{dataDir}/app_webview/Default/Cookies`).
   Future<File?> _findCookieStore(Directory root) async {
+    // Search only the WebView profile dirs directly under the app data root
+    // (Default, hash-named, "Profile N") plus the legacy app_webview location.
+    // We deliberately do NOT recurse into files/ or cache/ (which can be large
+    // on a media app) — the cookie DB always lives at a top-level profile dir.
     try {
-      await for (final entity in root.list(
-        recursive: true,
-        followLinks: false,
-      )) {
-        if (entity is File && basename(entity.path) == 'Cookies') {
-          return entity;
+      final defaultCookies = File(join(root.path, 'Default', 'Cookies'));
+      if (await defaultCookies.exists()) return defaultCookies;
+
+      final legacy = File(join(root.path, 'app_webview', 'Default', 'Cookies'));
+      if (await legacy.exists()) return legacy;
+
+      await for (final entity in root.list(followLinks: false)) {
+        if (entity is Directory) {
+          final candidate = File(join(entity.path, 'Cookies'));
+          if (await candidate.exists()) return candidate;
+          final nestedDefault = File(join(entity.path, 'Default', 'Cookies'));
+          if (await nestedDefault.exists()) return nestedDefault;
         }
       }
     } catch (_) {}

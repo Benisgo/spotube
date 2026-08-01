@@ -5,6 +5,7 @@
 
 #include "flutter_window.h"
 #include "utils.h"
+#include "win32_window.h"
 
 int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
                       _In_ wchar_t *command_line, _In_ int show_command) {
@@ -21,6 +22,19 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   // Set a consistent AppUserModelID so pinned taskbar shortcuts
   // don't create duplicate icons when launching from different paths.
   ::SetCurrentProcessExplicitAppUserModelID(L"com.github.KRTirtho.Spotube");
+
+  // Single-instance guard: if Spotube is already running, forward this launch
+  // to the existing window (deep link + focus + restore) and exit instead of
+  // spawning a second process — which the taskbar would otherwise treat as a
+  // completely separate app. The named mutex object is destroyed automatically
+  // when this process exits, so a crash can't leave it stuck.
+  HANDLE single_instance_mutex = ::CreateMutexW(
+      nullptr, TRUE, L"Local\\com.github.KRTirtho.Spotube.SingleInstance");
+  if (single_instance_mutex != nullptr &&
+      ::GetLastError() == ERROR_ALREADY_EXISTS) {
+    Win32Window::ForwardToExistingInstance(L"spotube");
+    return 0;
+  }
 
   flutter::DartProject project(L"data");
 

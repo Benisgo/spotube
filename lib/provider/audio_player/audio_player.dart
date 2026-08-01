@@ -362,6 +362,21 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
             // Don't recompute tracks or write 3000 tracks to DB.
             _lastPersistedIndex = playlist.index;
             state = state.copyWith(currentIndex: playlist.index);
+            // Clear the pending-track id whenever the (new) active track
+            // matches it. This covers track advances (incl. natural end /
+            // auto-advance) and seeks. The tap callback also tries to clear
+            // it, but it reads `activeTrack` synchronously right after
+            // `await jumpToTrack()` — a race where the index-change stream
+            // event may not have propagated yet. If that check loses the
+            // race, the pending id stays set forever, which makes
+            // `isPendingPlayback` true for the clicked track and shows an
+            // infinite "Loading" spinner on it (in both the queue and the
+            // real playlist) once the active track moves on.
+            final pendingTrackId = ref.read(pendingPlaybackTrackIdProvider);
+            if (pendingTrackId != null &&
+                state.activeTrack?.id == pendingTrackId) {
+              clearPendingPlaybackTrackId(pendingTrackId);
+            }
             if (_playlistOperationId != streamSeq) return;
             await _updatePlayerState(
               AudioPlayerStateTableCompanion(

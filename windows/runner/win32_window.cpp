@@ -252,14 +252,19 @@ void Win32Window::OnDestroy() {
 
 // app_links
 bool Win32Window::SendAppLinkToInstance(const std::wstring& title) {
-  // Find our exact window. ::FindWindow() compares the title case-sensitively,
-  // but window_manager changes the window title from "spotube" to "Spotube"
-  // during startup (waitUntilReadyToShow -> setTitle), which would make the
-  // exact-title lookup miss and spawn a second instance (e.g. from a pinned
-  // taskbar shortcut). Enumerate windows of our runner's class and match the
-  // title case-insensitively instead. The title check is load-bearing: the
-  // class name FLUTTER_RUNNER_WIN32_WINDOW is shared by every default Flutter
-  // runner, so a class-only lookup could match another Flutter app's window.
+  return ForwardToExistingInstance(title);
+}
+
+// Finds the running Spotube window (by our runner's class + case-insensitive
+// title) and forwards the launch to it. ::FindWindow() compares the title
+// case-sensitively, but window_manager changes the window title from "spotube"
+// to "Spotube" during startup (waitUntilReadyToShow -> setTitle), which would
+// make the exact-title lookup miss and spawn a second instance (e.g. from a
+// pinned taskbar shortcut). Enumerate windows of our runner's class and match
+// the title case-insensitively instead. The title check is load-bearing: the
+// class name FLUTTER_RUNNER_WIN32_WINDOW is shared by every default Flutter
+// runner, so a class-only lookup could match another Flutter app's window.
+bool Win32Window::ForwardToExistingInstance(const std::wstring& title) {
   HWND hwnd = nullptr;
   while ((hwnd = ::FindWindowExW(nullptr, hwnd, kWindowClassName, nullptr)) !=
          nullptr) {

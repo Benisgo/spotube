@@ -66,12 +66,14 @@ class YoutubeAuth {
   var _authenticated
   var _cookieAttempts
   var _closed
+  var _collecting
 
   construct() {
     _controller = StreamController()
     _authenticated = false
     _cookieAttempts = 0
     _closed = false
+    _collecting = false
   }
 
   get authStateStream => _controller.stream
@@ -81,24 +83,39 @@ class YoutubeAuth {
   fun authenticate() -> Future {
     _cookieAttempts = 0
     _closed = false
+    _collecting = false
     var wv = Webview(
-      uri: "https://accounts.google.com/ServiceLogin?service=youtube&continue=https://www.youtube.com&hl=en"
+      uri: "https://accounts.google.com/ServiceLogin?service=youtube&continue=https://www.youtube.com/&hl=en"
     )
     // Listen for the redirect to YouTube after login.
     // Read cookies while WebView is alive, THEN close.
+    // NOTE: Google preserves the `continue` URL as-is (no trailing slash), so
+    // the landing URL may be `https://www.youtube.com` without a `/`. Match the
+    // host broadly (`youtube.com`) and exclude Google account pages instead of
+    // requiring the literal `https://www.youtube.com/` substring.
     wv.onUrlRequestStream.listen(fun(url) {
-      if (url.contains("https://www.youtube.com/") && !(url.contains("ServiceLogin"))) {
-        // Wait for page load & cookies to arrive before reading.
-        // onUrlRequestStream fires at REQUEST time, before the server
-        // responds with Set-Cookie headers. A small delay gives the
-        // browser time to process response cookies (Bug A3).
-        std.Future.delayed(Duration(seconds: 2)).then(fun(_) {
-          _collectCookies(wv)
-        })
+      if (url.contains("youtube.com") &&
+          !(url.contains("accounts.")) &&
+          !(url.contains("ServiceLogin"))) {
+        _startCookieCollection(wv)
       }
     })
     // Open the WebView (blocks until close is called from the listener)
     return wv.open()
+  }
+
+  // Starts cookie collection exactly once (onUrlRequestStream may fire for the
+  // same URL on both onLoadStart and onLoadStop).
+  fun _startCookieCollection(wv) {
+    if (_collecting) return
+    _collecting = true
+    // Wait for page load & cookies to arrive before reading.
+    // onUrlRequestStream fires at REQUEST time, before the server
+    // responds with Set-Cookie headers. A small delay gives the
+    // browser time to process response cookies (Bug A3).
+    std.Future.delayed(Duration(seconds: 2)).then(fun(_) {
+      _collectCookies(wv)
+    })
   }
 
   // Collect cookies from multiple domains where Google may set them.
@@ -152,11 +169,12 @@ class YoutubeAuth {
       }
     } else {
       // No auth cookies found yet. On Android the WebView cookie store may
-      // still be flushing auth cookies, so retry a bounded number of times -
-      // then give up and close so the user is never stuck on the login page.
+      // still be flushing auth cookies (Chromium commits the cookie DB every
+      // ~30s), so retry a bounded number of times - then give up and close so
+      // the user is never stuck on the login page.
       _cookieAttempts = _cookieAttempts + 1
-      if (_cookieAttempts < 6) {
-        std.Future.delayed(Duration(seconds: 2)).then(fun(_) {
+      if (_cookieAttempts < 8) {
+        std.Future.delayed(Duration(seconds: 5)).then(fun(_) {
           _collectCookies(wv)
         })
       } else {

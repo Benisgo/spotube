@@ -45,6 +45,17 @@ class WebviewPage extends StatelessWidget {
           initialSettings: InAppWebViewSettings(
             userAgent: snapshot.data?[1] as String?,
           ),
+          onLoadStart: (controller, url) {
+            try {
+              if (onLoad != null && url != null) {
+                onLoad!(url.toString());
+              }
+            } catch (e, stack) {
+              debugPrint("[Webview][onLoad] Error: $e");
+              debugPrintStack(stackTrace: stack);
+              rethrow;
+            }
+          },
           onLoadStop: (controller, url) {
             try {
               if (onLoad != null && url != null) {

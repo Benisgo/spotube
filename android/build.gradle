@@ -12,11 +12,15 @@ allprojects {
     }
 }
 
-// Workaround for Flutter Gradle Plugin bug on Windows paths with spaces
+// Workaround for Flutter Gradle Plugin bug on Windows paths with spaces.
+// Note: must use the ARRAY form of execute() — the single-string form is
+// tokenized by Java on whitespace (quotes are ignored), which breaks the
+// `cmd` subprocess whenever the path contains a space.
 def buildPath = new File(rootProject.projectDir.parentFile, "build").absolutePath
 if (System.getProperty("os.name").toLowerCase().contains("windows") && buildPath.contains(" ")) {
     new File(buildPath).mkdirs()
-    def process = "cmd /c for %I in (\"${buildPath}\") do @echo %~sI".execute()
+    def cmd = ["cmd.exe", "/c", "for %I in (\"${buildPath}\") do @echo %~sI"]
+    def process = cmd.execute()
     process.waitFor()
     rootProject.buildDir = process.text.trim()
 } else {

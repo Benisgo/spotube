@@ -248,6 +248,13 @@ abstract class AudioPlayerInterface {
     if (_batchAddDepth > 0) _batchAddDepth--;
     if (_batchAddDepth > 0) return;
     _isBatching = false;
+    // If the current track completed while the batch was in progress, MPV
+    // auto-advanced the index but the advance snapshot was suppressed by the
+    // batching gate — leaving the provider's currentIndex/activeTrack stuck on
+    // the finished track (an infinite "Loading" spinner on it). Re-emit the
+    // index snapshot now that snapshots are re-enabled; the signature dedup in
+    // _emitPlaylistSnapshot skips the redundant case where nothing changed.
+    _emitIndexSnapshot();
     await _prepareInactivePlayer();
     // Crossfade-handoff safety: batch adds only go to the primary player, so if
     // a handoff flipped the secondary to active, its playlist is frozen at the

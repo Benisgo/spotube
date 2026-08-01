@@ -51,6 +51,13 @@ class Win32Window {
   // If true, closing this window will quit the application.
   void SetQuitOnClose(bool quit_on_close);
 
+  // Finds the running Spotube window (by our runner's class + case-insensitive
+  // title) and forwards the launch to it: dispatches the deep link, restores
+  // and focuses the window. Returns true if an existing window was found.
+  // Used by wWinMain's named-mutex single-instance guard, and by
+  // SendAppLinkToInstance during CreateAndShow.
+  static bool ForwardToExistingInstance(const std::wstring& title);
+
   // Return a RECT representing the bounds of the current client area.
   RECT GetClientArea();
 

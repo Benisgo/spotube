@@ -157,10 +157,71 @@ class SourcedTrack extends BasicSourcedTrack {
     }
   }
 
+  static Future<File?> findLocalCachedFile(SpotubeFullTrackObject query) async {
+    try {
+      final cacheDir = await UserPreferencesNotifier.getMusicCacheDir();
+      final dir = Directory(cacheDir);
+      if (!await dir.exists()) return null;
+
+      final trackId = query.id.toLowerCase();
+      final sanitizedName =
+          ServiceUtils.sanitizeFilename(query.name).toLowerCase();
+      final baseName = ServiceUtils.sanitizeFilename(
+        '${query.name} - ${query.artists.map((d) => d.name).join(",")}',
+      ).toLowerCase();
+
+      final entries = await dir.list().toList();
+      for (final entry in entries) {
+        if (entry is File) {
+          final fileName = basename(entry.path).toLowerCase();
+          if (fileName.contains(trackId) ||
+              fileName.startsWith(baseName) ||
+              (sanitizedName.length >= 3 && fileName.contains(sanitizedName))) {
+            return entry;
+          }
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
   static Future<SourcedTrack> _fetchFromTrackInternal({
     required SpotubeFullTrackObject query,
     required Ref ref,
   }) async {
+    final localCachedFile = await findLocalCachedFile(query);
+    if (localCachedFile != null) {
+      PlaybackStartTrace.markTrack(query.id, 'sourced_track.local_cache_hit');
+      final match = RegExp(r'\[([a-zA-Z0-9_-]{11})\]')
+          .firstMatch(basename(localCachedFile.path));
+      final youtubeId = match?.group(1) ?? query.id;
+
+      final streamSource = SpotubeAudioSourceStreamObject(
+        url: "file://${localCachedFile.absolute.path}",
+        container: "m4a",
+        type: SpotubeMediaCompressionType.lossy,
+      );
+
+      final info = SpotubeAudioSourceMatchObject(
+        id: youtubeId,
+        title: query.name,
+        artists: query.artists.map((a) => a.name).toList(),
+        duration: Duration(milliseconds: query.durationMs),
+        externalUri: "file://${localCachedFile.absolute.path}",
+      );
+
+      final sourcedTrack = SourcedTrack(
+        ref: ref,
+        info: info,
+        query: query,
+        source: "file://${localCachedFile.absolute.path}",
+        siblings: [],
+        sources: [streamSource],
+      );
+      _resolvedFetches[query.id] = sourcedTrack;
+      return sourcedTrack;
+    }
+
     final audioSource = await ref.read(audioSourcePluginProvider.future);
     if (audioSource == null) {
       throw MetadataPluginException.noDefaultAudioSourcePlugin();

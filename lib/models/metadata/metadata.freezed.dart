@@ -4957,7 +4957,8 @@ mixin _$SpotubeTrackObject {
             SpotubeSimpleAlbumObject album,
             int durationMs,
             String isrc,
-            bool explicit)
+            bool explicit,
+            DateTime? addedAt)
         full,
   }) =>
       throw _privateConstructorUsedError;
@@ -4980,7 +4981,8 @@ mixin _$SpotubeTrackObject {
             SpotubeSimpleAlbumObject album,
             int durationMs,
             String isrc,
-            bool explicit)?
+            bool explicit,
+            DateTime? addedAt)?
         full,
   }) =>
       throw _privateConstructorUsedError;
@@ -5003,7 +5005,8 @@ mixin _$SpotubeTrackObject {
             SpotubeSimpleAlbumObject album,
             int durationMs,
             String isrc,
-            bool explicit)?
+            bool explicit,
+            DateTime? addedAt)?
         full,
     required TResult orElse(),
   }) =>
@@ -5292,7 +5295,8 @@ class _$SpotubeLocalTrackObjectImpl implements SpotubeLocalTrackObject {
             SpotubeSimpleAlbumObject album,
             int durationMs,
             String isrc,
-            bool explicit)
+            bool explicit,
+            DateTime? addedAt)
         full,
   }) {
     return local(id, name, externalUri, artists, album, durationMs, path);
@@ -5318,7 +5322,8 @@ class _$SpotubeLocalTrackObjectImpl implements SpotubeLocalTrackObject {
             SpotubeSimpleAlbumObject album,
             int durationMs,
             String isrc,
-            bool explicit)?
+            bool explicit,
+            DateTime? addedAt)?
         full,
   }) {
     return local?.call(id, name, externalUri, artists, album, durationMs, path);
@@ -5344,7 +5349,8 @@ class _$SpotubeLocalTrackObjectImpl implements SpotubeLocalTrackObject {
             SpotubeSimpleAlbumObject album,
             int durationMs,
             String isrc,
-            bool explicit)?
+            bool explicit,
+            DateTime? addedAt)?
         full,
     required TResult orElse(),
   }) {
@@ -5445,7 +5451,8 @@ abstract class _$$SpotubeFullTrackObjectImplCopyWith<$Res>
       SpotubeSimpleAlbumObject album,
       int durationMs,
       String isrc,
-      bool explicit});
+      bool explicit,
+      DateTime? addedAt});
 
   @override
   $SpotubeSimpleAlbumObjectCopyWith<$Res> get album;
@@ -5473,6 +5480,7 @@ class __$$SpotubeFullTrackObjectImplCopyWithImpl<$Res>
     Object? durationMs = null,
     Object? isrc = null,
     Object? explicit = null,
+    Object? addedAt = freezed,
   }) {
     return _then(_$SpotubeFullTrackObjectImpl(
       id: null == id
@@ -5507,6 +5515,10 @@ class __$$SpotubeFullTrackObjectImplCopyWithImpl<$Res>
           ? _value.explicit
           : explicit // ignore: cast_nullable_to_non_nullable
               as bool,
+      addedAt: freezed == addedAt
+          ? _value.addedAt
+          : addedAt // ignore: cast_nullable_to_non_nullable
+              as DateTime?,
     ));
   }
 }
@@ -5523,6 +5535,7 @@ class _$SpotubeFullTrackObjectImpl implements SpotubeFullTrackObject {
       required this.durationMs,
       required this.isrc,
       required this.explicit,
+      this.addedAt,
       final String? $type})
       : _artists = artists,
         $type = $type ?? 'full';
@@ -5553,13 +5566,15 @@ class _$SpotubeFullTrackObjectImpl implements SpotubeFullTrackObject {
   final String isrc;
   @override
   final bool explicit;
+  @override
+  final DateTime? addedAt;
 
   @JsonKey(name: 'runtimeType')
   final String $type;
 
   @override
   String toString() {
-    return 'SpotubeTrackObject.full(id: $id, name: $name, externalUri: $externalUri, artists: $artists, album: $album, durationMs: $durationMs, isrc: $isrc, explicit: $explicit)';
+    return 'SpotubeTrackObject.full(id: $id, name: $name, externalUri: $externalUri, artists: $artists, album: $album, durationMs: $durationMs, isrc: $isrc, explicit: $explicit, addedAt: $addedAt)';
   }
 
   @override
@@ -5577,7 +5592,8 @@ class _$SpotubeFullTrackObjectImpl implements SpotubeFullTrackObject {
                 other.durationMs == durationMs) &&
             (identical(other.isrc, isrc) || other.isrc == isrc) &&
             (identical(other.explicit, explicit) ||
-                other.explicit == explicit));
+                other.explicit == explicit) &&
+            (identical(other.addedAt, addedAt) || other.addedAt == addedAt));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
@@ -5591,7 +5607,8 @@ class _$SpotubeFullTrackObjectImpl implements SpotubeFullTrackObject {
       album,
       durationMs,
       isrc,
-      explicit);
+      explicit,
+      addedAt);
 
   /// Create a copy of SpotubeTrackObject
   /// with the given fields replaced by the non-null parameter values.
@@ -5622,11 +5639,12 @@ class _$SpotubeFullTrackObjectImpl implements SpotubeFullTrackObject {
             SpotubeSimpleAlbumObject album,
             int durationMs,
             String isrc,
-            bool explicit)
+            bool explicit,
+            DateTime? addedAt)
         full,
   }) {
-    return full(
-        id, name, externalUri, artists, album, durationMs, isrc, explicit);
+    return full(id, name, externalUri, artists, album, durationMs, isrc,
+        explicit, addedAt);
   }
 
   @override
@@ -5649,11 +5667,12 @@ class _$SpotubeFullTrackObjectImpl implements SpotubeFullTrackObject {
             SpotubeSimpleAlbumObject album,
             int durationMs,
             String isrc,
-            bool explicit)?
+            bool explicit,
+            DateTime? addedAt)?
         full,
   }) {
-    return full?.call(
-        id, name, externalUri, artists, album, durationMs, isrc, explicit);
+    return full?.call(id, name, externalUri, artists, album, durationMs, isrc,
+        explicit, addedAt);
   }
 
   @override
@@ -5676,13 +5695,14 @@ class _$SpotubeFullTrackObjectImpl implements SpotubeFullTrackObject {
             SpotubeSimpleAlbumObject album,
             int durationMs,
             String isrc,
-            bool explicit)?
+            bool explicit,
+            DateTime? addedAt)?
         full,
     required TResult orElse(),
   }) {
     if (full != null) {
-      return full(
-          id, name, externalUri, artists, album, durationMs, isrc, explicit);
+      return full(id, name, externalUri, artists, album, durationMs, isrc,
+          explicit, addedAt);
     }
     return orElse();
   }
@@ -5735,7 +5755,8 @@ abstract class SpotubeFullTrackObject implements SpotubeTrackObject {
       required final SpotubeSimpleAlbumObject album,
       required final int durationMs,
       required final String isrc,
-      required final bool explicit}) = _$SpotubeFullTrackObjectImpl;
+      required final bool explicit,
+      final DateTime? addedAt}) = _$SpotubeFullTrackObjectImpl;
 
   factory SpotubeFullTrackObject.fromJson(Map<String, dynamic> json) =
       _$SpotubeFullTrackObjectImpl.fromJson;
@@ -5754,6 +5775,7 @@ abstract class SpotubeFullTrackObject implements SpotubeTrackObject {
   int get durationMs;
   String get isrc;
   bool get explicit;
+  DateTime? get addedAt;
 
   /// Create a copy of SpotubeTrackObject
   /// with the given fields replaced by the non-null parameter values.

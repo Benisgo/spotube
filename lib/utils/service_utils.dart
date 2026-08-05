@@ -203,12 +203,15 @@ abstract class ServiceUtils {
     return lyrics;
   }
 
-  static DateTime parseSpotifyAlbumDate(SpotubeFullAlbumObject? album) {
-    if (album == null) {
-      return DateTime.parse("1975-01-01");
+  static DateTime parseSpotifyAlbumDate(SpotubeSimpleAlbumObject? album) {
+    if (album == null || album.releaseDate == null || album.releaseDate!.isEmpty) {
+      return DateTime(1975);
     }
-
-    return DateTime.parse(album.releaseDate);
+    final raw = album.releaseDate!;
+    if (raw.length == 4) {
+      return DateTime(int.tryParse(raw) ?? 1975);
+    }
+    return DateTime.tryParse(raw) ?? DateTime(1975);
   }
 
   static List<T> sortTracks<T extends SpotubeTrackObject>(
@@ -218,24 +221,23 @@ abstract class ServiceUtils {
       ..sort((a, b) {
         switch (sortBy) {
           case SortBy.ascending:
-            return a.name.compareTo(b.name);
+            return a.name.toLowerCase().compareTo(b.name.toLowerCase());
           case SortBy.descending:
-            return b.name.compareTo(a.name);
-          // TODO: We'll figure this one out later :')
-          // case SortBy.newest:
-          //   final aDate = parseSpotifyAlbumDate(a.album);
-          //   final bDate = parseSpotifyAlbumDate(b.album);
-          //   return bDate.compareTo(aDate);
-          // case SortBy.oldest:
-          //   final aDate = parseSpotifyAlbumDate(a.album);
-          //   final bDate = parseSpotifyAlbumDate(b.album);
-          // return aDate.compareTo(bDate);
+            return b.name.toLowerCase().compareTo(a.name.toLowerCase());
+          case SortBy.newest:
+            final aDate = parseSpotifyAlbumDate(a.album);
+            final bDate = parseSpotifyAlbumDate(b.album);
+            return bDate.compareTo(aDate);
+          case SortBy.oldest:
+            final aDate = parseSpotifyAlbumDate(a.album);
+            final bDate = parseSpotifyAlbumDate(b.album);
+            return aDate.compareTo(bDate);
           case SortBy.duration:
             return a.durationMs.compareTo(b.durationMs);
           case SortBy.artist:
-            return a.artists.first.name.compareTo(b.artists.first.name);
+            return a.artists.first.name.toLowerCase().compareTo(b.artists.first.name.toLowerCase());
           case SortBy.album:
-            return a.album.name.compareTo(b.album.name);
+            return a.album.name.toLowerCase().compareTo(b.album.name.toLowerCase());
           default:
             return 0;
         }

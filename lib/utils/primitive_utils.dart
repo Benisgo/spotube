@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
 abstract class PrimitiveUtils {
@@ -49,5 +50,39 @@ abstract class PrimitiveUtils {
 
   static String toSafeFileName(String str) {
     return str.replaceAll(RegExp(r'[/\?%*:|"<>]'), ' ');
+  }
+}
+
+extension SpotifyDateAddedX on DateTime {
+  String toSpotifyDateAdded({DateTime? relativeTo}) {
+    final now = relativeTo ?? DateTime.now();
+    final difference = now.difference(this);
+
+    if (difference.inSeconds < 60) {
+      return "just now";
+    }
+
+    if (difference.inMinutes < 60) {
+      final mins = difference.inMinutes;
+      return "$mins ${mins == 1 ? 'minute' : 'minutes'} ago";
+    }
+
+    if (difference.inHours < 24) {
+      final hours = difference.inHours;
+      return "$hours ${hours == 1 ? 'hour' : 'hours'} ago";
+    }
+
+    if (difference.inDays < 7) {
+      final days = difference.inDays;
+      return "$days ${days == 1 ? 'day' : 'days'} ago";
+    }
+
+    if (difference.inDays < 30) {
+      final weeks = (difference.inDays / 7).floor();
+      final effectiveWeeks = weeks < 1 ? 1 : weeks;
+      return "$effectiveWeeks ${effectiveWeeks == 1 ? 'week' : 'weeks'} ago";
+    }
+
+    return DateFormat.yMMMd().format(this);
   }
 }

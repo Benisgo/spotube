@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:dio/dio.dart';
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/provider/metadata_plugin/metadata_plugin_provider.dart';
 import 'package:spotube/provider/metadata_plugin/utils/family_paginated.dart';
 import 'package:spotube/provider/metadata_plugin/utils/common.dart';
+import 'package:spotube/services/playlist_cache/playlist_cache.dart';
 
 class MetadataPluginPlaylistTracksNotifier
     extends AutoDisposeFamilyPaginatedAsyncNotifier<SpotubeFullTrackObject,
@@ -29,8 +31,17 @@ class MetadataPluginPlaylistTracksNotifier
             limit: limit,
           );
 
+      if (offset == 0) {
+        unawaited(PlaylistCacheService.savePlaylistTracks(arg, tracks));
+      }
+
       return tracks;
     } catch (e) {
+      final cachedTracks = await PlaylistCacheService.loadPlaylistTracks(arg);
+      if (cachedTracks != null && cachedTracks.items.isNotEmpty) {
+        return cachedTracks;
+      }
+
       if (_isRecoverablePlaylistError(e) && state.value != null) {
         return state.value!;
       }

@@ -2,6 +2,7 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 import 'package:shadcn_flutter/shadcn_flutter_extension.dart';
+import 'package:spotube/collections/spotube_icons.dart';
 import 'package:spotube/components/titlebar/titlebar.dart';
 import 'package:flutter/material.dart' as material;
 import 'package:spotube/components/track_presentation/presentation_list.dart';
@@ -74,19 +75,31 @@ class TrackPresentation extends HookConsumerWidget {
                         vertical: 8,
                         horizontal: 16,
                       ),
-                      leading: constrains.mdAndUp ? const Text("  #") : null,
+                      leading: constrains.mdAndUp
+                          ? const SizedBox(
+                              width: 102,
+                              child: Padding(
+                                padding: EdgeInsets.only(left: 12),
+                                child: Text("#"),
+                              ),
+                            )
+                          : null,
                       title: Row(
                         children: [
                           Expanded(
-                            flex: constrains.lgAndUp ? 5 : 6,
+                            flex: 6,
                             child: Text(context.l10n.title),
                           ),
-                          if (constrains.mdAndUp)
+                          if (constrains.mdAndUp) ...[
+                            const SizedBox(width: 8),
                             Expanded(
-                              flex: 3,
+                              flex: 4,
                               child: Text(context.l10n.album),
                             ),
-                          Text(context.l10n.duration),
+                          ],
+                          const SizedBox(width: 8),
+                          const Icon(SpotubeIcons.clock, size: 16),
+                          const SizedBox(width: 44),
                         ],
                       ),
                     ).small().muted();

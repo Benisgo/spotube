@@ -496,6 +496,9 @@ _$SpotubeFullTrackObjectImpl _$$SpotubeFullTrackObjectImplFromJson(Map json) =>
       durationMs: (json['durationMs'] as num).toInt(),
       isrc: json['isrc'] as String,
       explicit: json['explicit'] as bool,
+      addedAt: json['addedAt'] == null
+          ? null
+          : DateTime.parse(json['addedAt'] as String),
       $type: json['runtimeType'] as String?,
     );
 
@@ -510,6 +513,7 @@ Map<String, dynamic> _$$SpotubeFullTrackObjectImplToJson(
       'durationMs': instance.durationMs,
       'isrc': instance.isrc,
       'explicit': instance.explicit,
+      'addedAt': instance.addedAt?.toIso8601String(),
       'runtimeType': instance.$type,
     };
 

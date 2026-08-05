@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:auto_route/auto_route.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
@@ -15,9 +18,30 @@ class ErrorBox extends StatelessWidget {
     this.onRetry,
   });
 
+  bool _isNetworkError(Object error) {
+    if (error is SocketException || error is HttpException) return true;
+    if (error is DioException) {
+      return error.type == DioExceptionType.connectionError ||
+          error.type == DioExceptionType.connectionTimeout ||
+          error.type == DioExceptionType.receiveTimeout ||
+          error.type == DioExceptionType.sendTimeout ||
+          error.error is SocketException ||
+          error.error is HttpException ||
+          error.message?.contains("Failed host lookup") == true ||
+          error.message?.contains("Connection closed") == true;
+    }
+    final str = error.toString();
+    return str.contains("SocketException") ||
+        str.contains("HttpException") ||
+        str.contains("Failed host lookup") ||
+        str.contains("Connection closed") ||
+        str.contains("errno = 11001");
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Make a monospace error log view. Make sure it's only 4 lines
+    final isNetwork = _isNetworkError(error);
+
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 400),
       child: Padding(
@@ -29,19 +53,20 @@ class ErrorBox extends StatelessWidget {
             spacing: 12,
             children: [
               Basic(
-                leading: const Icon(SpotubeIcons.error),
+                leading: Icon(isNetwork ? SpotubeIcons.noWifi : SpotubeIcons.error),
                 contentSpacing: 8,
-                title: Text(context.l10n.an_error_occurred),
+                title: Text(isNetwork ? "No Internet Connection" : context.l10n.an_error_occurred),
               ),
               Card(
                 padding: const EdgeInsets.all(8.0),
                 filled: true,
                 fillColor: context.theme.colorScheme.muted,
                 child: Text(
-                  error.toString(),
+                  isNetwork
+                      ? "You are currently offline. Connect to the internet to load online recommendations, or switch to your Library / Downloaded tracks."
+                      : error.toString(),
                   style: TextStyle(
-                    // Use monospace
-                    fontFamily: 'Ubuntu Mono',
+                    fontFamily: isNetwork ? null : 'Ubuntu Mono',
                     color: context.theme.colorScheme.mutedForeground,
                     fontSize: 14,
                   ),

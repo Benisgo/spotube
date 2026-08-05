@@ -21,6 +21,7 @@ class SpotubeTrackObject with _$SpotubeTrackObject {
     required int durationMs,
     required String isrc,
     required bool explicit,
+    DateTime? addedAt,
   }) = SpotubeFullTrackObject;
 
   factory SpotubeTrackObject.localTrackFromFile(
@@ -78,8 +79,20 @@ class SpotubeTrackObject with _$SpotubeTrackObject {
       _$SpotubeTrackObjectFromJson(
         json.containsKey("path")
             ? {...json, "runtimeType": "local"}
-            : {...json, "runtimeType": "full"},
+            : {
+                ...json,
+                if (json.containsKey("added_at") && !json.containsKey("addedAt"))
+                  "addedAt": json["added_at"],
+                "runtimeType": "full",
+              },
       );
+}
+
+extension SpotubeTrackObjectAddedAtX on SpotubeTrackObject {
+  DateTime? get addedAt => switch (this) {
+        SpotubeFullTrackObject(:final addedAt) => addedAt,
+        _ => null,
+      };
 }
 
 extension AsMediaListSpotubeTrackObject on Iterable<SpotubeTrackObject> {

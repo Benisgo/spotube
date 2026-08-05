@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:collection/collection.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,6 +8,7 @@ import 'package:spotube/provider/metadata_plugin/metadata_plugin_provider.dart';
 import 'package:spotube/provider/metadata_plugin/tracks/playlist.dart';
 import 'package:spotube/provider/metadata_plugin/utils/paginated.dart';
 import 'package:spotube/services/metadata/errors/exceptions.dart';
+import 'package:spotube/services/playlist_cache/playlist_cache.dart';
 
 class MetadataPluginSavedPlaylistsNotifier
     extends PaginatedAsyncNotifier<SpotubeSimplePlaylistObject> {
@@ -29,8 +31,17 @@ class MetadataPluginSavedPlaylistsNotifier
           .user
           .savedPlaylists(limit: limit, offset: offset);
 
+      if (offset == 0) {
+        unawaited(PlaylistCacheService.saveUserPlaylists(playlists));
+      }
+
       return playlists;
     } catch (e) {
+      final cachedPlaylists = await PlaylistCacheService.loadUserPlaylists();
+      if (cachedPlaylists != null && cachedPlaylists.items.isNotEmpty) {
+        return cachedPlaylists;
+      }
+
       if (_isRecoverableLibraryError(e) && state.value != null) {
         return state.value!;
       }

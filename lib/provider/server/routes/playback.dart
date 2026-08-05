@@ -868,7 +868,22 @@ class ServerPlaybackRoutes {
         }
 
         _trace("cache finalize uri=$requestedUri track=${track.query.id}");
-        await trackPartialCacheFile.rename(effectiveTrackCacheFile.path);
+        try {
+          if (await effectiveTrackCacheFile.exists()) {
+            await effectiveTrackCacheFile.delete();
+          }
+          await trackPartialCacheFile.rename(effectiveTrackCacheFile.path);
+        } catch (_) {
+          try {
+            await trackPartialCacheFile.copy(effectiveTrackCacheFile.path);
+            await trackPartialCacheFile.delete().catchError((_) => trackPartialCacheFile);
+          } catch (e) {
+            _trace(
+              "cache rename/copy failed uri=$requestedUri track=${track.query.id} error=$e",
+            );
+            return;
+          }
+        }
 
         if (activeTrack.qualityPreset?.getFileExtension() == "weba") return;
 

@@ -1,7 +1,10 @@
+import 'dart:io';
+
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/gestures.dart';
 
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:path/path.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 import 'package:spotube/collections/routes.gr.dart';
@@ -20,8 +23,40 @@ import 'package:spotube/models/multi_session/multi_session.dart';
 import 'package:spotube/provider/audio_player/audio_player.dart';
 import 'package:spotube/provider/audio_player/querying_track_info.dart';
 import 'package:spotube/provider/blacklist_provider.dart';
+import 'package:spotube/provider/connectivity_provider.dart';
 import 'package:spotube/provider/multi_session/multi_session.dart';
+import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
+import 'package:spotube/services/connectivity_adapter.dart';
 import 'package:spotube/utils/platform.dart';
+import 'package:spotube/utils/service_utils.dart';
+
+final isTrackAudioCachedProvider =
+    FutureProvider.family<bool, SpotubeTrackObject>((ref, track) async {
+  if (track is SpotubeLocalTrackObject) return true;
+  try {
+    final cacheDir = await UserPreferencesNotifier.getMusicCacheDir();
+    final dir = Directory(cacheDir);
+    if (!await dir.exists()) return false;
+
+    final trackId = track.id.toLowerCase();
+    final sanitizedName =
+        ServiceUtils.sanitizeFilename(track.name).toLowerCase();
+    final baseName = ServiceUtils.sanitizeFilename(
+      '${track.name} - ${track.artists.map((d) => d.name).join(",")}',
+    ).toLowerCase();
+
+    final entries = await dir.list().toList();
+    return entries.any((e) {
+      if (e is! File) return false;
+      final fileName = basename(e.path).toLowerCase();
+      return fileName.contains(trackId) ||
+          fileName.startsWith(baseName) ||
+          (sanitizedName.length >= 3 && fileName.contains(sanitizedName));
+    });
+  } catch (_) {
+    return true;
+  }
+});
 
 final isBlacklistedProvider =
     Provider.autoDispose.family<bool, SpotubeTrackObject>(
@@ -86,37 +121,62 @@ class TrackTile extends HookConsumerWidget {
       ),
     );
 
+    final isOnline = ref.watch(connectivityProvider).value ??
+        ConnectionCheckerService.instance.isConnectedSync;
+    final isOffline = !isOnline;
+    final isAudioCached =
+        ref.watch(isTrackAudioCachedProvider(track)).asData?.value ?? true;
+    final isDimmed = isOffline && !isAudioCached;
+
     return LayoutBuilder(builder: (context, constrains) {
-      return Listener(
-        onPointerDown: (event) {
-          if (event.buttons != kSecondaryMouseButton) return;
-          if (_overlay.value != null) {
-            _overlay.value?.remove();
-            _overlay.value = null;
-          }
-          _overlay.value = TrackOptionsButton.showOptions(
-            context,
-            Offset.zero,
-            track,
-            userPlaylist: userPlaylist,
-            playlistId: playlistId,
-          );
-        },
-        child: HoverBuilder(
-          permanentState: isSelected || constrains.smAndDown ? true : null,
-          builder: (context, isHovering) => ButtonTile(
-            selected: isSelected,
-            onPressed: () async {
-              if (isBlackListed) return;
-              if (isListener) {
-                await showDialog<void>(
-                  context: context,
-                  builder: (context) => TrackPreviewDialog(track: track),
-                );
-                return;
-              }
-              await onTap?.call();
-            },
+      return Opacity(
+        opacity: isDimmed ? 0.45 : 1.0,
+        child: Listener(
+          onPointerDown: (event) {
+            if (event.buttons != kSecondaryMouseButton) return;
+            if (_overlay.value != null) {
+              _overlay.value?.remove();
+              _overlay.value = null;
+            }
+            _overlay.value = TrackOptionsButton.showOptions(
+              context,
+              Offset.zero,
+              track,
+              userPlaylist: userPlaylist,
+              playlistId: playlistId,
+            );
+          },
+          child: HoverBuilder(
+            permanentState: isSelected || constrains.smAndDown ? true : null,
+            builder: (context, isHovering) => ButtonTile(
+              selected: isSelected,
+              onPressed: () async {
+                if (isBlackListed) return;
+                if (isListener) {
+                  await showDialog<void>(
+                    context: context,
+                    builder: (context) => TrackPreviewDialog(track: track),
+                  );
+                  return;
+                }
+                try {
+                  await onTap?.call();
+                } catch (e) {
+                  if (context.mounted && isOffline) {
+                    showToast(
+                      context: context,
+                      builder: (context, overlay) => SurfaceCard(
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Text(
+                            "Track '${track.name}' is not cached for offline playback.",
+                          ),
+                        ),
+                      ),
+                    );
+                  }
+                }
+              },
             onLongPress: onLongPress,
             style: (isBlackListed
                     ? ButtonVariance.destructive
@@ -167,7 +227,7 @@ class TrackTile extends HookConsumerWidget {
             title: Row(
               children: [
                 Expanded(
-                  flex: 6,
+                  flex: constrains.lgAndUp ? 5 : 6,
                   child: AbsorbPointer(
                     absorbing: selectionMode,
                     child: switch (track) {
@@ -288,9 +348,10 @@ class TrackTile extends HookConsumerWidget {
             ),
           ),
         ),
-      );
-    });
-  }
+      ),
+    );
+  });
+}
 }
 
 /// Scoped widget that watches only activeTrackId for the album art overlay.

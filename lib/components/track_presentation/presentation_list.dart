@@ -17,6 +17,7 @@ import 'package:spotube/extensions/context.dart';
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/pages/library/user_local_tracks/user_local_tracks.dart';
 import 'package:spotube/provider/metadata_plugin/metadata_plugin_provider.dart';
+import 'package:spotube/services/playlist_cache/playlist_cache.dart';
 
 const _itemExtent = 64.0;
 const _pageSize = 50;
@@ -136,6 +137,18 @@ class PresentationListSection extends HookConsumerWidget {
       cache.value = newCache;
       return true;
     } catch (_) {
+      final collection = options.collection;
+      if (collection is SpotubeSimplePlaylistObject) {
+        final cached = await PlaylistCacheService.loadPlaylistTracks(collection.id);
+        if (cached != null && cached.items.isNotEmpty) {
+          var newCache = Map<int, SpotubeFullTrackObject>.from(cache.value);
+          for (int i = 0; i < cached.items.length; i++) {
+            newCache[i] = cached.items[i];
+          }
+          cache.value = newCache;
+          return true;
+        }
+      }
       return false;
     }
   }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:dio/dio.dart';
@@ -7,6 +8,7 @@ import 'package:spotube/provider/metadata_plugin/core/auth.dart';
 import 'package:spotube/provider/metadata_plugin/utils/common.dart';
 import 'package:spotube/provider/metadata_plugin/utils/paginated.dart';
 import 'package:spotube/services/logger/logger.dart';
+import 'package:spotube/services/playlist_cache/playlist_cache.dart';
 
 final Map<String, bool> _savedTrackMembershipCache = {};
 
@@ -63,21 +65,27 @@ class MetadataPluginSavedTracksNotifier
             limit: limit,
           );
 
+      if (offset == 0) {
+        unawaited(PlaylistCacheService.savePlaylistTracks("liked_tracks", tracks));
+      }
+
       return tracks;
     } catch (e) {
+      final cachedTracks = await PlaylistCacheService.loadPlaylistTracks("liked_tracks");
+      if (cachedTracks != null && cachedTracks.items.isNotEmpty) {
+        return cachedTracks;
+      }
+
       if (_isRecoverableLibraryError(e) && state.value != null) {
         return state.value!;
       }
-      if (_isRecoverableLibraryError(e)) {
-        return SpotubePaginationResponseObject(
-          limit: limit,
-          nextOffset: null,
-          total: 0,
-          hasMore: false,
-          items: [],
-        );
-      }
-      rethrow;
+      return SpotubePaginationResponseObject(
+        limit: limit,
+        nextOffset: null,
+        total: 0,
+        hasMore: false,
+        items: [],
+      );
     }
   }
 

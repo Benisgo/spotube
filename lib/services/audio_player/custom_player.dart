@@ -209,8 +209,14 @@ class CustomPlayer extends Player {
     _normalizationEnabled = normalize;
     try {
       if (normalize) {
-        await nativePlayer.setProperty(
-            'af', 'dynaudnorm=g=5:f=250:r=0.9:p=0.5');
+        try {
+          await nativePlayer.setProperty(
+              'af', 'dynaudnorm=g=5:f=250:r=0.9:p=0.5');
+        } catch (_) {
+          // If dynaudnorm audio filter is missing/unsupported by libmpv build,
+          // clear 'af' so mpv does not fail stream opening.
+          await nativePlayer.setProperty('af', '');
+        }
       } else {
         await nativePlayer.setProperty('af', '');
       }
@@ -223,8 +229,10 @@ class CustomPlayer extends Player {
     if (!_normalizationEnabled) return;
     try {
       await nativePlayer.setProperty('af', 'dynaudnorm=g=5:f=250:r=0.9:p=0.5');
-    } catch (e, stack) {
-      AppLogger.reportError(e, stack, 'reapplyNormalizationIfNeeded failed');
+    } catch (_) {
+      try {
+        await nativePlayer.setProperty('af', '');
+      } catch (_) {}
     }
   }
 

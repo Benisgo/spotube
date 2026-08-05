@@ -661,16 +661,32 @@ final metadataPluginProvider = FutureProvider<MetadataPlugin?>(
     if (defaultPlugin == null) {
       return null;
     }
-
     final pluginsNotifier = ref.read(metadataPluginsProvider.notifier);
     final pluginByteCode =
         await pluginsNotifier.getPluginByteCode(defaultPlugin);
 
-    return await MetadataPlugin.create(
-      youtubeEngine,
-      defaultPlugin,
-      pluginByteCode,
-    );
+    Object? lastError;
+    StackTrace? lastStack;
+    for (var attempt = 1; attempt <= 3; attempt++) {
+      try {
+        return await MetadataPlugin.create(
+          youtubeEngine,
+          defaultPlugin,
+          pluginByteCode,
+        );
+      } catch (e, stack) {
+        lastError = e;
+        lastStack = stack;
+        AppLogger.reportError(e, stack);
+        if (attempt < 3) {
+          await Future.delayed(const Duration(milliseconds: 150));
+        }
+      }
+    }
+    if (lastError != null) {
+      Error.throwWithStackTrace(lastError, lastStack ?? StackTrace.current);
+    }
+    return null;
   },
 );
 
@@ -690,10 +706,27 @@ final audioSourcePluginProvider = FutureProvider<MetadataPlugin?>(
     final pluginByteCode =
         await pluginsNotifier.getPluginByteCode(defaultPlugin);
 
-    return await MetadataPlugin.create(
-      youtubeEngine,
-      defaultPlugin,
-      pluginByteCode,
-    );
+    Object? lastError;
+    StackTrace? lastStack;
+    for (var attempt = 1; attempt <= 3; attempt++) {
+      try {
+        return await MetadataPlugin.create(
+          youtubeEngine,
+          defaultPlugin,
+          pluginByteCode,
+        );
+      } catch (e, stack) {
+        lastError = e;
+        lastStack = stack;
+        AppLogger.reportError(e, stack);
+        if (attempt < 3) {
+          await Future.delayed(const Duration(milliseconds: 150));
+        }
+      }
+    }
+    if (lastError != null) {
+      Error.throwWithStackTrace(lastError, lastStack ?? StackTrace.current);
+    }
+    return null;
   },
 );

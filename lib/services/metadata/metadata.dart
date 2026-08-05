@@ -13,6 +13,7 @@ import 'package:spotube/collections/routes.dart';
 import 'package:spotube/collections/routes.gr.dart';
 import 'package:spotube/components/titlebar/titlebar.dart';
 import 'package:spotube/models/metadata/metadata.dart';
+import 'package:spotube/services/logger/logger.dart';
 import 'package:spotube/services/metadata/apis/localstorage.dart';
 import 'package:spotube/services/metadata/endpoints/album.dart';
 import 'package:spotube/services/metadata/endpoints/artist.dart';
@@ -138,25 +139,30 @@ class MetadataPlugin {
       },
     );
 
-    await HetuStdLoader.loadBytecodeFlutter(hetu);
-    await HetuOtpUtilLoader.loadBytecodeFlutter(hetu);
-    final spotifyGqlBytecode = await rootBundle.load(
-      'assets/bytecode/spotify_gql_api_client.out',
-    );
-    hetu.loadBytecode(
-      bytes: spotifyGqlBytecode.buffer.asUint8List(),
-      moduleName: 'spotify_gql_api_client',
-    );
-    await HetuSpotubePluginLoader.loadBytecodeFlutter(hetu);
+    try {
+      await HetuStdLoader.loadBytecodeFlutter(hetu);
+      await HetuOtpUtilLoader.loadBytecodeFlutter(hetu);
+      final spotifyGqlBytecode = await rootBundle.load(
+        'assets/bytecode/spotify_gql_api_client.out',
+      );
+      hetu.loadBytecode(
+        bytes: spotifyGqlBytecode.buffer.asUint8List(),
+        moduleName: 'spotify_gql_api_client',
+      );
+      await HetuSpotubePluginLoader.loadBytecodeFlutter(hetu);
 
-    hetu.loadBytecode(bytes: byteCode, moduleName: "plugin");
-    hetu.eval("""
-      import "module:plugin" as plugin
+      hetu.loadBytecode(bytes: byteCode, moduleName: "plugin");
+      hetu.eval("""
+        import "module:plugin" as plugin
 
-      var Plugin = plugin.${config.entryPoint}
+        var Plugin = plugin.${config.entryPoint}
 
-      var metadataPlugin = Plugin()
-      """);
+        var metadataPlugin = Plugin()
+        """);
+    } catch (e, stack) {
+      AppLogger.reportError(e, stack);
+      rethrow;
+    }
 
     return MetadataPlugin._(hetu, config);
   }

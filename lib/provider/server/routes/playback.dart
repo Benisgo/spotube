@@ -230,29 +230,28 @@ class ServerPlaybackRoutes {
       '${track.query.name} - ${track.query.artists.map((d) => d.name).join(",")}',
     );
     final ext = track.qualityPreset?.getFileExtension() ?? "m4a";
+    final expectedFileName = '$baseName [${track.info.id}].$ext';
+    final targetPath = join(cacheDir, expectedFileName);
 
-    // Check if any cached file already exists for this track (any YouTube ID).
-    // This prevents accumulating duplicate cache files with different video IDs
-    // when the same Spotify track resolves to different YouTube videos over time.
+    // Purge stale cache files for this track if they were recorded for a
+    // different video ID or old format, ensuring we never play old audio
+    // after an audio source change or algorithm improvement.
     final dir = Directory(cacheDir);
     if (await dir.exists()) {
       final entries = await dir.list().toList();
-      final existing = entries
-          .where((e) =>
-              e is File &&
-              !e.path.endsWith('.part') &&
-              basenameWithoutExtension(e.path).startsWith(baseName) &&
-              e.path.endsWith('.$ext'))
-          .firstOrNull;
-      if (existing != null) {
-        return existing.path;
+      for (final entry in entries) {
+        if (entry is File && !entry.path.endsWith('.part')) {
+          final fileName = basename(entry.path);
+          if (fileName.startsWith(baseName) && fileName != expectedFileName) {
+            try {
+              await entry.delete();
+            } catch (_) {}
+          }
+        }
       }
     }
 
-    return join(
-      cacheDir,
-      '$baseName.$ext',
-    );
+    return targetPath;
   }
 
   Future<SourcedTrack?> _getSourcedTrack(
@@ -323,47 +322,62 @@ class ServerPlaybackRoutes {
 
     final notifier = ref.read(sourcedTrackProvider(track.query).notifier);
 
-    _ensurePlaybackRequestRelevant(requestedUri);
-    var resolvedTrack = await notifier.refreshStreamingUrl();
-    _ensurePlaybackRequestRelevant(requestedUri);
-    if (resolvedTrack.url != null) {
-      PlaybackStartTrace.markTrack(
-          track.query.id, 'server.resolve_playable.done');
-      return resolvedTrack;
-    }
+    Object? lastException;
+    for (var attempt = 1; attempt <= 3; attempt++) {
+      try {
+        _ensurePlaybackRequestRelevant(requestedUri);
+        var resolvedTrack = await notifier.refreshStreamingUrl();
+        _ensurePlaybackRequestRelevant(requestedUri);
+        if (resolvedTrack.url != null) {
+          PlaybackStartTrace.markTrack(
+              track.query.id, 'server.resolve_playable.done');
+          return resolvedTrack;
+        }
 
-    if (resolvedTrack.siblings.isEmpty) {
-      _ensurePlaybackRequestRelevant(requestedUri);
-      resolvedTrack = await notifier.copyWithSibling();
-      _ensurePlaybackRequestRelevant(requestedUri);
-      if (resolvedTrack.url != null) {
-        PlaybackStartTrace.markTrack(
-            track.query.id, 'server.resolve_playable.done');
-        return resolvedTrack;
-      }
-    }
+        if (resolvedTrack.siblings.isEmpty) {
+          _ensurePlaybackRequestRelevant(requestedUri);
+          resolvedTrack = await notifier.copyWithSibling();
+          _ensurePlaybackRequestRelevant(requestedUri);
+          if (resolvedTrack.url != null) {
+            PlaybackStartTrace.markTrack(
+                track.query.id, 'server.resolve_playable.done');
+            return resolvedTrack;
+          }
+        }
 
-    final triedTrackIds = <String>{resolvedTrack.info.id};
-    while (resolvedTrack.url == null) {
-      final nextSibling = resolvedTrack.siblings.firstWhereOrNull(
-        (sibling) => !triedTrackIds.contains(sibling.id),
-      );
-      if (nextSibling == null) {
-        break;
+        final triedTrackIds = <String>{resolvedTrack.info.id};
+        while (resolvedTrack.url == null) {
+          final nextSibling = resolvedTrack.siblings.firstWhereOrNull(
+            (sibling) => !triedTrackIds.contains(sibling.id),
+          );
+          if (nextSibling == null) {
+            break;
+          }
+          triedTrackIds.add(nextSibling.id);
+          _ensurePlaybackRequestRelevant(requestedUri);
+          PlaybackStartTrace.markTrack(
+            track.query.id,
+            'server.resolve_playable.try_sibling',
+            data: {'sourceId': nextSibling.id},
+          );
+          resolvedTrack = await notifier.swapWithSibling(nextSibling);
+          _ensurePlaybackRequestRelevant(requestedUri);
+          if (resolvedTrack.url != null) {
+            PlaybackStartTrace.markTrack(
+                track.query.id, 'server.resolve_playable.done');
+            return resolvedTrack;
+          }
+        }
+      } catch (e) {
+        lastException = e;
+        if (e is StateError &&
+            e.message.toString().startsWith("Stale playback request:")) {
+          rethrow;
+        }
       }
-      triedTrackIds.add(nextSibling.id);
-      _ensurePlaybackRequestRelevant(requestedUri);
-      PlaybackStartTrace.markTrack(
-        track.query.id,
-        'server.resolve_playable.try_sibling',
-        data: {'sourceId': nextSibling.id},
-      );
-      resolvedTrack = await notifier.swapWithSibling(nextSibling);
-      _ensurePlaybackRequestRelevant(requestedUri);
-      if (resolvedTrack.url != null) {
-        PlaybackStartTrace.markTrack(
-            track.query.id, 'server.resolve_playable.done');
-        return resolvedTrack;
+
+      if (attempt < 3) {
+        await Future.delayed(Duration(milliseconds: 200 * attempt));
       }
     }
 
@@ -371,7 +385,8 @@ class ServerPlaybackRoutes {
       track.query.id,
       'server.resolve_playable.failed_no_source',
     );
-    throw StateError("No playable source found for ${track.query.name}");
+    throw lastException ??
+        StateError("No playable source found for ${track.query.name}");
   }
 
   Future<dio_lib.Response> streamTrackInformation(

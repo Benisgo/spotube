@@ -1,19 +1,24 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:collection/collection.dart';
 import 'package:dio/dio.dart';
 import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart';
 import 'package:spotube/models/database/database.dart';
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/models/playback/track_sources.dart';
 import 'package:spotube/provider/database/database.dart';
 import 'package:spotube/provider/metadata_plugin/metadata_plugin_provider.dart';
+import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
 import 'package:spotube/services/dio/dio.dart';
+import 'package:spotube/services/logger/logger.dart';
 import 'package:spotube/services/logger/playback_start_trace.dart';
 import 'package:spotube/services/metadata/errors/exceptions.dart';
 
 import 'package:spotube/services/sourced_track/exceptions.dart';
+import 'package:spotube/utils/service_utils.dart';
 
 final officialMusicRegex = RegExp(
   r"official\s(video|audio|music\svideo|lyric\svideo|visualizer)",
@@ -409,7 +414,7 @@ class SourcedTrack extends BasicSourcedTrack {
           }
 
           if (!hasStrongArtistMatch) {
-            score -= 18;
+            score -= 45;
           } else if (normalizedArtistNames.any((artist) {
             return cleanedNormalizedTitle.startsWith('$artist ') ||
                 cleanedNormalizedTitle.contains(' $artist ');
@@ -444,9 +449,12 @@ class SourcedTrack extends BasicSourcedTrack {
             score += 10;
           }
 
-          if (youtubeMusicRegex.hasMatch(title) ||
-              siblingArtists
-                  .any((artist) => youtubeMusicRegex.hasMatch(artist))) {
+          // Topic bonus (+16) only applies if the candidate has an artist match.
+          // Generic "- Topic" channels of wrong artists must not receive this boost.
+          if (hasStrongArtistMatch &&
+              (youtubeMusicRegex.hasMatch(title) ||
+                  siblingArtists
+                      .any((artist) => youtubeMusicRegex.hasMatch(artist)))) {
             score += 16;
           }
           if (officialAudioRegex.hasMatch(title)) {
@@ -706,6 +714,29 @@ class SourcedTrack extends BasicSourcedTrack {
       info: newSourceInfo,
       query: query,
     );
+
+    if (sourcedTrack.url != null) {
+      _markValidated(sourcedTrack.url!);
+    }
+
+    try {
+      final cacheDir = await UserPreferencesNotifier.getMusicCacheDir();
+      final baseName = ServiceUtils.sanitizeFilename(
+        '${query.name} - ${query.artists.map((d) => d.name).join(",")}',
+      );
+      final dir = Directory(cacheDir);
+      if (await dir.exists()) {
+        final entries = await dir.list().toList();
+        for (final entry in entries) {
+          if (entry is File &&
+              basenameWithoutExtension(entry.path).startsWith(baseName)) {
+            await entry.delete();
+          }
+        }
+      }
+    } catch (e, stack) {
+      AppLogger.reportError(e, stack);
+    }
 
     _resolvedFetches[query.id] = sourcedTrack;
     PlaybackStartTrace.markTrack(query.id, 'sourced_track.swap_sibling.done');

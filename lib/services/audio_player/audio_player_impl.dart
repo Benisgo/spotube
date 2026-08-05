@@ -76,8 +76,12 @@ class SpotubeAudioPlayer extends AudioPlayerInterface
   /// Volume is between 0 and 1
   Future<void> setVolume(double volume) async {
     assert(volume >= 0 && volume <= 1);
+    _volumeInitialized = true;
     final previousTargetVolume = _targetVolume <= 0 ? 1.0 : _targetVolume;
     _targetVolume = volume;
+    try {
+      await KVStoreService.setVolume(volume);
+    } catch (_) {}
 
     if (isCrossfading) {
       final activeRatio =
@@ -151,6 +155,7 @@ class SpotubeAudioPlayer extends AudioPlayerInterface
         safeInitialIndex,
         play: autoPlay,
       );
+      _initVolumeFromStoreIfNeeded();
       await _primaryPlayer.setVolume(_targetVolume * 100);
       await _primaryPlayer.reapplyNormalizationIfNeeded();
       if (kIsWindows && autoPlay) {

@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:media_kit/media_kit.dart' hide Track;
 import 'package:media_kit/media_kit.dart' as mk;
 import 'package:spotube/models/metadata/metadata.dart';
+import 'package:spotube/services/kv_store/kv_store.dart';
 import 'package:spotube/services/logger/logger.dart';
 import 'package:spotube/services/audio_player/custom_player.dart';
 import 'package:spotube/services/audio_player/playback_state.dart';
@@ -134,6 +135,15 @@ abstract class AudioPlayerInterface {
   bool _isShuffled = false;
   PlaylistMode _loopMode = PlaylistMode.none;
   double _targetVolume = 1.0;
+  bool _volumeInitialized = false;
+
+  void _initVolumeFromStoreIfNeeded() {
+    if (_volumeInitialized) return;
+    try {
+      _targetVolume = KVStoreService.volume;
+      _volumeInitialized = true;
+    } catch (_) {}
+  }
   bool _primaryPlayerActive = true;
   bool _isCrossfading = false;
   bool _crossfadePreloadEnabled = false;

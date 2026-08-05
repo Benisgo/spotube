@@ -6,7 +6,6 @@ import 'package:spotube/collections/routes.dart';
 import 'package:spotube/collections/spotube_icons.dart';
 import 'package:spotube/components/dialogs/track_preview_dialog.dart';
 import 'package:spotube/components/ui/button_tile.dart';
-import 'package:spotube/extensions/constrains.dart';
 import 'package:spotube/extensions/context.dart';
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/models/multi_session/multi_session.dart';
@@ -35,8 +34,6 @@ class TrackOptions extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, ref) {
-    final mediaQuery = MediaQuery.of(context);
-
     final trackOptionActions = ref.watch(trackOptionActionsProvider(track));
     final (
       :isBlacklisted,
@@ -79,7 +76,7 @@ class TrackOptions extends HookConsumerWidget {
             leading: const Icon(SpotubeIcons.trash),
             title: Text(context.l10n.delete),
           ),
-        if (mediaQuery.smAndDown && !isLocalTrack)
+        if (!isLocalTrack)
           ButtonTile(
             style: ButtonVariance.menu,
             onPressed: () async {

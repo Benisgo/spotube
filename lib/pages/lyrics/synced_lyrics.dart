@@ -5,13 +5,15 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 import 'package:spotube/collections/spotube_icons.dart';
-import 'package:spotube/models/metadata/metadata.dart';
-import 'package:spotube/modules/lyrics/lyrics_character_edge.dart';
-import 'package:spotube/modules/lyrics/zoom_controls.dart';
 import 'package:spotube/components/shimmers/shimmer_lyrics.dart';
+import 'package:spotube/components/ui/button_tile.dart';
 import 'package:spotube/extensions/constrains.dart';
 import 'package:spotube/extensions/context.dart';
 import 'package:spotube/hooks/controllers/use_auto_scroll_controller.dart';
+import 'package:spotube/models/lyrics.dart';
+import 'package:spotube/models/metadata/metadata.dart';
+import 'package:spotube/modules/lyrics/lyrics_character_edge.dart';
+import 'package:spotube/modules/lyrics/zoom_controls.dart';
 import 'package:spotube/modules/lyrics/use_synced_lyrics.dart';
 import 'package:scroll_to_index/scroll_to_index.dart';
 import 'package:spotube/provider/audio_player/audio_player.dart';
@@ -249,6 +251,88 @@ class SyncedLyrics extends HookConsumerWidget {
             alignment: Alignment.bottomRight,
             child: Builder(builder: (context) {
               final actions = [
+                IconButton.outline(
+                  icon: const Icon(SpotubeIcons.search),
+                  onPressed: playlist.activeTrack == null
+                      ? null
+                      : () async {
+                          final track = playlist.activeTrack!;
+                          showDialog(
+                            context: context,
+                            builder: (dialogContext) {
+                              return FutureBuilder<List<SubtitleSimple>>(
+                                future: SyncedLyricsNotifier.searchLRCLibCandidates(track),
+                                builder: (context, snapshot) {
+                                  if (snapshot.connectionState == ConnectionState.waiting) {
+                                    return const AlertDialog(
+                                      title: Text("Searching lyrics..."),
+                                      content: SizedBox(
+                                        height: 100,
+                                        child: Center(child: CircularProgressIndicator()),
+                                      ),
+                                    );
+                                  }
+
+                                  final candidates = snapshot.data ?? [];
+                                  if (candidates.isEmpty) {
+                                    return AlertDialog(
+                                      title: const Text("Alternative Lyrics"),
+                                      content: const Text("No alternative lyrics found on LRCLib."),
+                                      actions: [
+                                        Button(
+                                          style: ButtonVariance.secondary,
+                                          child: const Text("Close"),
+                                          onPressed: () => Navigator.of(dialogContext).pop(),
+                                        ),
+                                      ],
+                                    );
+                                  }
+
+                                  return AlertDialog(
+                                    title: const Text("Select Lyrics Source"),
+                                    content: SizedBox(
+                                      width: 400,
+                                      height: 300,
+                                      child: ListView.builder(
+                                        shrinkWrap: true,
+                                        itemCount: candidates.length,
+                                        itemBuilder: (context, index) {
+                                          final item = candidates[index];
+                                          final isSynced = item.lyrics.any((l) => l.time > Duration.zero);
+                                          return ButtonTile(
+                                            title: Text(item.name),
+                                            subtitle: Text(
+                                              "${item.provider} • ${isSynced ? 'Synced' : 'Plain'}",
+                                            ),
+                                            trailing: isSynced
+                                                ? const Icon(SpotubeIcons.done, color: Colors.green)
+                                                : null,
+                                            onPressed: () async {
+                                              await ref
+                                                  .read(syncedLyricsProvider(track).notifier)
+                                                  .updateSelectedLyrics(item);
+                                              if (dialogContext.mounted) {
+                                                Navigator.of(dialogContext).pop();
+                                              }
+                                            },
+                                          );
+                                        },
+                                      ),
+                                    ),
+                                    actions: [
+                                      Button(
+                                        style: ButtonVariance.secondary,
+                                        child: const Text("Cancel"),
+                                        onPressed: () => Navigator.of(dialogContext).pop(),
+                                      ),
+                                    ],
+                                  );
+                                },
+                              );
+                            },
+                          );
+                        },
+                ),
                 ZoomControls(
                   value: delay,
                   onChanged: (value) =>

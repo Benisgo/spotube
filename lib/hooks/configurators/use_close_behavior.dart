@@ -41,7 +41,7 @@ void useCloseBehavior(WidgetRef ref) {
       await disposeAudioPlayerForClose();
       await windowManager.setPreventClose(false);
       await windowManager.destroy();
-      return;
+      exit(0);
     }
 
     exit(0);

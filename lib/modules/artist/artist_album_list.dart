@@ -1,5 +1,6 @@
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
+import 'package:shadcn_flutter/shadcn_flutter_extension.dart';
 import 'package:spotube/components/horizontal_playbutton_card_view/horizontal_playbutton_card_view.dart';
 import 'package:spotube/extensions/context.dart';
 import 'package:spotube/models/metadata/metadata.dart';
@@ -23,6 +24,25 @@ class ArtistAlbumList extends HookConsumerWidget {
     final albums = albumsQuery.asData?.value.items ?? [];
 
     final theme = Theme.of(context);
+
+    // The artist genuinely has no albums: show a clear empty state instead of
+    // the placeholder skeleton cards the view renders when items is empty.
+    if (albumsQuery.hasValue && albums.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              context.l10n.albums,
+              style: theme.typography.h4,
+            ),
+            const SizedBox(height: 8),
+            Text(context.l10n.nothing_found).muted().small(),
+          ],
+        ),
+      );
+    }
 
     return HorizontalPlaybuttonCardView<SpotubeSimpleAlbumObject>(
       isLoadingNextPage: albumsQuery.isLoadingNextPage,

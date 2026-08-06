@@ -87,6 +87,21 @@ double _overlapRatio(Set<String> left, Set<String> right) {
   return left.intersection(right).length / left.union(right).length;
 }
 
+/// One entry of the cached music cache-directory listing. `name` is the
+/// pre-lowercased basename so per-row matching never re-runs basename()/
+/// toLowerCase() for every file.
+typedef _CacheEntry = ({String path, int length, String name});
+
+/// Per-query values hoisted out of the per-file loop in
+/// _isMatchingCachedFile so a scrolling row only sanitizes its own query
+/// once instead of once per cached file.
+typedef _CacheQuery = ({
+  String trackId,
+  String sanitizedName,
+  String baseName,
+  List<String> artistNames,
+});
+
 class SourcedTrack extends BasicSourcedTrack {
   static const _validatedStreamTtl = Duration(minutes: 10);
   static const _refreshCooldown = Duration(seconds: 20);
@@ -119,13 +134,14 @@ class SourcedTrack extends BasicSourcedTrack {
   /// track list calls findLocalCachedFile once per visible row, which listed
   /// and stat()ed the ENTIRE cache directory each time — synchronous disk I/O
   /// on the UI thread that caused scroll jank on large caches. Now the
-  /// listing + length stat happens once per refresh; row matching is pure
-  /// in-memory string comparison.
-  static List<({String path, int length})>? _cachedCacheFiles;
+  /// listing + length stat happens once per refresh; row matching is a pure
+  /// in-memory scan of pre-lowercased filenames with all per-query
+  /// sanitization hoisted out of the per-file loop.
+  static List<_CacheEntry>? _cachedCacheFiles;
   static DateTime? _cachedCacheFilesAt;
   static const _dirListingTtl = Duration(seconds: 10);
 
-  static Future<List<({String path, int length})>> _cacheFiles() async {
+  static Future<List<_CacheEntry>> _cacheFiles() async {
     final cached = _cachedCacheFiles;
     final at = _cachedCacheFilesAt;
     if (cached != null &&
@@ -142,7 +158,7 @@ class SourcedTrack extends BasicSourcedTrack {
         return const [];
       }
       final entries = await dir.list().toList();
-      final result = <({String path, int length})>[];
+      final result = <_CacheEntry>[];
       for (final e in entries) {
         if (e is! File) continue;
         try {
@@ -152,7 +168,7 @@ class SourcedTrack extends BasicSourcedTrack {
             e.deleteSync();
             continue;
           }
-          result.add((path: e.path, length: len));
+          result.add((path: e.path, length: len, name: basename(e.path).toLowerCase()));
         } catch (_) {
           continue;
         }
@@ -257,32 +273,31 @@ class SourcedTrack extends BasicSourcedTrack {
     }
   }
 
-  static bool _isMatchingCachedFile(
-    String path,
-    int length,
-    SpotubeFullTrackObject query,
-  ) {
-    final fileName = basename(path).toLowerCase();
+  static _CacheQuery _cacheQuery(SpotubeFullTrackObject query) {
+    final artists = query.artists.map((d) => d.name).toList();
+    return (
+      trackId: query.id.toLowerCase(),
+      sanitizedName: ServiceUtils.sanitizeFilename(query.name).toLowerCase(),
+      baseName: ServiceUtils.sanitizeFilename(
+        '${query.name} - ${artists.join(",")}',
+      ).toLowerCase(),
+      artistNames: artists
+          .map((d) => d.toLowerCase())
+          .where((a) => a.length >= 2)
+          .toList(),
+    );
+  }
+
+  static bool _isMatchingCachedFile(_CacheEntry entry, _CacheQuery q) {
+    final fileName = entry.name;
     if (fileName.endsWith('.part')) return false;
-    if (length < 10240) return false;
+    if (entry.length < 10240) return false;
 
-    final trackId = query.id.toLowerCase();
-    if (fileName.contains(trackId)) return true;
+    if (fileName.contains(q.trackId)) return true;
+    if (fileName.startsWith(q.baseName)) return true;
 
-    final sanitizedName =
-        ServiceUtils.sanitizeFilename(query.name).toLowerCase();
-    final baseName = ServiceUtils.sanitizeFilename(
-      '${query.name} - ${query.artists.map((d) => d.name).join(",")}',
-    ).toLowerCase();
-
-    if (fileName.startsWith(baseName)) return true;
-
-    final artistNames = query.artists
-        .map((d) => d.name.toLowerCase())
-        .where((a) => a.length >= 2)
-        .toList();
-    if (sanitizedName.length >= 3 && fileName.contains(sanitizedName)) {
-      if (artistNames.isEmpty || artistNames.any((a) => fileName.contains(a))) {
+    if (q.sanitizedName.length >= 3 && fileName.contains(q.sanitizedName)) {
+      if (q.artistNames.isEmpty || q.artistNames.any(fileName.contains)) {
         return true;
       }
     }
@@ -296,6 +311,7 @@ class SourcedTrack extends BasicSourcedTrack {
       final dir = Directory(cacheDir);
       if (!dir.existsSync()) return null;
 
+      final q = _cacheQuery(query);
       final entries = dir.listSync();
       for (final entry in entries) {
         if (entry is! File) continue;
@@ -309,7 +325,8 @@ class SourcedTrack extends BasicSourcedTrack {
         } catch (_) {
           continue;
         }
-        if (_isMatchingCachedFile(entry.path, length, query)) {
+        final name = basename(entry.path).toLowerCase();
+        if (_isMatchingCachedFile((path: entry.path, length: length, name: name), q)) {
           return entry;
         }
       }
@@ -320,8 +337,9 @@ class SourcedTrack extends BasicSourcedTrack {
   static Future<File?> findLocalCachedFile(SpotubeFullTrackObject query) async {
     try {
       final files = await _cacheFiles();
+      final q = _cacheQuery(query);
       for (final entry in files) {
-        if (_isMatchingCachedFile(entry.path, entry.length, query)) {
+        if (_isMatchingCachedFile(entry, q)) {
           return File(entry.path);
         }
       }

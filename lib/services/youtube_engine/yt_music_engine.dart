@@ -257,6 +257,42 @@ class _YtMusicClient {
   static const _ytCookiePrefsKey =
       'spotube_plugin.youtube-audio.yt_cookie_header';
 
+  /// Ensure we have at least anonymous visitor cookies for the CDN. The
+  /// ANDROID player response often sets none, yet googlevideo requires a
+  /// cookie to serve actual media (1-byte probes pass without one). Flow gets
+  /// these from YouTube the same way — we fetch them from youtube.com.
+  static Future<void> _ensureStreamCookies() async {
+    if (_cookies.isNotEmpty) return;
+    try {
+      final resp = await _http.get(
+        Uri.parse("https://www.youtube.com/"),
+        headers: {
+          "User-Agent": _clientUAs["IOS"]!,
+          "Accept-Language": "en-US,en;q=0.5",
+        },
+      ).timeout(const Duration(seconds: 8));
+      final setCookie = resp.headers["set-cookie"];
+      if (setCookie != null && setCookie.isNotEmpty) {
+        final allCookies = setCookie
+            .split("\n")
+            .map((c) {
+              final trimmed = c.trim();
+              final semi = trimmed.indexOf(";");
+              return semi > 0 ? trimmed.substring(0, semi).trim() : trimmed;
+            })
+            .where((c) => c.isNotEmpty)
+            .toList();
+        if (allCookies.isNotEmpty) {
+          _cookies = allCookies.join("; ");
+          AppLogger.log
+              .i("[yt_music] captured visitor cookies (${allCookies.length})");
+        }
+      }
+    } catch (e) {
+      AppLogger.log.w("[yt_music] failed to fetch visitor cookies: $e");
+    }
+  }
+
   /// Load persisted cookies from the YouTube plugin's LocalStorage
   /// (SharedPreferences) into _cookies.
   static Future<void> loadPersistedCookies() async {
@@ -343,7 +379,10 @@ class _YtMusicClient {
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.5 Safari/605.1.15,gzip(gfe)",
   };
 
-  /// Returns matching UA + cookies for a googlevideo URL.
+  /// Returns matching UA + cookies for a googlevideo URL. Mirrors Flow's
+  /// native fetch: the client UA + cookies, but NO browser `origin`/`referer`
+  /// headers — googlevideo rejects those on ANDROID-signed URLs as a client
+  /// mismatch (this was the source of the audio-only 403s).
   static Map<String, String>? headersForStreamUrl(String url) {
     if (!url.contains("googlevideo.com")) return null;
     final ua = _lastUA.isNotEmpty ? _lastUA : _clientUAs["IOS"]!;
@@ -351,8 +390,6 @@ class _YtMusicClient {
       "user-agent": ua,
       "accept": "*/*",
       "accept-language": "en-US,en;q=0.5",
-      "origin": "https://www.youtube.com",
-      "referer": "https://www.youtube.com/",
     };
     if (_cookies.isNotEmpty) headers["cookie"] = _cookies;
     return headers;
@@ -685,6 +722,12 @@ class YtMusicEngine implements YouTubeEngine {
 
   Future<List<AudioOnlyStreamInfo>> _toAudioOnlyStreams(
       Map<String, dynamic> data, String videoId) async {
+    // googlevideo serves 1-byte validation probes without a cookie but 403s
+    // requests that return actual media content unless a session cookie is
+    // sent (some regions, e.g. gcr=eg, enforce this). Flow works because it
+    // carries the anonymous visitor cookie — ensure we have one too.
+    await _YtMusicClient._ensureStreamCookies();
+
     final result = <AudioOnlyStreamInfo>[];
     final adaptiveFormats = data["adaptiveFormats"] as List? ?? [];
     final formats = data["formats"] as List? ?? [];
@@ -773,33 +816,40 @@ class YtMusicEngine implements YouTubeEngine {
 
         url = await _NsigDecoder.applyToUrl(url);
 
-        // Quick HEAD verify — ciphered URLs need full 2s for sig decode.
-        // HEAD is UNRELIABLE for googlevideo URLs: it frequently returns 403
-        // for streams that serve fine on GET, and can pass for streams that
-        // then die mid-transfer. So a HEAD 403 must NOT discard the stream —
-        // keep it and let the shelf proxy attempt the real GET (it retries
-        // and falls back). Dropping the audio-only stream on HEAD 403 here
-        // is why some tracks only got a video mux (which then failed to
-        // stream) instead of the working audio-only stream.
-        final hadCipher =
-            f.containsKey("signatureCipher") || f.containsKey("cipher");
-        try {
-          final headResp = await _YtMusicClient._http
-              .head(Uri.parse(url))
-              .timeout(Duration(seconds: hadCipher ? 3 : 2));
-          if (headResp.statusCode == 403 && i < 20) {
-            AppLogger.log.i(
-                "[yt_music] verify_403_kept[$i] videoId=$videoId (HEAD 403 != GET failure; keeping stream)");
-          }
-        } catch (_) {
-          // Do NOT drop stream URLs on HEAD timeout/network flutter —
-          // let shelf proxy attempt the GET request directly.
-        }
-
-        // Store cookies + browser headers for the proxy to use
+        // Store cookies + browser headers for the proxy to use.
         final h = _YtMusicClient.headersForStreamUrl(url);
         if (h != null) {
+          // Store under both the raw url and Uri.toString() so the proxy's
+          // lookup (by activeTrack.url == Uri.toString()) always finds the
+          // native-client headers instead of falling back to a Chrome UA —
+          // a Chrome UA on an ANDROID-signed URL is what the CDN 403s.
           AndroidYtDlpEngine.setHeadersForUrl(url, h);
+          AndroidYtDlpEngine.setHeadersForUrl(Uri.parse(url).toString(), h);
+        }
+
+        // Verify with a ranged GET using the same headers the shelf proxy
+        // will send. HEAD is UNRELIABLE for googlevideo: youtube_explode's
+        // client sends a desktop Chrome UA, which 403s ANDROID-signed URLs
+        // even when the URL is perfectly fine on a real GET. So probe the
+        // actual GET path instead: an explicit 403 → drop this stream so
+        // pass 2 can fall back to a working video mux; timeout/network
+        // flutter → keep it, the proxy will retry and fall back itself.
+        try {
+          final probe = await _YtMusicClient._http.get(
+            Uri.parse(url),
+            headers: {...?h, 'Range': 'bytes=0-0'},
+          ).timeout(const Duration(seconds: 4));
+          AppLogger.log.i(
+              "[yt_music] probe[$i] videoId=$videoId itag=${f["itag"]} status=${probe.statusCode} hasCookie=${(h?.containsKey("cookie") ?? false)} rawUrl=$url");
+          if (probe.statusCode == 403) {
+            AppLogger.log.i(
+                "[yt_music] verify_403_drop[$i] videoId=$videoId itag=${f["itag"]} (GET 403; audio URL rejected — falling back to mux)");
+            continue;
+          }
+        } catch (e) {
+          AppLogger.log.i(
+              "[yt_music] probe_fail[$i] videoId=$videoId itag=${f["itag"]} error=$e rawUrl=$url");
+          // Timeout/network — keep the stream; the shelf proxy will retry.
         }
 
         result.add(AudioOnlyStreamInfo(

@@ -5,6 +5,7 @@ import 'package:collection/collection.dart';
 import 'package:dio/dio.dart' hide Response;
 import 'package:dio/dio.dart' as dio_lib;
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:metadata_god/metadata_god.dart';
 import 'package:path/path.dart';
@@ -19,6 +20,7 @@ import 'package:spotube/provider/server/sourced_track_provider.dart';
 import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
 import 'package:spotube/services/audio_player/audio_player.dart';
 import 'package:spotube/services/youtube_engine/youtube_explode_engine.dart';
+import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 import 'package:spotube/services/logger/logger.dart';
 import 'package:spotube/services/youtube_engine/android_yt_dlp_engine.dart';
 import 'package:spotube/services/logger/playback_start_trace.dart';
@@ -37,6 +39,12 @@ class ServerPlaybackRoutes {
   final Map<String, int> _upstreamAttemptCounts = {};
   final Map<String, Future<SourcedTrack?>> _inFlightTrackLookups = {};
 
+  /// Dedicated dart:io HttpClient (via package:http) for googlevideo CDN
+  /// fetches. The engine's verification probe uses the exact same stack and
+  /// returns 200 on these ANDROID-signed URLs, while Dio returns 403 even
+  /// with identical headers — so we fetch what we already proved works.
+  final http.Client _upstreamHttpClient = http.Client();
+
   ServerPlaybackRoutes(this.ref)
       : dio = Dio(
           BaseOptions(
@@ -48,6 +56,80 @@ class ServerPlaybackRoutes {
 
   String _memoryLabel() =>
       "${(ProcessInfo.currentRss / (1024 * 1024)).toStringAsFixed(1)}MB";
+
+  /// Total file length from a googlevideo URL's `clen` query param, or null.
+  static int? _gvContentLength(String url) {
+    try {
+      final clen = Uri.parse(url).queryParameters['clen'];
+      if (clen == null) return null;
+      return int.tryParse(clen);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Match the fetching User-Agent to the `c=` query param of the
+  /// googlevideo URL (the client that minted it). Flow: "a mismatch is a
+  /// known cause of mid-stream 403s on googlevideo CDNs."
+  static String _gvUserAgent(String url) {
+    final c = Uri.tryParse(url)?.queryParameters['c']?.toUpperCase();
+    switch (c) {
+      case 'IOS':
+        return 'com.google.ios.youtube/21.03.3 (iPad7,6; U; CPU iPadOS 17_7_10 like Mac OS X; en-US)';
+      case 'ANDROID' || 'ANDROID_CREATOR':
+        return 'com.google.android.youtube/21.03.38 (Linux; U; Android 14) gzip';
+      case 'ANDROID_VR':
+        return 'com.google.android.apps.youtube.vr.oculus/1.61.48 (Linux; U; Android 12; en_US; Quest 3; Build/SQ3A.220605.009.A1; Cronet/132.0.6808.3)';
+      case 'WEB' ||
+            'MWEB' ||
+            'WEB_REMIX' ||
+            'TVHTML5' ||
+            'TVHTML5_SIMPLY_EMBEDDED_PLAYER':
+        return 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.6367.83 Mobile Safari/537.36';
+      default:
+        return 'com.google.android.youtube/20.10.38 (Linux; U; Android 11) gzip';
+    }
+  }
+
+  /// Parse a "bytes=A-B" range header into (start, end?) — a null end means
+  /// open-ended. Returns null for anything else.
+  static ({int start, int? end})? _parseBytesRange(String? range) {
+    if (range == null || range.isEmpty) return null;
+    final m = RegExp(r'^bytes=(\d+)-(\d*)$').firstMatch(range);
+    if (m == null) return null;
+    final start = int.parse(m.group(1)!);
+    final endStr = m.group(2)!;
+    return (start: start, end: endStr.isEmpty ? null : int.parse(endStr));
+  }
+
+  /// googlevideo applies byte ranges via a `range=X-Y` QUERY PARAM (Flow's
+  /// approach), NOT the HTTP Range header — non-zero HTTP ranges 403 without
+  /// a logged-in session in some regions (gcr=eg), while query-param ranges
+  /// are served to anonymous clients everywhere. The URL may already carry an
+  /// embedded `range=0-N` cap from the extractor, so strip it and append the
+  /// requested range (bounded to the stream length when known).
+  static String _rewriteGvRangeQuery(String url, String? rangeHeader,
+      {int? total}) {
+    try {
+      final uri = Uri.parse(url);
+      final all = uri.queryParametersAll;
+      final params = <String, dynamic>{};
+      all.forEach((k, v) {
+        if (k == 'range') return;
+        params[k] = v.length == 1 ? v.first : v;
+      });
+      final parsed = _parseBytesRange(rangeHeader);
+      if (parsed != null) {
+        var end = parsed.end;
+        if (end == null && total != null && total > 0) end = total - 1;
+        params['range'] =
+            end == null ? '${parsed.start}-' : '${parsed.start}-$end';
+      }
+      return uri.replace(queryParameters: params).toString();
+    } catch (_) {
+      return url;
+    }
+  }
 
   void _trace(String message) {
     if (!kReleaseMode) return;
@@ -634,19 +716,43 @@ class ServerPlaybackRoutes {
         final h = AndroidYtDlpEngine.headersForUrl(url);
         if (h != null && h.isNotEmpty) return h;
       } catch (_) {}
+      // Flow-like fallback: the native Android client UA, never a browser
+      // Chrome UA — googlevideo URLs are signed for the client that resolved
+      // them, and a Chrome UA on an ANDROID-signed URL is rejected (403).
       return {
         "user-agent":
-            "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.6367.83 Mobile Safari/537.36",
+            "com.google.android.youtube/20.10.38 (Linux; U; Android 11) gzip",
         "accept": "*/*",
         "accept-language": "en-US,en;q=0.5",
-        "origin": "https://www.youtube.com",
       };
     }
 
     Options optionsFor(String sourceUrl) {
+      // For the YouTube CDN, replicate Flow's exact strategy: the fetching
+      // UA must match the `c=` param that minted the URL, and byte ranges go
+      // through the `range=X-Y` QUERY PARAM (not the HTTP Range header),
+      // which googlevideo serves to anonymous clients in every region. No
+      // Range header is sent at all — the range is baked into the URL by
+      // fetchStream via _rewriteGvRangeQuery.
+      if (sourceUrl.contains("googlevideo.com")) {
+        final h = ytDlpOrFallbackHeaders(sourceUrl);
+        h.remove('range');
+        h.remove('Range');
+        h["user-agent"] = _gvUserAgent(sourceUrl);
+        h["Origin"] = "https://www.youtube.com";
+        h["Referer"] = "https://www.youtube.com/";
+        h["Accept"] = "*/*";
+        h["accept-encoding"] = "identity";
+        return Options(
+          headers: h,
+          responseType: ResponseType.stream,
+          validateStatus: (_) => true,
+        );
+      }
+
+      // Non-YouTube upstream: keep previous behavior.
       final h = Map<String, String>.from(headers);
       h.addAll(ytDlpOrFallbackHeaders(sourceUrl));
-      h["referer"] = "https://www.youtube.com/";
       h["accept-encoding"] = "identity";
       h.remove("host");
       h.remove("Host");
@@ -657,7 +763,7 @@ class ServerPlaybackRoutes {
       );
     }
 
-    Future<dio_lib.Response<ResponseBody>> fetchStream(String sourceUrl) {
+    Future<dio_lib.Response<ResponseBody>> fetchStream(String sourceUrl) async {
       final attemptCount = (_upstreamAttemptCounts[requestedUri] =
           (_upstreamAttemptCounts[requestedUri] ?? 0) + 1);
       _trace(
@@ -666,6 +772,94 @@ class ServerPlaybackRoutes {
       _critical(
         "start upstream uri=$requestedUri track=${activeTrack.query.id} attempt=$attemptCount host=${Uri.parse(sourceUrl).host}",
       );
+
+      // googlevideo: use the same dart:io HttpClient stack as the engine's
+      // verification probe (which returns 200 on these ANDROID-signed URLs).
+      // Dio was returning 403 on identical headers, so we fetch with what we
+      // proved works and wrap it as a Dio-compatible response so the retry /
+      // fallback / cache pipeline below is unchanged.
+      if (sourceUrl.contains("googlevideo.com")) {
+        // Byte ranges go through the `range=X-Y` QUERY PARAM (Flow's
+        // approach), not the HTTP Range header — googlevideo serves
+        // query-param ranges to anonymous clients in every region, while
+        // non-zero HTTP ranges 403 without a logged-in session (gcr=eg).
+        final total = _gvContentLength(sourceUrl);
+        final upstreamUrl = _rewriteGvRangeQuery(
+          sourceUrl,
+          headers["range"] ?? headers["Range"],
+          total: total,
+        );
+        final opts = optionsFor(sourceUrl);
+        final req = http.Request("GET", Uri.parse(upstreamUrl));
+        opts.headers?.forEach((k, v) => req.headers[k] = v);
+
+        try {
+          final streamed = await _upstreamHttpClient
+              .send(req)
+              .timeout(const Duration(seconds: 30));
+          AppLogger.log.i(
+              "[playback] upstream_gv uri=$requestedUri status=${streamed.statusCode} "
+              "hasCookie=${req.headers.containsKey('cookie') || req.headers.containsKey('Cookie')} "
+              "ua=${req.headers['user-agent']} url=$upstreamUrl");
+          // http.ByteStream yields List<int>; dio's ResponseBody needs
+          // Stream<Uint8List>. package:http chunks are already Uint8List, so
+          // this is a near-zero-cost cast.
+          final bodyStream = streamed.stream.map((chunk) =>
+              chunk is Uint8List ? chunk : Uint8List.fromList(chunk));
+          // If the track changed mid-flight, discard the body to free the
+          // connection; the stale handler will be rejected downstream.
+          if (cancelToken.isCancelled) {
+            await streamed.stream.drain<void>();
+          }
+
+          // googlevideo answers query-param ranges with HTTP 200 (body =
+          // exactly the requested bytes). Normalize to 206 + Content-Range so
+          // MPV (which requested a byte range) and the disk cache see a
+          // well-formed partial response.
+          final responseHeaders = <String, List<String>>{};
+          streamed.headers.forEach((k, v) => responseHeaders[k] = [v]);
+          var statusCode = streamed.statusCode;
+          var statusMessage = streamed.reasonPhrase;
+          if (total != null &&
+              total > 0 &&
+              (streamed.statusCode == 200 || streamed.statusCode == 206)) {
+            final parsed =
+                _parseBytesRange(headers["range"] ?? headers["Range"]) ??
+                    (start: 0, end: null);
+            final start = parsed.start;
+            var end = parsed.end;
+            if (end == null || end >= total) end = total - 1;
+            if (end < start) end = start;
+            responseHeaders
+              ..['content-range'] = ['bytes $start-$end/$total']
+              ..['content-length'] = ['${end - start + 1}']
+              ..['accept-ranges'] = ['bytes'];
+            statusCode = 206;
+            statusMessage = "Partial Content";
+          }
+
+          return dio_lib.Response<ResponseBody>(
+            statusCode: statusCode,
+            statusMessage: statusMessage,
+            headers: Headers.fromMap(responseHeaders),
+            data: ResponseBody(
+              bodyStream,
+              statusCode,
+              statusMessage: statusMessage,
+              isRedirect: streamed.isRedirect,
+              headers: responseHeaders,
+            ),
+            requestOptions: RequestOptions(path: upstreamUrl),
+            isRedirect: streamed.isRedirect,
+          );
+        } catch (e) {
+          if (cancelToken.isCancelled) {
+            rethrow;
+          }
+          rethrow;
+        }
+      }
+
       return dio.get<ResponseBody>(
         sourceUrl,
         options: optionsFor(sourceUrl),
@@ -697,6 +891,13 @@ class ServerPlaybackRoutes {
 
         if (tempRes.statusCode == 200 || tempRes.statusCode == 206) {
           break; // Success!
+        }
+        if (tempRes.statusCode == 403) {
+          // googlevideo rejects non-zero-offset ranges on audio-only streams
+          // without a logged-in session in some regions (gcr=eg). Retrying
+          // more audio-only siblings will fail the same way — bail to the
+          // mux fallback instead of burning seconds on futile re-resolves.
+          break;
         }
       } catch (e, stack) {
         if (e is DioException) {
@@ -775,19 +976,32 @@ class ServerPlaybackRoutes {
       } catch (_) {}
 
       if (!fallbackSuccess) {
+        final fallbackYt = YoutubeExplode();
         try {
-          final fallbackEngine = YouTubeExplodeEngine();
-          final manifest =
-              await fallbackEngine.getStreamManifest(activeTrack.info.id);
-          if (manifest.audioOnly.isNotEmpty) {
-            final fallbackStreams = manifest.audioOnly.toList();
-            fallbackStreams.sort((a, b) =>
+          final manifest = await fallbackYt.videos.streamsClient
+              .getManifest(activeTrack.info.id);
+          // Prefer audio-only (small), but googlevideo 403s non-zero-offset
+          // ranges on audio-only without a logged-in session in some regions
+          // (gcr=eg). Include the muxed (video+audio) streams as a reliable
+          // fallback — they stream and seek fine regardless of login.
+          final audioCandidates = manifest.audioOnly.toList()
+            ..sort((a, b) =>
                 b.bitrate.bitsPerSecond.compareTo(a.bitrate.bitsPerSecond));
-            url = fallbackStreams.first.url.toString();
+          final muxCandidates = manifest.muxed.toList()
+            ..sort((a, b) =>
+                b.bitrate.bitsPerSecond.compareTo(a.bitrate.bitsPerSecond));
+          for (final candidate in [...audioCandidates, ...muxCandidates]) {
+            url = candidate.url.toString();
             tempRes = await fetchStream(url);
             if (tempRes.statusCode == 200 || tempRes.statusCode == 206) {
+              _trace(
+                "fallback ok for ${activeTrack.query.id} "
+                "itag=${candidate.tag} status=${tempRes.statusCode} "
+                "size=${candidate.size.totalBytes}B",
+              );
               _clearStreamFailure(activeTrack);
               fallbackSuccess = true;
+              break;
             }
           }
         } catch (fallbackError, fallbackStack) {
@@ -796,6 +1010,8 @@ class ServerPlaybackRoutes {
             rethrow;
           }
           AppLogger.reportError(fallbackError, fallbackStack);
+        } finally {
+          fallbackYt.close();
         }
       }
 

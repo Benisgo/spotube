@@ -966,7 +966,12 @@ class ServerPlaybackRoutes {
 
     if (tempRes == null ||
         (tempRes.statusCode != 200 && tempRes.statusCode != 206)) {
-      _markStreamFailure(activeTrack);
+      // NOTE: do NOT mark the track as a playback failure here. In gcr=eg
+      // regions googlevideo 403s audio-only URLs (region content-lock) even
+      // though the mux fallback below plays fine. Marking failure here put
+      // the track in an 8s cooldown, so tapping it again within that window
+      // instantly threw "Recent playback failure" and skipped the track —
+      // before the working mux fallback / disk cache could serve it.
       SourcedTrack.invalidate(activeTrack.query.id);
 
       bool fallbackSuccess = false;
@@ -1027,6 +1032,9 @@ class ServerPlaybackRoutes {
       }
 
       if (!fallbackSuccess) {
+        // Only mark a recent failure when EVERYTHING failed (including the
+        // mux fallback) — that's a truly dead stream worth cooling down.
+        _markStreamFailure(activeTrack);
         throw StateError(
             "Stream ${activeTrack.query.id} returned ${tempRes?.statusCode} after retrying all siblings");
       }

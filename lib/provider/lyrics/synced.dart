@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:drift/drift.dart';
@@ -11,6 +12,7 @@ import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/provider/database/database.dart';
 import 'package:spotube/services/dio/dio.dart';
 import 'package:spotube/services/logger/logger.dart';
+import 'package:spotube/services/youtube_engine/yt_music_engine.dart';
 
 class SyncedLyricsNotifier
     extends FamilyAsyncNotifier<SubtitleSimple, SpotubeTrackObject?> {
@@ -22,7 +24,8 @@ class SyncedLyricsNotifier
   ) async {
     try {
       final packageInfo = await PackageInfo.fromPlatform();
-      final query = "${track.name} ${track.artists.map((a) => a.name).join(' ')}";
+      final query =
+          "${track.name} ${track.artists.map((a) => a.name).join(' ')}";
 
       final res = await globalDio.getUri(
         Uri(
@@ -43,7 +46,8 @@ class SyncedLyricsNotifier
         ),
       );
 
-      var resData = (res.statusCode == 200 && res.data is List) ? (res.data as List) : [];
+      var resData =
+          (res.statusCode == 200 && res.data is List) ? (res.data as List) : [];
 
       if (resData.isEmpty) {
         final cleanTrackName = track.name
@@ -205,13 +209,175 @@ class SyncedLyricsNotifier
       return searchCandidates.first;
     }
 
+    return _emptyLyrics("LRCLib");
+  }
+
+  /// SimpMusic synced lyrics provider (Flow has this too).
+  /// API: https://api-lyrics.simpmusic.org/v1/{videoId}
+  /// Response: {"type":"success","data":[{...lyrics data...}]}
+  Future<SubtitleSimple> getSimpMusicLyrics() async {
+    try {
+      final res = await globalDio.getUri(
+        Uri.parse("https://api-lyrics.simpmusic.org/v1/${_track.id}"),
+        options: Options(
+          headers: {
+            "User-Agent": "SimpMusicLyrics/1.0",
+            "Accept": "application/json",
+          },
+          responseType: ResponseType.json,
+          validateStatus: (_) => true,
+        ),
+      );
+      if (res.statusCode != 200) return _emptyLyrics("SimpMusic");
+
+      final root = res.data;
+      final items = switch (root) {
+        List l => l,
+        Map m when m["data"] is List => m["data"] as List,
+        _ => <dynamic>[],
+      };
+      if (items.isEmpty) return _emptyLyrics("SimpMusic");
+
+      // Pick the closest duration match when multiple candidates exist.
+      dynamic best = items.first;
+      if (items.length > 1 && _track.durationMs > 0) {
+        final targetSec = (_track.durationMs / 1000).round();
+        dynamic bestItem;
+        var bestDiff = 1 << 30;
+        for (final item in items) {
+          if (item is! Map) continue;
+          final d = ((item["durationSeconds"] ?? item["duration"] ?? 0) as num)
+              .toInt();
+          final diff = (d - targetSec).abs();
+          if (diff < bestDiff) {
+            bestDiff = diff;
+            bestItem = item;
+          }
+        }
+        if (bestItem != null) best = bestItem;
+      }
+
+      final durationSeconds = (best is Map
+          ? best["durationSeconds"] ?? best["duration"]
+          : null) as num?;
+      final slices = _parseSimpMusicItem(best, durationSeconds?.toInt());
+      if (slices.isEmpty) return _emptyLyrics("SimpMusic");
+      final isSynced = slices.any((s) => s.time > Duration.zero);
+      return SubtitleSimple(
+        lyrics: slices,
+        name: _track.name,
+        uri: res.realUri,
+        rating: isSynced ? 100 : 50,
+        provider: "SimpMusic",
+      );
+    } catch (e, stack) {
+      AppLogger.reportError(e, stack);
+      return _emptyLyrics("SimpMusic");
+    }
+  }
+
+  /// Parse one SimpMusic item: richSyncLyrics (word-level JSON) → syncedLyrics
+  /// (LRC) → plainLyrics. Our model is line-level, so rich-sync words are
+  /// collapsed into line timestamps via `ts` + line text `x`.
+  List<LyricSlice> _parseSimpMusicItem(dynamic item, int? durationSeconds) {
+    if (item is! Map) return [];
+
+    num normalizeTime(num value) {
+      final v = value.toDouble();
+      final isMillis = v > 1000 ||
+          (durationSeconds != null &&
+              durationSeconds > 0 &&
+              v > durationSeconds + 60);
+      return isMillis ? v : v * 1000;
+    }
+
+    // 1. richSyncLyrics — [{"ts":1.2,"te":5.6,"l":[{"c":"word","o":0}],"x":"line"}]
+    final richSync = item["richSyncLyrics"] as String?;
+    if (richSync?.isNotEmpty == true) {
+      try {
+        final parsed = jsonDecode(richSync!);
+        if (parsed is List && parsed.isNotEmpty) {
+          final slices = <LyricSlice>[];
+          for (final raw in parsed) {
+            if (raw is! Map) continue;
+            final ts = ((raw["ts"] as num?) ?? 0);
+            final x = raw["x"] as String?;
+            final words = raw["l"] as List?;
+            var text = x?.trim() ?? "";
+            if (text.isEmpty && words != null) {
+              text = words
+                  .map((w) => (w is Map ? w["c"] : null)?.toString() ?? "")
+                  .join(" ")
+                  .trim();
+            }
+            if (text.isEmpty) continue;
+            slices.add(LyricSlice(
+              time: Duration(milliseconds: normalizeTime(ts).round()),
+              text: text,
+            ));
+          }
+          if (slices.isNotEmpty) return slices;
+        }
+      } catch (_) {}
+    }
+
+    // 2. syncedLyrics — LRC
+    final synced = item["syncedLyrics"] as String?;
+    if (synced?.isNotEmpty == true) {
+      try {
+        final slices =
+            Lrc.parse(synced!).lyrics.map(LyricSlice.fromLrcLine).toList();
+        if (slices.isNotEmpty) return slices;
+      } catch (_) {}
+    }
+
+    // 3. plainLyrics / plainLyric
+    final plain = (item["plainLyrics"] ?? item["plainLyric"]) as String?;
+    if (plain?.isNotEmpty == true) {
+      return plain!
+          .split("\n")
+          .map((line) => LyricSlice(text: line.trim(), time: Duration.zero))
+          .toList();
+    }
+    return [];
+  }
+
+  SubtitleSimple _emptyLyrics(String provider) {
     return SubtitleSimple(
       lyrics: [],
       name: _track.name,
-      uri: Uri.parse("https://lrclib.net"),
+      uri: Uri.parse("https://$provider"),
       rating: 0,
-      provider: "LRCLib",
+      provider: provider,
     );
+  }
+
+  /// YouTube Music native lyrics provider (Flow parity): plain text from the
+  /// song's lyrics panel. Lowest priority since it has no sync, but it covers
+  /// songs LRCLib/SimpMusic don't have.
+  Future<SubtitleSimple> getYouTubeMusicLyrics() async {
+    try {
+      final text = await YtMusicEngine.fetchLyrics(_track.id);
+      if (text == null || text.trim().isEmpty) {
+        return _emptyLyrics("YouTube Music");
+      }
+      final slices = text
+          .trim()
+          .split("\n")
+          .map((line) => LyricSlice(text: line.trim(), time: Duration.zero))
+          .toList();
+      if (slices.isEmpty) return _emptyLyrics("YouTube Music");
+      return SubtitleSimple(
+        lyrics: slices,
+        name: _track.name,
+        uri: Uri.parse("https://music.youtube.com/watch?v=${_track.id}"),
+        rating: 50,
+        provider: "YouTube Music",
+      );
+    } catch (e, stack) {
+      AppLogger.reportError(e, stack);
+      return _emptyLyrics("YouTube Music");
+    }
   }
 
   Future<void> updateSelectedLyrics(SubtitleSimple newLyrics) async {
@@ -244,7 +410,15 @@ class SyncedLyricsNotifier
       SubtitleSimple? lyrics = cachedLyrics;
 
       if (lyrics == null || lyrics.lyrics.isEmpty) {
-        lyrics = await getLRCLibLyrics();
+        // Prefer YouTube Music's official lyrics (Flow's primary native
+        // source), then synced providers (SimpMusic, LRCLib) as fallbacks.
+        lyrics = await getYouTubeMusicLyrics();
+        if (lyrics.lyrics.isEmpty) {
+          lyrics = await getSimpMusicLyrics();
+        }
+        if (lyrics.lyrics.isEmpty) {
+          lyrics = await getLRCLibLyrics();
+        }
       }
 
       if (lyrics.lyrics.isEmpty) {

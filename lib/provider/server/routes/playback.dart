@@ -71,7 +71,18 @@ class ServerPlaybackRoutes {
   /// Match the fetching User-Agent to the `c=` query param of the
   /// googlevideo URL (the client that minted it). Flow: "a mismatch is a
   /// known cause of mid-stream 403s on googlevideo CDNs."
+  ///
+  /// Prefers the EXACT client UA stored for this URL during stream resolution
+  /// (`_lastUA` — the client version that actually minted it, e.g. 20.10.38),
+  /// falling back to a `c=`-param mapping. Hardcoding a newer UA (21.03.38)
+  /// caused audio-only 403s: the CDN checks the fetching UA against the
+  /// client version the URL was signed for.
   static String _gvUserAgent(String url) {
+    try {
+      final stored = AndroidYtDlpEngine.headersForUrl(url);
+      final storedUa = stored?['user-agent'] ?? stored?['User-Agent'];
+      if (storedUa != null && storedUa.isNotEmpty) return storedUa;
+    } catch (_) {}
     final c = Uri.tryParse(url)?.queryParameters['c']?.toUpperCase();
     switch (c) {
       case 'IOS':

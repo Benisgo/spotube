@@ -1,13 +1,19 @@
 import 'dart:io';
 import 'package:dio/dio.dart';
+import 'package:http/http.dart' as http;
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:spotube/services/logger/logger.dart';
+import 'package:spotube/services/youtube_engine/android_yt_dlp_engine.dart';
 
 extension ChunkDownloaderDioExtension on Dio {
-  /// True for googlevideo.com hosts.
-  bool _isGooglevideo(String url) {
+  /// True for YouTube CDN stream URLs (Flow parity): googlevideo.com hosts OR
+  /// youtube.com/videoplayback — YouTube may serve either depending on client.
+  bool _isYouTubeStreamUrl(String url) {
     try {
-      return Uri.parse(url).host.contains('googlevideo.com');
+      final host = Uri.parse(url).host;
+      return host.contains('googlevideo.com') ||
+          (host.contains('youtube.com') && url.contains('videoplayback'));
     } catch (_) {
       return false;
     }
@@ -53,13 +59,110 @@ extension ChunkDownloaderDioExtension on Dio {
     }
   }
 
-  Map<String, dynamic> _gvDownloadHeaders(String url) => {
-        'User-Agent': _gvUserAgent(url),
-        'Origin': 'https://www.youtube.com',
-        'Referer': 'https://www.youtube.com/',
-        'Accept': '*/*',
-        'Accept-Encoding': 'identity',
-      };
+  Map<String, dynamic> _gvDownloadHeaders(String url) {
+    // Prefer the EXACT headers stored for this URL during stream resolution
+    // (the client UA that minted it + visitor cookie) — a UA version mismatch
+    // is a known cause of audio-only 403s on googlevideo.
+    final h = <String, dynamic>{};
+    try {
+      final stored = AndroidYtDlpEngine.headersForUrl(url);
+      if (stored != null && stored.isNotEmpty) {
+        h.addAll(stored);
+      }
+    } catch (_) {}
+    h.putIfAbsent('User-Agent', () => _gvUserAgent(url));
+    h['Origin'] = 'https://www.youtube.com';
+    h['Referer'] = 'https://www.youtube.com/';
+    h['Accept'] = '*/*';
+    h['Accept-Encoding'] = 'identity';
+    return h;
+  }
+
+  /// Download a googlevideo stream with the same HTTP stack the streaming
+  /// proxy uses (http.Client + `range=X-Y` query param + matching UA), which
+  /// is proven to work in every region. dio's own `download`/`Range`-header
+  /// chunk path can 403 where http.Client succeeds — the proxy hit exactly
+  /// this and switched to http.Client.
+  Future<Response> _downloadGooglevideo(
+    String urlPath,
+    dynamic savePath, {
+    ProgressCallback? onReceiveProgress,
+    Map<String, dynamic>? queryParameters,
+    CancelToken? cancelToken,
+    bool deleteOnError = true,
+  }) async {
+    var finalUri = Uri.parse(_rewriteGvFullUrl(urlPath));
+    if (queryParameters != null && queryParameters.isNotEmpty) {
+      final qps = <String, dynamic>{};
+      finalUri.queryParametersAll.forEach((k, v) {
+        qps[k] = v.length == 1 ? v.first : v;
+      });
+      queryParameters.forEach((k, v) => qps[k] = '$v');
+      finalUri = finalUri.replace(queryParameters: qps);
+    }
+
+    final targetFile = File(savePath.toString());
+    final partFile = File('${targetFile.path}.part');
+    final req = http.Request('GET', finalUri);
+    _gvDownloadHeaders(urlPath).forEach((k, v) => req.headers[k] = v);
+
+    final client = http.Client();
+    try {
+      final resp = await client.send(req).timeout(const Duration(minutes: 5));
+      AppLogger.log.i(
+          "[chunkdl] gv host=${finalUri.host} status=${resp.statusCode} len=${resp.headers['content-length']} c=${finalUri.queryParameters['c']} url=$finalUri");
+      if (resp.statusCode != 200) {
+        throw DioException.badResponse(
+          statusCode: resp.statusCode,
+          requestOptions: RequestOptions(path: urlPath),
+          response: Response(
+            requestOptions: RequestOptions(path: urlPath),
+            statusCode: resp.statusCode,
+          ),
+        );
+      }
+
+      final total = int.tryParse(resp.headers['content-length'] ?? '') ?? 0;
+      if (await partFile.exists()) await partFile.delete();
+      final sink = partFile.openWrite();
+      var downloaded = 0;
+      var cancelled = false;
+      try {
+        await for (final chunk in resp.stream) {
+          if (cancelToken?.isCancelled == true) {
+            cancelled = true;
+            break;
+          }
+          sink.add(chunk);
+          downloaded += chunk.length;
+          onReceiveProgress?.call(downloaded, total);
+        }
+      } finally {
+        await sink.close();
+      }
+
+      if (cancelled) {
+        if (deleteOnError && await partFile.exists()) await partFile.delete();
+        throw DioException(
+          requestOptions: RequestOptions(path: urlPath),
+          type: DioExceptionType.cancel,
+          error: 'Download cancelled',
+        );
+      }
+
+      if (await targetFile.exists()) await targetFile.delete();
+      await partFile.rename(targetFile.path);
+
+      return Response(
+        requestOptions: RequestOptions(path: urlPath),
+        data: targetFile,
+        statusCode: 200,
+        statusMessage: 'OK',
+      );
+    } finally {
+      client.close();
+    }
+  }
 
   Future<Response> chunkDownload(
     String urlPath,
@@ -80,16 +183,17 @@ extension ChunkDownloaderDioExtension on Dio {
     // the streaming proxy: rewrite the URL to use the `range=X-Y` query param
     // and download sequentially with the client-matching UA + Origin/Referer.
     // Audio files are small, so losing parallel chunks is negligible.
-    if (_isGooglevideo(urlPath)) {
-      return download(
-        _rewriteGvFullUrl(urlPath),
+    final isYt = _isYouTubeStreamUrl(urlPath);
+    AppLogger.log.i(
+        "[chunkdl] start host=${Uri.parse(urlPath).host} isYt=$isYt c=${Uri.parse(urlPath).queryParameters['c']} hasN=${urlPath.contains('n=')} hasPot=${urlPath.contains('pot=')} url=$urlPath");
+    if (isYt) {
+      return _downloadGooglevideo(
+        urlPath,
         savePath,
         onReceiveProgress: onReceiveProgress,
         queryParameters: queryParameters,
         cancelToken: cancelToken,
         deleteOnError: deleteOnError,
-        options: Options(headers: _gvDownloadHeaders(urlPath)),
-        data: data,
       );
     }
 

@@ -537,11 +537,174 @@ class _YtMusicClient {
       "videoDetails": data["videoDetails"] ?? {},
     };
   }
+
+  /// YouTube Music (WEB_REMIX) client context for `next`/`browse` calls.
+  static final Map<String, dynamic> _webRemixContext = {
+    "context": {
+      "client": {
+        "clientName": "WEB_REMIX",
+        "clientVersion": "1.20241223.01.00",
+        "hl": "en",
+        "gl": "US",
+      },
+    },
+  };
+
+  static const _musicNextUrl =
+      "https://music.youtube.com/youtubei/v1/next?prettyPrint=false";
+  static const _musicBrowseUrl =
+      "https://music.youtube.com/youtubei/v1/browse?prettyPrint=false";
+
+  /// Headers for YouTube Music WEB_REMIX API calls (mirrors Flow's InnerTube).
+  static Map<String, String> _musicHeaders() {
+    final headers = <String, String>{
+      "Content-Type": "application/json",
+      "User-Agent": _clientUAs["WEB"] ?? _clientUAs["IOS"]!,
+      "X-YouTube-Client-Name": "67", // WEB_REMIX
+      "X-YouTube-Client-Version": "1.20241223.01.00",
+      "X-Origin": "https://music.youtube.com",
+      "Referer": "https://music.youtube.com/",
+      "X-Goog-Api-Format-Version": "1",
+    };
+    if (_cookies.isNotEmpty) headers["cookie"] = _cookies;
+    return headers;
+  }
+
+  /// Find the lyrics browse endpoint in a `next` response (Flow's approach).
+  /// Modern responses put it in the watch-next tabs with
+  /// `MUSIC_PAGE_TYPE_TRACK_LYRICS`; older ones in `engagementPanels`.
+  static ({String browseId, String? params})? _findLyricsEndpoint(
+      Map<String, dynamic> data) {
+    // Location 1: watch-next tabbed results — find the "Lyrics" tab.
+    try {
+      final wn = data["contents"]?["singleColumnMusicWatchNextResultsRenderer"]
+          ?["tabbedRenderer"]?["watchNextTabbedResultsRenderer"];
+      final tabs = (wn is Map) ? (wn["tabs"] as List?) : null;
+      if (tabs != null) {
+        for (final tab in tabs) {
+          final be = (tab is Map)
+              ? (tab["tabRenderer"]?["endpoint"]?["browseEndpoint"] as Map?)
+              : null;
+          if (be == null) continue;
+          final browseId = be["browseId"] as String?;
+          if (browseId == null) continue;
+          final pageType = be["browseEndpointContextSupportedConfigs"]
+              ?["browseEndpointContextMusicConfig"]?["pageType"] as String?;
+          // Title is a plain string in modern responses, a runs map in older.
+          final rawTitle = (tab as Map)["tabRenderer"]?["title"];
+          final String? title = rawTitle is String ? rawTitle : null;
+          if (pageType == "MUSIC_PAGE_TYPE_TRACK_LYRICS" || title == "Lyrics") {
+            return (browseId: browseId, params: be["params"] as String?);
+          }
+        }
+      }
+    } catch (_) {}
+
+    // Location 2: engagementPanels → searchable lyrics panel.
+    try {
+      final panels = data["engagementPanels"] as List?;
+      if (panels != null) {
+        for (final panel in panels) {
+          final pr = (panel is Map)
+              ? (panel["engagementPanelSectionListRenderer"] as Map?)
+              : null;
+          final panelId = pr?["panelIdentifier"] as String?;
+          if (panelId != null && panelId.toLowerCase().contains("lyrics")) {
+            final be = pr?["header"]?["engagementPanelTitleHeaderRenderer"]
+                ?["navigationEndpoint"]?["browseEndpoint"] as Map?;
+            final browseId = be?["browseId"] as String?;
+            final params = be?["params"] as String?;
+            if (browseId != null) {
+              return (browseId: browseId, params: params);
+            }
+          }
+        }
+      }
+    } catch (_) {}
+
+    return null;
+  }
+
+  /// Extract plain-text lyrics from a `browse` response. Returns null when the
+  /// panel reports lyrics are unavailable (messageRenderer) or the shape is
+  /// unexpected.
+  static String? _extractLyricsText(Map<String, dynamic> data) {
+    try {
+      final contents = data["contents"] as Map?;
+      final sectionList = contents?["sectionListRenderer"] as Map?;
+      final items = sectionList?["contents"] as List?;
+      if (items != null && items.isNotEmpty) {
+        final first = items.first;
+        final desc = (first is Map)
+            ? (first["musicDescriptionShelfRenderer"]?["description"] as Map?)
+            : null;
+        if (desc != null) {
+          final runs = desc["runs"] as List?;
+          if (runs != null && runs.isNotEmpty) {
+            final text =
+                runs.map((r) => (r as Map)["text"]?.toString() ?? "").join();
+            if (text.trim().isNotEmpty) return text;
+          }
+          final simpleText = desc["simpleText"] as String?;
+          if (simpleText != null && simpleText.trim().isNotEmpty) {
+            return simpleText;
+          }
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// Fetch lyrics for a video from YouTube Music's native lyrics panel
+  /// (Flow's approach): `next` to find the lyrics browse endpoint, then
+  /// `browse` to read the plain-text lyrics. Returns null if unavailable.
+  static Future<String?> fetchLyrics(String videoId) async {
+    try {
+      // 1. `next` → locate the lyrics browse endpoint.
+      final nextRes = await _http.post(
+        Uri.parse(_musicNextUrl),
+        headers: _musicHeaders(),
+        body: jsonEncode({
+          ..._webRemixContext,
+          "videoId": videoId,
+          "playlistId": null,
+        }),
+      );
+      if (nextRes.statusCode != 200) return null;
+      final nextData = jsonDecode(nextRes.body) as Map<String, dynamic>;
+      final endpoint = _findLyricsEndpoint(nextData);
+      if (endpoint == null) return null;
+
+      // 2. `browse` → read the lyrics panel text.
+      final browseRes = await _http.post(
+        Uri.parse(_musicBrowseUrl),
+        headers: _musicHeaders(),
+        body: jsonEncode({
+          ..._webRemixContext,
+          "browseId": endpoint.browseId,
+          if (endpoint.params != null) "params": endpoint.params,
+        }),
+      );
+      if (browseRes.statusCode != 200) return null;
+      final browseData = jsonDecode(browseRes.body) as Map<String, dynamic>;
+      return _extractLyricsText(browseData);
+    } catch (e) {
+      AppLogger.log.w("[yt_music] fetchLyrics failed for $videoId: $e");
+      return null;
+    }
+  }
 }
 
 class YtMusicEngine implements YouTubeEngine {
   static bool get isAvailableForPlatform => true;
   static Future<bool> isInstalled() async => true;
+
+  /// Fetch lyrics for a video from YouTube Music's native lyrics panel
+  /// (Flow parity). Returns null when unavailable. Plain text only — synced
+  /// lyrics come from LRCLib/SimpMusic providers.
+  static Future<String?> fetchLyrics(String videoId) {
+    return _YtMusicClient.fetchLyrics(videoId);
+  }
 
   @override
   Future<Video> getVideo(String videoId) async {
@@ -598,13 +761,16 @@ class YtMusicEngine implements YouTubeEngine {
     // Prewarm BotGuard in background while we try other clients
     YouTubePoTokenProvider.getVisitorData();
 
-    // ANDROID + WEB first (best for audio + poToken auth). IOS/MWEB as backup.
+    // Flow parity: Flow's FAST_DIRECT_STREAM_CLIENTS tries ANDROID_VR first,
+    // then MOBILE, IOS, ANDROID_CREATOR. ANDROID_VR-minted URLs serve audio
+    // content freely in regions where ANDROID-minted URLs are content-locked
+    // (403), so ANDROID_VR must come first for both playback and downloads.
     for (final client in [
-      YoutubeApiClient.android,
-      YoutubeApiClient.safari,
-      YoutubeApiClient.ios,
-      YoutubeApiClient.mweb,
-      YoutubeApiClient.androidVr,
+      YoutubeApiClient.androidVr, // Flow's primary fast client
+      YoutubeApiClient.mweb, // MOBILE
+      YoutubeApiClient.ios, // IOS
+      YoutubeApiClient.android, // ANDROID_CREATOR-ish
+      YoutubeApiClient.safari, // WEB
       _YtMusicClient._visionOs,
       YoutubeApiClient.tv,
       _YtMusicClient._tvSimply,
@@ -643,9 +809,13 @@ class YtMusicEngine implements YouTubeEngine {
   Future<(Video, StreamManifest)> getVideoWithStreamInfo(String videoId) async {
     Map<String, dynamic>? data;
     String? usedClientName;
+    // Flow parity: ANDROID_VR first, then MOBILE, IOS, ANDROID_CREATOR — the
+    // same order Flow's FAST_DIRECT_STREAM_CLIENTS uses for both playback and
+    // downloads.
     for (final client in [
-      YoutubeApiClient.ios,
       YoutubeApiClient.androidVr,
+      YoutubeApiClient.mweb,
+      YoutubeApiClient.ios,
       YoutubeApiClient.android,
       _YtMusicClient._visionOs,
       YoutubeApiClient.tv,
@@ -653,7 +823,6 @@ class YtMusicEngine implements YouTubeEngine {
       _YtMusicClient._webEmbedded,
       _YtMusicClient._androidCreator,
       _YtMusicClient._iPados,
-      YoutubeApiClient.mweb,
       YoutubeApiClient.safari,
     ]) {
       final name = client.payload["context"]["client"]["clientName"];

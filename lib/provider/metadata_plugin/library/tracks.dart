@@ -91,7 +91,9 @@ class MetadataPluginSavedTracksNotifier
 
   @override
   build() async {
-    await ref.watch(metadataPluginAuthenticatedProvider.future);
+    try {
+      await ref.watch(metadataPluginAuthenticatedProvider.future);
+    } catch (_) {}
     final response = await fetch(0, 20);
     for (final track in response.items) {
       _savedTrackMembershipCache[track.id] = true;

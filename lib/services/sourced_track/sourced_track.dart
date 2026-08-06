@@ -157,6 +157,35 @@ class SourcedTrack extends BasicSourcedTrack {
     }
   }
 
+  static File? findLocalCachedFileSync(SpotubeFullTrackObject query) {
+    try {
+      final cacheDir = UserPreferencesNotifier.getMusicCacheDirSync();
+      if (cacheDir == null) return null;
+      final dir = Directory(cacheDir);
+      if (!dir.existsSync()) return null;
+
+      final trackId = query.id.toLowerCase();
+      final sanitizedName =
+          ServiceUtils.sanitizeFilename(query.name).toLowerCase();
+      final baseName = ServiceUtils.sanitizeFilename(
+        '${query.name} - ${query.artists.map((d) => d.name).join(",")}',
+      ).toLowerCase();
+
+      final entries = dir.listSync();
+      for (final entry in entries) {
+        if (entry is File) {
+          final fileName = basename(entry.path).toLowerCase();
+          if (fileName.contains(trackId) ||
+              fileName.startsWith(baseName) ||
+              (sanitizedName.length >= 3 && fileName.contains(sanitizedName))) {
+            return entry;
+          }
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
   static Future<File?> findLocalCachedFile(SpotubeFullTrackObject query) async {
     try {
       final cacheDir = await UserPreferencesNotifier.getMusicCacheDir();

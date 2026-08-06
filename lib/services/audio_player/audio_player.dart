@@ -11,6 +11,8 @@ import 'package:spotube/services/logger/logger.dart';
 import 'package:spotube/services/audio_player/custom_player.dart';
 import 'package:spotube/services/audio_player/playback_state.dart';
 import 'package:spotube/services/youtube_engine/android_yt_dlp_engine.dart';
+import 'package:spotube/services/connectivity_adapter.dart';
+import 'package:spotube/services/sourced_track/sourced_track.dart';
 import 'package:spotube/utils/platform.dart';
 
 part 'audio_players_streams_mixin.dart';
@@ -585,19 +587,58 @@ abstract class AudioPlayerInterface {
     }
   }
 
+  bool _isTrackPlayableOffline(SpotubeTrackObject track) {
+    if (track is SpotubeLocalTrackObject) return true;
+    if (track is SpotubeFullTrackObject) {
+      return SourcedTrack.findLocalCachedFileSync(track) != null;
+    }
+    return false;
+  }
+
   int? _nextIndexFrom(int index) {
     if (_playlist.medias.isEmpty || index < 0) return null;
-    final next = index + 1;
-    if (next < _playlist.medias.length) return next;
-    if (_loopMode == PlaylistMode.loop) return 0;
+    final isOffline = !ConnectionCheckerService.instance.isConnectedSync;
+
+    var next = index + 1;
+    final total = _playlist.medias.length;
+    while (next < total) {
+      if (!isOffline) return next;
+      final track = SpotubeMedia.media(_playlist.medias[next]).track;
+      if (_isTrackPlayableOffline(track)) return next;
+      next++;
+    }
+    if (_loopMode == PlaylistMode.loop) {
+      next = 0;
+      while (next < index) {
+        if (!isOffline) return next;
+        final track = SpotubeMedia.media(_playlist.medias[next]).track;
+        if (_isTrackPlayableOffline(track)) return next;
+        next++;
+      }
+    }
     return null;
   }
 
   int? _previousIndexFrom(int index) {
     if (_playlist.medias.isEmpty || index < 0) return null;
-    final previous = index - 1;
-    if (previous >= 0) return previous;
-    if (_loopMode == PlaylistMode.loop) return _playlist.medias.length - 1;
+    final isOffline = !ConnectionCheckerService.instance.isConnectedSync;
+
+    var previous = index - 1;
+    while (previous >= 0) {
+      if (!isOffline) return previous;
+      final track = SpotubeMedia.media(_playlist.medias[previous]).track;
+      if (_isTrackPlayableOffline(track)) return previous;
+      previous--;
+    }
+    if (_loopMode == PlaylistMode.loop) {
+      previous = _playlist.medias.length - 1;
+      while (previous > index) {
+        if (!isOffline) return previous;
+        final track = SpotubeMedia.media(_playlist.medias[previous]).track;
+        if (_isTrackPlayableOffline(track)) return previous;
+        previous--;
+      }
+    }
     return null;
   }
 

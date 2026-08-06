@@ -45,16 +45,13 @@ class MetadataPluginPlaylistTracksNotifier
       if (_isRecoverablePlaylistError(e) && state.value != null) {
         return state.value!;
       }
-      if (_isRecoverablePlaylistError(e)) {
-        return SpotubePaginationResponseObject(
-          limit: limit,
-          nextOffset: null,
-          total: 0,
-          hasMore: false,
-          items: [],
-        );
-      }
-      rethrow;
+      return SpotubePaginationResponseObject(
+        limit: limit,
+        nextOffset: null,
+        total: 0,
+        hasMore: false,
+        items: [],
+      );
     }
   }
 

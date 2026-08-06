@@ -49,7 +49,7 @@ class PlaylistCacheService {
     return null;
   }
 
-  /// Saves tracks of a specific playlist to disk.
+  /// Saves tracks of a specific playlist to disk, merging new pages with existing cached tracks.
   static Future<void> savePlaylistTracks(
     String playlistId,
     SpotubePaginationResponseObject<SpotubeFullTrackObject> data,
@@ -57,7 +57,39 @@ class PlaylistCacheService {
     try {
       final dirPath = await _getCacheDirectoryPath();
       final file = File(join(dirPath, "playlist_tracks_$playlistId.json"));
-      await file.writeAsString(jsonEncode(data.toJson((item) => item.toJson())));
+
+      SpotubePaginationResponseObject<SpotubeFullTrackObject>? existing;
+      if (await file.exists()) {
+        try {
+          final content = await file.readAsString();
+          final json = jsonDecode(content) as Map<String, dynamic>;
+          existing = SpotubePaginationResponseObject<SpotubeFullTrackObject>.fromJson(
+            json,
+            (itemJson) => SpotubeFullTrackObject.fromJson(itemJson),
+          );
+        } catch (_) {}
+      }
+
+      final mergedItems = <String, SpotubeFullTrackObject>{};
+      if (existing != null) {
+        for (final item in existing.items) {
+          mergedItems[item.id] = item;
+        }
+      }
+      for (final item in data.items) {
+        mergedItems[item.id] = item;
+      }
+
+      final mergedList = mergedItems.values.toList();
+      final fullData = SpotubePaginationResponseObject<SpotubeFullTrackObject>(
+        limit: mergedList.length,
+        nextOffset: null,
+        total: mergedList.length,
+        hasMore: false,
+        items: mergedList,
+      );
+
+      await file.writeAsString(jsonEncode(fullData.toJson((item) => item.toJson())));
     } catch (e, stack) {
       AppLogger.reportError(e, stack);
     }

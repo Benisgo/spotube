@@ -224,6 +224,11 @@ jobs:
     if: ${{ always() && needs.build_windows.result == 'success' && needs.build_android.result == 'success' }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history + tags so git-cliff can build a proper changelog
+          # since the last release (instead of only the most recent commit).
+          fetch-depth: 0
+          fetch-tags: true
       - uses: actions/download-artifact@v4
         with:
           path: ./Spotube-Release-Binaries
@@ -243,6 +248,31 @@ jobs:
         run: |
           echo "PUBSPEC_VERSION=$(grep -oP 'version:\s*\K[^+]+(?=\+)' pubspec.yaml)" >> $GITHUB_ENV
 
+      - name: Generate changelog
+        id: git-cliff
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: cliff.toml
+          args: --unreleased --strip header
+        env:
+          OUTPUT: CHANGELOG.md
+
+      - name: Prepare release body
+        shell: bash
+        run: |
+          # Drop the literal "## [unreleased]" heading; keep the grouped sections.
+          sed -i '/^## \[unreleased\]/d' CHANGELOG.md
+          if [[ "${{ inputs.channel }}" == "nightly" ]]; then
+            {
+              printf 'Build Number: %s\n\n' "${{ github.run_number }}"
+              printf 'Nightly release includes newest features but may contain bugs.\n'
+              printf "It is preferred to use the stable version unless you know what you're doing.\n\n---\n\n"
+              cat CHANGELOG.md
+            } > RELEASE_BODY.md
+          else
+            cp CHANGELOG.md RELEASE_BODY.md
+          fi
+
       - uses: actions/upload-artifact@v4
         with:
           if-no-files-found: error
@@ -257,11 +287,12 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: v${{ env.PUBSPEC_VERSION }} # mind the "v" prefix
-          omitBodyDuringUpdate: true
+          omitBodyDuringUpdate: false
           omitNameDuringUpdate: true
           omitPrereleaseDuringUpdate: true
           allowUpdates: true
           artifacts: Spotube-Release-Binaries/**/*,RELEASE.sha256sum,RELEASE.md5sum
+          bodyFile: RELEASE_BODY.md
 
       - name: Upload Release Binaries (nightly)
         if: ${{ !inputs.dry_run && inputs.channel == 'nightly' }}
@@ -269,16 +300,12 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: nightly
-          omitBodyDuringUpdate: true
+          omitBodyDuringUpdate: false
           omitNameDuringUpdate: true
           omitPrereleaseDuringUpdate: true
           allowUpdates: true
           artifacts: Spotube-Release-Binaries/**/*,RELEASE.sha256sum,RELEASE.md5sum
-          body: |
-            Build Number: ${{github.run_number}}
-
-            Nightly release includes newest features but may contain bugs
-            It is preferred to use the stable version unless you know what you're doing
+          bodyFile: RELEASE_BODY.md
 
       - name: Open SSH Debug Session On Failure
         if: ${{ failure() && inputs.debug && inputs.channel == 'nightly' }}

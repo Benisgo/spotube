@@ -57,62 +57,65 @@ class TrackPresentation extends HookConsumerWidget {
             child: PrimaryScrollController(
               controller: scrollController,
               child: CustomScrollView(
-              controller: scrollController,
-              physics: const BouncingScrollPhysics(
-                parent: AlwaysScrollableScrollPhysics(),
-              ),
-              slivers: [
-              const TrackPresentationTopSection(),
-              const SliverGap(16),
-              SliverList.list(
-                children: [
-                  TrackPresentationModifiersSection(
-                    focusNode: focusNode,
-                  ),
-                  LayoutBuilder(builder: (context, constrains) {
-                    return Basic(
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 8,
-                        horizontal: 16,
+                controller: scrollController,
+                // Keep ~15 rows alive beyond each edge so back-and-forth
+                // scrolling doesn't rebuild the same TrackTiles repeatedly.
+                cacheExtent: 1000,
+                physics: const BouncingScrollPhysics(
+                  parent: AlwaysScrollableScrollPhysics(),
+                ),
+                slivers: [
+                  const TrackPresentationTopSection(),
+                  const SliverGap(16),
+                  SliverList.list(
+                    children: [
+                      TrackPresentationModifiersSection(
+                        focusNode: focusNode,
                       ),
-                      leading: constrains.mdAndUp
-                          ? const SizedBox(
-                              width: 102,
-                              child: Padding(
-                                padding: EdgeInsets.only(left: 12),
-                                child: Text("#"),
-                              ),
-                            )
-                          : null,
-                      title: Row(
-                        children: [
-                          Expanded(
-                            flex: 6,
-                            child: Text(context.l10n.title),
+                      LayoutBuilder(builder: (context, constrains) {
+                        return Basic(
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 8,
+                            horizontal: 16,
                           ),
-                          if (constrains.mdAndUp) ...[
-                            const SizedBox(width: 8),
-                            Expanded(
-                              flex: 4,
-                              child: Text(context.l10n.album),
-                            ),
-                          ],
-                          const SizedBox(width: 8),
-                          const Icon(SpotubeIcons.clock, size: 16),
-                          const SizedBox(width: 44),
-                        ],
-                      ),
-                    ).small().muted();
-                  }),
+                          leading: constrains.mdAndUp
+                              ? const SizedBox(
+                                  width: 102,
+                                  child: Padding(
+                                    padding: EdgeInsets.only(left: 12),
+                                    child: Text("#"),
+                                  ),
+                                )
+                              : null,
+                          title: Row(
+                            children: [
+                              Expanded(
+                                flex: 6,
+                                child: Text(context.l10n.title),
+                              ),
+                              if (constrains.mdAndUp) ...[
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  flex: 4,
+                                  child: Text(context.l10n.album),
+                                ),
+                              ],
+                              const SizedBox(width: 8),
+                              const Icon(SpotubeIcons.clock, size: 16),
+                              const SizedBox(width: 44),
+                            ],
+                          ),
+                        ).small().muted();
+                      }),
+                    ],
+                  ),
+                  const PresentationListSection(),
+                  const SliverSafeArea(sliver: SliverGap(10)),
                 ],
               ),
-              const PresentationListSection(),
-              const SliverSafeArea(sliver: SliverGap(10)),
-            ],
+            ),
           ),
         ),
-        ),
-      ),
       ),
     );
   }

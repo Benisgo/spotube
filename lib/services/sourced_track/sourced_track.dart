@@ -114,6 +114,57 @@ class SourcedTrack extends BasicSourcedTrack {
   /// hasFreshValidatedStream / signed-expiry — otherwise a throttled/dead CDN
   /// node is retried forever with the same URL.
   static final Set<String> _deadStreams = {};
+
+  /// Cached music cache-directory file list (with a short TTL). Scrolling a
+  /// track list calls findLocalCachedFile once per visible row, which listed
+  /// and stat()ed the ENTIRE cache directory each time — synchronous disk I/O
+  /// on the UI thread that caused scroll jank on large caches. Now the
+  /// listing + length stat happens once per refresh; row matching is pure
+  /// in-memory string comparison.
+  static List<({String path, int length})>? _cachedCacheFiles;
+  static DateTime? _cachedCacheFilesAt;
+  static const _dirListingTtl = Duration(seconds: 10);
+
+  static Future<List<({String path, int length})>> _cacheFiles() async {
+    final cached = _cachedCacheFiles;
+    final at = _cachedCacheFilesAt;
+    if (cached != null &&
+        at != null &&
+        DateTime.now().difference(at) < _dirListingTtl) {
+      return cached;
+    }
+    try {
+      final cacheDir = await UserPreferencesNotifier.getMusicCacheDir();
+      final dir = Directory(cacheDir);
+      if (!await dir.exists()) {
+        _cachedCacheFiles = const [];
+        _cachedCacheFilesAt = DateTime.now();
+        return const [];
+      }
+      final entries = await dir.list().toList();
+      final result = <({String path, int length})>[];
+      for (final e in entries) {
+        if (e is! File) continue;
+        try {
+          final len = e.lengthSync();
+          if (len < 10240) {
+            // Opportunistic purge of corrupted/truncated cache files.
+            e.deleteSync();
+            continue;
+          }
+          result.add((path: e.path, length: len));
+        } catch (_) {
+          continue;
+        }
+      }
+      _cachedCacheFiles = result;
+      _cachedCacheFilesAt = DateTime.now();
+      return result;
+    } catch (_) {
+      return cached ?? const [];
+    }
+  }
+
   final Ref ref;
 
   SourcedTrack({
@@ -206,19 +257,14 @@ class SourcedTrack extends BasicSourcedTrack {
     }
   }
 
-  static bool _isMatchingCachedFile(File file, SpotubeFullTrackObject query) {
-    final fileName = basename(file.path).toLowerCase();
+  static bool _isMatchingCachedFile(
+    String path,
+    int length,
+    SpotubeFullTrackObject query,
+  ) {
+    final fileName = basename(path).toLowerCase();
     if (fileName.endsWith('.part')) return false;
-
-    // Ignore and auto-purge corrupted or truncated files (< 10 KB)
-    try {
-      if (file.lengthSync() < 10240) {
-        file.deleteSync();
-        return false;
-      }
-    } catch (_) {
-      return false;
-    }
+    if (length < 10240) return false;
 
     final trackId = query.id.toLowerCase();
     if (fileName.contains(trackId)) return true;
@@ -252,7 +298,18 @@ class SourcedTrack extends BasicSourcedTrack {
 
       final entries = dir.listSync();
       for (final entry in entries) {
-        if (entry is File && _isMatchingCachedFile(entry, query)) {
+        if (entry is! File) continue;
+        int length;
+        try {
+          length = entry.lengthSync();
+          if (length < 10240) {
+            entry.deleteSync();
+            continue;
+          }
+        } catch (_) {
+          continue;
+        }
+        if (_isMatchingCachedFile(entry.path, length, query)) {
           return entry;
         }
       }
@@ -262,14 +319,10 @@ class SourcedTrack extends BasicSourcedTrack {
 
   static Future<File?> findLocalCachedFile(SpotubeFullTrackObject query) async {
     try {
-      final cacheDir = await UserPreferencesNotifier.getMusicCacheDir();
-      final dir = Directory(cacheDir);
-      if (!await dir.exists()) return null;
-
-      final entries = await dir.list().toList();
-      for (final entry in entries) {
-        if (entry is File && _isMatchingCachedFile(entry, query)) {
-          return entry;
+      final files = await _cacheFiles();
+      for (final entry in files) {
+        if (_isMatchingCachedFile(entry.path, entry.length, query)) {
+          return File(entry.path);
         }
       }
     } catch (_) {}

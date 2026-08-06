@@ -157,205 +157,205 @@ class TrackTile extends HookConsumerWidget {
                   }
                 }
               },
-            onLongPress: onLongPress,
-            style: (isBlackListed
-                    ? ButtonVariance.destructive
-                    : ButtonVariance.ghost)
-                .copyWith(
-              padding: (context, states, value) =>
-                  const EdgeInsets.symmetric(vertical: 8, horizontal: 0),
-            ),
-            leading: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ...?leadingActions,
-                AnimatedCrossFade(
-                  duration: const Duration(milliseconds: 300),
-                  crossFadeState: index != null && onChanged == null
-                      ? CrossFadeState.showSecond
-                      : CrossFadeState.showFirst,
-                  firstChild: Checkbox(
-                    state: selected
-                        ? CheckboxState.checked
-                        : CheckboxState.unchecked,
-                    onChanged: (state) =>
-                        onChanged?.call(state == CheckboxState.checked),
-                  ),
-                  secondChild: constrains.smAndDown
-                      ? const SizedBox(width: 16)
-                      : SizedBox(
-                          width: 50,
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 6),
-                            child: Text(
-                              '${(index ?? 0) + 1}',
-                              maxLines: 1,
-                              style: theme.typography.small,
-                              textAlign: TextAlign.center,
+              onLongPress: onLongPress,
+              style: (isBlackListed
+                      ? ButtonVariance.destructive
+                      : ButtonVariance.ghost)
+                  .copyWith(
+                padding: (context, states, value) =>
+                    const EdgeInsets.symmetric(vertical: 8, horizontal: 0),
+              ),
+              leading: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ...?leadingActions,
+                  // Direct conditional (was AnimatedCrossFade): builds only ONE
+                  // child and holds no AnimationController, so scroll-fling
+                  // row builds stay cheap.
+                  if (index != null && onChanged == null)
+                    constrains.smAndDown
+                        ? const SizedBox(width: 16)
+                        : SizedBox(
+                            width: 50,
+                            child: Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 6),
+                              child: Text(
+                                '${(index ?? 0) + 1}',
+                                maxLines: 1,
+                                style: theme.typography.small,
+                                textAlign: TextAlign.center,
+                              ),
                             ),
+                          )
+                  else
+                    Checkbox(
+                      state: selected
+                          ? CheckboxState.checked
+                          : CheckboxState.unchecked,
+                      onChanged: (state) =>
+                          onChanged?.call(state == CheckboxState.checked),
+                    ),
+                  _TrackTileArtOverlay(
+                    track: track,
+                    isPlaying: isPlaying,
+                    isHovering: isHovering,
+                    isPendingPlayback: isPendingPlayback,
+                    isTrackQuerying: isTrackQuerying,
+                  ),
+                ],
+              ),
+              title: Row(
+                children: [
+                  Expanded(
+                    flex: constrains.lgAndUp ? 5 : 6,
+                    child: AbsorbPointer(
+                      absorbing: selectionMode,
+                      child: switch (track) {
+                        SpotubeLocalTrackObject() => Text(
+                            track.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                        ),
-                ),
-                _TrackTileArtOverlay(
-                  track: track,
-                  isHovering: isHovering,
-                  isPendingPlayback: isPendingPlayback,
-                  isTrackQuerying: isTrackQuerying,
-                ),
-              ],
-            ),
-            title: Row(
-              children: [
-                Expanded(
-                  flex: constrains.lgAndUp ? 5 : 6,
-                  child: AbsorbPointer(
-                    absorbing: selectionMode,
-                    child: switch (track) {
-                      SpotubeLocalTrackObject() => Text(
-                          track.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      _ => Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Flexible(
-                              child: Button(
-                                style: ButtonVariance.link.copyWith(
-                                  padding: (context, states, value) =>
-                                      EdgeInsets.zero,
+                        _ => Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Flexible(
+                                child: Button(
+                                  style: ButtonVariance.link.copyWith(
+                                    padding: (context, states, value) =>
+                                        EdgeInsets.zero,
+                                  ),
+                                  onPressed: effectiveSelection
+                                      ? null
+                                      : () {
+                                          context.navigateTo(
+                                            TrackRoute(trackId: track.id),
+                                          );
+                                        },
+                                  child: Text(
+                                    track.name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
-                                onPressed: effectiveSelection
-                                    ? null
-                                    : () {
-                                        context.navigateTo(
-                                          TrackRoute(trackId: track.id),
-                                        );
-                                      },
-                                child: Text(
-                                  track.name,
+                              ),
+                            ],
+                          ),
+                      },
+                    ),
+                  ),
+                  if (constrains.mdAndUp) ...[
+                    const SizedBox(width: 8),
+                    Expanded(
+                      flex: 4,
+                      child: compact
+                          ? Text(
+                              track.album.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            )
+                          : switch (track) {
+                              SpotubeLocalTrackObject() => Text(
+                                  track.album.name,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
-                              ),
-                            ),
-                          ],
-                        ),
-                    },
-                  ),
-                ),
-                if (constrains.mdAndUp) ...[
-                  const SizedBox(width: 8),
-                  Expanded(
-                    flex: 4,
-                    child: compact
-                        ? Text(
-                            track.album.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          )
-                        : switch (track) {
-                            SpotubeLocalTrackObject() => Text(
-                                track.album.name,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            _ => Align(
-                                alignment: Alignment.centerLeft,
-                                child: LinkText(
-                                  track.album.name,
-                                  AlbumRoute(
-                                    album: track.album,
-                                    id: track.album.id,
+                              _ => Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: LinkText(
+                                    track.album.name,
+                                    AlbumRoute(
+                                      album: track.album,
+                                      id: track.album.id,
+                                    ),
+                                    push: true,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
-                                  push: true,
-                                  overflow: TextOverflow.ellipsis,
                                 ),
-                              ),
-                          },
-                  ),
+                            },
+                    ),
+                  ],
                 ],
-              ],
-            ),
-            subtitle: Align(
-              alignment: Alignment.centerLeft,
-              child: compact || track is SpotubeLocalTrackObject
-                  ? Text(
-                      track.artists.asString(),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    )
-                  : ClipRect(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxHeight: 40),
-                        child: AbsorbPointer(
-                          absorbing: effectiveSelection,
-                          child: ArtistLink(
-                            artists: track.artists,
-                            onOverflowArtistClick: effectiveSelection
-                                ? () {}
-                                : () {
-                                    context.navigateTo(
-                                      TrackRoute(trackId: track.id),
-                                    );
-                                  },
+              ),
+              subtitle: Align(
+                alignment: Alignment.centerLeft,
+                child: compact || track is SpotubeLocalTrackObject
+                    ? Text(
+                        track.artists.asString(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      )
+                    : ClipRect(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxHeight: 40),
+                          child: AbsorbPointer(
+                            absorbing: effectiveSelection,
+                            child: ArtistLink(
+                              artists: track.artists,
+                              onOverflowArtistClick: effectiveSelection
+                                  ? () {}
+                                  : () {
+                                      context.navigateTo(
+                                        TrackRoute(trackId: track.id),
+                                      );
+                                    },
+                            ),
                           ),
                         ),
                       ),
-                    ),
-            ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const SizedBox(width: 8),
-                Text(
-                  Duration(milliseconds: track.durationMs)
-                      .toHumanReadableString(padZero: false),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                Builder(
-                  builder: (context) {
-                    return TrackOptionsButton(
-                      track: track,
-                      userPlaylist: userPlaylist,
-                      playlistId: playlistId,
-                    );
-                  },
-                ),
-                if (kIsDesktop) const Gap(10),
-              ],
+              ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(width: 8),
+                  Text(
+                    Duration(milliseconds: track.durationMs)
+                        .toHumanReadableString(padZero: false),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Builder(
+                    builder: (context) {
+                      return TrackOptionsButton(
+                        track: track,
+                        userPlaylist: userPlaylist,
+                        playlistId: playlistId,
+                      );
+                    },
+                  ),
+                  if (kIsDesktop) const Gap(10),
+                ],
+              ),
             ),
           ),
         ),
-      ),
-    );
-  });
-}
+      );
+    });
+  }
 }
 
-/// Scoped widget that watches only activeTrackId for the album art overlay.
-/// Prevents the entire TrackTile from rebuilding when the active track changes.
-class _TrackTileArtOverlay extends ConsumerWidget {
+/// Scoped widget for the album art overlay. `isPlaying` is passed from the
+/// parent TrackTile (which already watches activeTrackId) so the overlay
+/// itself holds no provider subscription.
+class _TrackTileArtOverlay extends StatelessWidget {
   final SpotubeTrackObject track;
+  final bool isPlaying;
   final bool isHovering;
   final bool isPendingPlayback;
   final bool isTrackQuerying;
 
   const _TrackTileArtOverlay({
     required this.track,
+    required this.isPlaying,
     required this.isHovering,
     required this.isPendingPlayback,
     required this.isTrackQuerying,
   });
 
   @override
-  Widget build(BuildContext context, ref) {
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isPlaying = ref.watch(
-          audioPlayerProvider.select((s) => s.activeTrack?.id),
-        ) ==
-        track.id;
 
     return Stack(
       children: [
@@ -366,11 +366,12 @@ class _TrackTileArtOverlay extends ConsumerWidget {
             height: 40,
             width: 40,
             fit: BoxFit.cover,
+            // Tiny row thumbnail: skip the FadeInImage animation entirely.
+            fadeIn: false,
           ),
         ),
         Positioned.fill(
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
+          child: DecoratedBox(
             decoration: BoxDecoration(
               borderRadius: theme.borderRadiusMd,
               color:
@@ -381,30 +382,27 @@ class _TrackTileArtOverlay extends ConsumerWidget {
         Positioned.fill(
           child: Center(
             child: Skeleton.ignore(
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 300),
-                child: switch ((
-                  isPlaying,
-                  isTrackQuerying,
-                  isHovering,
-                  isPendingPlayback,
-                )) {
-                  (true, true, _, _) || (_, _, _, true) => const SizedBox(
-                      width: 26,
-                      height: 26,
-                      child: CircularProgressIndicator(),
-                    ),
-                  (true, _, _, _) => Icon(
-                      SpotubeIcons.pause,
-                      color: theme.colorScheme.primary,
-                    ),
-                  (_, _, true, _) => const Icon(
-                      SpotubeIcons.play,
-                      color: Colors.white,
-                    ),
-                  _ => const SizedBox.shrink(),
-                },
-              ),
+              child: switch ((
+                isPlaying,
+                isTrackQuerying,
+                isHovering,
+                isPendingPlayback,
+              )) {
+                (true, true, _, _) || (_, _, _, true) => const SizedBox(
+                    width: 26,
+                    height: 26,
+                    child: CircularProgressIndicator(),
+                  ),
+                (true, _, _, _) => Icon(
+                    SpotubeIcons.pause,
+                    color: theme.colorScheme.primary,
+                  ),
+                (_, _, true, _) => const Icon(
+                    SpotubeIcons.play,
+                    color: Colors.white,
+                  ),
+                _ => const SizedBox.shrink(),
+              },
             ),
           ),
         ),

@@ -47,8 +47,6 @@ class PlayerTrackDetails extends HookConsumerWidget {
       return null;
     }, [playing]);
 
-    final glowAnimation = useAnimation(glowController);
-
     return Listener(
       onPointerDown: (event) {
         if (event.buttons != kSecondaryMouseButton) return;
@@ -66,38 +64,47 @@ class PlayerTrackDetails extends HookConsumerWidget {
       child: Row(
         children: [
           if (activeTrack != null)
-            Transform.scale(
-              scale: 1.0 + (0.05 * glowAnimation),
-              child: Container(
-                padding: const EdgeInsets.all(6),
-                margin: const EdgeInsets.only(right: 6, left: 4),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(10),
-                  boxShadow: playing
-                      ? [
-                          BoxShadow(
-                            color: theme.colorScheme.primary.withValues(
-                              alpha: (0.2 + (0.2 * glowAnimation)).toDouble(),
-                            ),
-                            blurRadius: (10 + (10 * glowAnimation)).toDouble(),
-                            spreadRadius: (2 + (3 * glowAnimation)).toDouble(),
-                          )
-                        ]
-                      : [],
-                ),
-                constraints: const BoxConstraints(
-                  maxWidth: 80,
-                  maxHeight: 80,
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: UniversalImage(
-                    path: (track?.album.images)
-                        .asUrlString(placeholder: ImagePlaceholder.albumArt),
-                    placeholder: Assets.images.albumPlaceholder.path,
+            // Scope the pulse glow to ONLY the album art via AnimatedBuilder so
+            // the animation doesn't rebuild the whole mini-player (title,
+            // artist, image) every frame — that was a major rebuild storm.
+            AnimatedBuilder(
+              animation: glowController,
+              builder: (context, _) {
+                final glow = glowController.value;
+                return Transform.scale(
+                  scale: 1.0 + (0.05 * glow),
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    margin: const EdgeInsets.only(right: 6, left: 4),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(10),
+                      boxShadow: playing
+                          ? [
+                              BoxShadow(
+                                color: theme.colorScheme.primary.withValues(
+                                  alpha: (0.2 + (0.2 * glow)).toDouble(),
+                                ),
+                                blurRadius: (10 + (10 * glow)).toDouble(),
+                                spreadRadius: (2 + (3 * glow)).toDouble(),
+                              )
+                            ]
+                          : [],
+                    ),
+                    constraints: const BoxConstraints(
+                      maxWidth: 80,
+                      maxHeight: 80,
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: UniversalImage(
+                        path: (track?.album.images).asUrlString(
+                            placeholder: ImagePlaceholder.albumArt),
+                        placeholder: Assets.images.albumPlaceholder.path,
+                      ),
+                    ),
                   ),
-                ),
-              ),
+                );
+              },
             ),
           if (mediaQuery.mdAndDown)
             Flexible(

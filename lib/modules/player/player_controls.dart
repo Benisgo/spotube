@@ -78,9 +78,20 @@ class PlayerControls extends HookConsumerWidget {
 
     final glowController = useAnimationController(
       duration: const Duration(milliseconds: 1500),
-    )..repeat(reverse: true);
+    );
 
-    final glowAnimation = useAnimation(glowController);
+    // Only run the pulse glow while actually playing, and scope it below with
+    // AnimatedBuilder so it rebuilds just the play button — NOT the whole
+    // controls subtree every frame (this was a major rebuild storm in the
+    // profile: PlayerControls rebuilt ~every frame).
+    useEffect(() {
+      if (displayPlaying) {
+        glowController.repeat(reverse: true);
+      } else {
+        glowController.stop();
+      }
+      return null;
+    }, [displayPlaying]);
 
     final lastSkipCall = useRef<DateTime?>(null);
     void debouncedSkip(void Function() fn) {
@@ -251,44 +262,50 @@ class PlayerControls extends HookConsumerWidget {
                             : context.l10n.resume_playback,
                       ),
                     ).call,
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 300),
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        boxShadow: displayPlaying
-                            ? [
-                                BoxShadow(
-                                  color: theme.colorScheme.primary.withValues(
-                                    alpha: (0.3 + (0.2 * glowAnimation))
-                                        .toDouble(),
+                    child: AnimatedBuilder(
+                      animation: glowController,
+                      builder: (context, _) {
+                        final glow = glowController.value;
+                        return AnimatedContainer(
+                          duration: const Duration(milliseconds: 300),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            boxShadow: displayPlaying
+                                ? [
+                                    BoxShadow(
+                                      color:
+                                          theme.colorScheme.primary.withValues(
+                                        alpha: (0.3 + (0.2 * glow)).toDouble(),
+                                      ),
+                                      blurRadius: 10 + (10 * glow),
+                                      spreadRadius: 2 + (4 * glow),
+                                    )
+                                  ]
+                                : [],
+                          ),
+                          child: IconButton.primary(
+                            size: buttonSize,
+                            shape: ButtonShape.circle,
+                            icon: isFetchingActiveTrack
+                                ? const SizedBox(
+                                    height: 20,
+                                    width: 20,
+                                    child: CircularProgressIndicator(),
+                                  )
+                                : Icon(
+                                    displayPlaying
+                                        ? SpotubeIcons.pause
+                                        : SpotubeIcons.play,
                                   ),
-                                  blurRadius: 10 + (10 * glowAnimation),
-                                  spreadRadius: 2 + (4 * glowAnimation),
-                                )
-                              ]
-                            : [],
-                      ),
-                      child: IconButton.primary(
-                        size: buttonSize,
-                        shape: ButtonShape.circle,
-                        icon: isFetchingActiveTrack
-                            ? const SizedBox(
-                                height: 20,
-                                width: 20,
-                                child: CircularProgressIndicator(),
-                              )
-                            : Icon(
-                                displayPlaying
-                                    ? SpotubeIcons.pause
-                                    : SpotubeIcons.play,
-                              ),
-                        onPressed: isFetchingActiveTrack
-                            ? null
-                            : Actions.handler<PlayPauseIntent>(
-                                context,
-                                PlayPauseIntent(ref),
-                              ),
-                      ),
+                            onPressed: isFetchingActiveTrack
+                                ? null
+                                : Actions.handler<PlayPauseIntent>(
+                                    context,
+                                    PlayPauseIntent(ref),
+                                  ),
+                          ),
+                        );
+                      },
                     ),
                   ),
                   if (!isListener)

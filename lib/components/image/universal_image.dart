@@ -13,6 +13,11 @@ class UniversalImage extends HookWidget {
   final double scale;
   final String? placeholder;
   final BoxFit? fit;
+
+  /// When false, network images render without the FadeInImage cross-fade
+  /// animation (no AnimationController/ticker). Use for small thumbnails that
+  /// are built in bulk (e.g. track list rows) to keep scroll builds cheap.
+  final bool fadeIn;
   const UniversalImage({
     required this.path,
     this.height,
@@ -20,6 +25,7 @@ class UniversalImage extends HookWidget {
     this.placeholder,
     this.fit,
     this.scale = 1,
+    this.fadeIn = true,
     super.key,
   });
 
@@ -48,6 +54,49 @@ class UniversalImage extends HookWidget {
   @override
   Widget build(BuildContext context) {
     if (path.startsWith("http")) {
+      if (!fadeIn) {
+        // Cheap path: no FadeInImage, no animation. Shows the placeholder
+        // until the first decoded frame is ready, then swaps it in instantly.
+        return Image(
+          image: CachedNetworkImageProvider(
+            path,
+            maxHeight: height?.toInt(),
+            maxWidth: width?.toInt(),
+            cacheKey: path,
+            scale: scale,
+          ),
+          width: width,
+          height: height,
+          filterQuality: FilterQuality.low,
+          fit: fit,
+          frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+            if (wasSynchronouslyLoaded) return child;
+            if (frame == null) {
+              return Image.asset(
+                placeholder ?? Assets.images.placeholder.path,
+                width: width,
+                height: height,
+                cacheHeight: height?.toInt(),
+                cacheWidth: width?.toInt(),
+                filterQuality: FilterQuality.low,
+                scale: scale,
+              );
+            }
+            return child;
+          },
+          errorBuilder: (context, error, stackTrace) {
+            return Image.asset(
+              placeholder ?? Assets.images.placeholder.path,
+              width: width,
+              height: height,
+              cacheHeight: height?.toInt(),
+              cacheWidth: width?.toInt(),
+              filterQuality: FilterQuality.low,
+              scale: scale,
+            );
+          },
+        );
+      }
       return FadeInImage(
         image: CachedNetworkImageProvider(
           path,

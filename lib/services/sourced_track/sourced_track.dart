@@ -1087,6 +1087,23 @@ class SourcedTrack extends BasicSourcedTrack {
         return source;
       }
 
+      // Local file (cached/downloaded) source — dio cannot HEAD-validate a
+      // file:// URL (it throws), which made every cached song look "invalid"
+      // and forced a network re-resolve + re-stream. Instead, trust the file
+      // if it still exists on disk with real content (>= the same 10KB floor
+      // findLocalCachedFile uses to reject truncated/corrupt files).
+      if (source.url.startsWith('file://')) {
+        try {
+          final file = File(Uri.parse(source.url).toFilePath());
+          if (await file.exists() && await file.length() >= 10240) {
+            _markValidated(source.url);
+            return source;
+          }
+        } catch (_) {}
+        _validatedStreams.remove(source.url);
+        return null;
+      }
+
       try {
         final res = await globalDio.head(
           source.url,

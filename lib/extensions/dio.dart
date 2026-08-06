@@ -4,6 +4,63 @@ import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 
 extension ChunkDownloaderDioExtension on Dio {
+  /// True for googlevideo.com hosts.
+  bool _isGooglevideo(String url) {
+    try {
+      return Uri.parse(url).host.contains('googlevideo.com');
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Matching User-Agent for the `c=` query param of a googlevideo URL (the
+  /// client that minted it). Flow: "a mismatch is a known cause of mid-stream
+  /// 403s on googlevideo CDNs."
+  String _gvUserAgent(String url) {
+    final c = Uri.tryParse(url)?.queryParameters['c']?.toUpperCase();
+    switch (c) {
+      case 'IOS':
+        return 'com.google.ios.youtube/21.03.3 (iPad7,6; U; CPU iPadOS 17_7_10 like Mac OS X; en-US)';
+      case 'ANDROID' || 'ANDROID_CREATOR':
+        return 'com.google.android.youtube/21.03.38 (Linux; U; Android 14) gzip';
+      case 'ANDROID_VR':
+        return 'com.google.android.apps.youtube.vr.oculus/1.61.48 (Linux; U; Android 12; en_US; Quest 3; Build/SQ3A.220605.009.A1; Cronet/132.0.6808.3)';
+      default:
+        return 'com.google.android.youtube/20.10.38 (Linux; U; Android 11) gzip';
+    }
+  }
+
+  /// googlevideo serves byte ranges via the `range=X-Y` QUERY PARAM (Flow's
+  /// approach), not the HTTP `Range` header — non-zero HTTP ranges 403 without
+  /// a logged-in session in some regions (gcr=eg), while query-param ranges
+  /// are served to anonymous clients. Strip the embedded `range=0-N` cap and
+  /// request the whole file (`range=0-<clen-1>`), like Flow's downloader.
+  String _rewriteGvFullUrl(String url) {
+    try {
+      final uri = Uri.parse(url);
+      final params = <String, dynamic>{};
+      uri.queryParametersAll.forEach((k, v) {
+        if (k == 'range') return;
+        params[k] = v.length == 1 ? v.first : v;
+      });
+      final clen = int.tryParse(uri.queryParameters['clen'] ?? '');
+      if (clen != null && clen > 0) {
+        params['range'] = '0-${clen - 1}';
+      }
+      return uri.replace(queryParameters: params).toString();
+    } catch (_) {
+      return url;
+    }
+  }
+
+  Map<String, dynamic> _gvDownloadHeaders(String url) => {
+        'User-Agent': _gvUserAgent(url),
+        'Origin': 'https://www.youtube.com',
+        'Referer': 'https://www.youtube.com/',
+        'Accept': '*/*',
+        'Accept-Encoding': 'identity',
+      };
+
   Future<Response> chunkDownload(
     String urlPath,
     dynamic savePath, {
@@ -17,6 +74,25 @@ extension ChunkDownloaderDioExtension on Dio {
     Options? options,
     int connections = 4,
   }) async {
+    // googlevideo 403s HTTP `Range: bytes=X-Y` requests for non-zero offsets
+    // without a logged-in session in some regions (gcr=eg) — the parallel
+    // chunk path below would fail (empty file -> metadata RangeError). Mirror
+    // the streaming proxy: rewrite the URL to use the `range=X-Y` query param
+    // and download sequentially with the client-matching UA + Origin/Referer.
+    // Audio files are small, so losing parallel chunks is negligible.
+    if (_isGooglevideo(urlPath)) {
+      return download(
+        _rewriteGvFullUrl(urlPath),
+        savePath,
+        onReceiveProgress: onReceiveProgress,
+        queryParameters: queryParameters,
+        cancelToken: cancelToken,
+        deleteOnError: deleteOnError,
+        options: Options(headers: _gvDownloadHeaders(urlPath)),
+        data: data,
+      );
+    }
+
     final targetFile = File(savePath.toString());
     final tempRootDir = await getTemporaryDirectory();
     final tempSaveDir = Directory(

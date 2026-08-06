@@ -168,7 +168,11 @@ class SourcedTrack extends BasicSourcedTrack {
             e.deleteSync();
             continue;
           }
-          result.add((path: e.path, length: len, name: basename(e.path).toLowerCase()));
+          result.add((
+            path: e.path,
+            length: len,
+            name: basename(e.path).toLowerCase()
+          ));
         } catch (_) {
           continue;
         }
@@ -326,7 +330,8 @@ class SourcedTrack extends BasicSourcedTrack {
           continue;
         }
         final name = basename(entry.path).toLowerCase();
-        if (_isMatchingCachedFile((path: entry.path, length: length, name: name), q)) {
+        if (_isMatchingCachedFile(
+            (path: entry.path, length: length, name: name), q)) {
           return entry;
         }
       }
@@ -1256,9 +1261,13 @@ class SourcedTrack extends BasicSourcedTrack {
     final sorted = [...sources]..sort((a, b) {
         int score(SpotubeAudioSourceStreamObject source) {
           var value = 0;
-          if (source.container == "webm") {
+          // Prefer mp4/m4a (AAC) so playback uses the universally-usable
+          // container and the disk cache saves `.m4a` files instead of
+          // `.weba` (Opus). AAC is broadly compatible across devices, which
+          // matters when users copy cache files out as "their music".
+          if (source.container == "mp4") {
             value += 4;
-          } else if (source.container == "mp4") {
+          } else if (source.container == "webm") {
             value += 3;
           } else {
             value += 1;

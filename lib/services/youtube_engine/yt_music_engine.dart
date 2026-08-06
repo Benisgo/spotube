@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:http/http.dart' as http;
@@ -33,7 +33,9 @@ class _NsigDecoder {
     final now = DateTime.now().millisecondsSinceEpoch;
     if (_playerId != null &&
         _playerIdExpiryMs != null &&
-        now < _playerIdExpiryMs!) return _playerId;
+        now < _playerIdExpiryMs!) {
+      return _playerId;
+    }
     try {
       final resp = await _client.get(Uri.parse(_latestPlayerUrl), headers: {
         "User-Agent": _userAgent
@@ -121,18 +123,31 @@ class _YtMusicClient {
   static final _iosClient = YoutubeApiClient.ios;
 
   /// Cache player responses so getStreamManifest can reuse getVideo's result.
+  /// Short TTL so a throttled/dead CDN URL isn't reused forever — after it
+  /// expires the next play re-fetches a fresh player response, which usually
+  /// yields a new signed URL (and often a different CDN node).
   static final Map<String, Map<String, dynamic>> _playerCache = {};
+  static final Map<String, DateTime> _playerCacheAt = {};
+  static const _playerCacheTtl = Duration(minutes: 10);
 
   static void _cacheResponse(String videoId, Map<String, dynamic> data) {
     _playerCache[videoId] = data;
+    _playerCacheAt[videoId] = DateTime.now();
   }
 
   static Map<String, dynamic>? _getCachedResponse(String videoId) {
+    final cachedAt = _playerCacheAt[videoId];
+    if (cachedAt == null) return null;
+    if (DateTime.now().difference(cachedAt) > _playerCacheTtl) {
+      _playerCache.remove(videoId);
+      _playerCacheAt.remove(videoId);
+      return null;
+    }
     return _playerCache[videoId];
   }
 
   /// Custom clients not in youtube_explode_dart.
-  static final _visionOs = YoutubeApiClient({
+  static const _visionOs = YoutubeApiClient({
     'context': {
       'client': {
         'clientName': 'VISIONOS',
@@ -150,7 +165,7 @@ class _YtMusicClient {
     },
   }, 'https://www.youtube.com/youtubei/v1/player?prettyPrint=false');
 
-  static final _tvSimply = YoutubeApiClient(
+  static const _tvSimply = YoutubeApiClient(
     {
       'context': {
         'client': {
@@ -170,7 +185,7 @@ class _YtMusicClient {
     'https://www.youtube.com/youtubei/v1/player?prettyPrint=false',
   );
 
-  static final _webEmbedded = YoutubeApiClient({
+  static const _webEmbedded = YoutubeApiClient({
     'context': {
       'client': {
         'clientName': 'WEB_EMBEDDED_PLAYER',
@@ -187,7 +202,7 @@ class _YtMusicClient {
   }, 'https://www.youtube.com/youtubei/v1/player?prettyPrint=false');
 
   /// ANDROID_CREATOR — YouTube Studio app, proven to work in Flow.
-  static final _androidCreator = YoutubeApiClient({
+  static const _androidCreator = YoutubeApiClient({
     'context': {
       'client': {
         'clientName': 'ANDROID_CREATOR',
@@ -211,7 +226,7 @@ class _YtMusicClient {
   }, 'https://www.youtube.com/youtubei/v1/player?prettyPrint=false');
 
   /// IPADOS — iPad client, same clientName as IOS but different device fields.
-  static final _iPados = YoutubeApiClient({
+  static const _iPados = YoutubeApiClient({
     'context': {
       'client': {
         'clientName': 'IOS',
@@ -418,7 +433,7 @@ class _YtMusicClient {
         final sapisid = _parseCookieValue(_cookies, "SAPISID");
         if (sapisid != null) {
           final epochSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-          final origin = "https://www.youtube.com";
+          const origin = "https://www.youtube.com";
           final hash = crypto.sha1
               .convert(utf8.encode("$epochSec $sapisid $origin"))
               .toString();
@@ -695,14 +710,11 @@ class YtMusicEngine implements YouTubeEngine {
               "url=${u != null ? "${u.substring(0, u.length.clamp(0, 60))}..." : "null"}");
         }
 
-        // Accept audio-only OR combined formats (video+audio). Combined formats
-        // like itag=18 (avc1 + mp4a) have mimeType starting with "video/".
-        final isAudioOnly = mimeType.startsWith("audio/");
-        final hasAudioCodec = mimeType.contains("mp4a") ||
-            mimeType.contains("opus") ||
-            mimeType.contains("mp3");
-        final hasAudioQuality = f.containsKey("audioQuality");
-        if (!isAudioOnly && !hasAudioCodec && !hasAudioQuality) continue;
+        // Pass 1 collects strictly audio-only streams (mimeType starts with
+        // "audio/"). Video muxes (video/ + audio codec) are NOT treated as
+        // audio — they are only used as a last resort in pass 2 below. This
+        // mirrors Flow: audio-only file instead of a 25MB video mux.
+        if (!mimeType.startsWith("audio/")) continue;
         var url = f["url"]?.toString();
 
         if (url == null) {
@@ -761,25 +773,27 @@ class YtMusicEngine implements YouTubeEngine {
 
         url = await _NsigDecoder.applyToUrl(url);
 
-        // Quick HEAD verify — ciphered URLs need full 2s for sig decode,
-        // direct URLs get 0.5s to catch bad nsig without slowing playback
+        // Quick HEAD verify — ciphered URLs need full 2s for sig decode.
+        // HEAD is UNRELIABLE for googlevideo URLs: it frequently returns 403
+        // for streams that serve fine on GET, and can pass for streams that
+        // then die mid-transfer. So a HEAD 403 must NOT discard the stream —
+        // keep it and let the shelf proxy attempt the real GET (it retries
+        // and falls back). Dropping the audio-only stream on HEAD 403 here
+        // is why some tracks only got a video mux (which then failed to
+        // stream) instead of the working audio-only stream.
         final hadCipher =
             f.containsKey("signatureCipher") || f.containsKey("cipher");
         try {
           final headResp = await _YtMusicClient._http
               .head(Uri.parse(url))
-              .timeout(Duration(seconds: hadCipher ? 2 : 1));
-          if (headResp.statusCode == 403) {
-            if (i < 20) {
-              AppLogger.log.i("[yt_music] verify_403[$i] videoId=$videoId");
-            }
-            continue;
+              .timeout(Duration(seconds: hadCipher ? 3 : 2));
+          if (headResp.statusCode == 403 && i < 20) {
+            AppLogger.log.i(
+                "[yt_music] verify_403_kept[$i] videoId=$videoId (HEAD 403 != GET failure; keeping stream)");
           }
         } catch (_) {
-          if (i < 20) {
-            AppLogger.log.i("[yt_music] verify_fail[$i] videoId=$videoId");
-          }
-          continue;
+          // Do NOT drop stream URLs on HEAD timeout/network flutter —
+          // let shelf proxy attempt the GET request directly.
         }
 
         // Store cookies + browser headers for the proxy to use
@@ -803,10 +817,81 @@ class YtMusicEngine implements YouTubeEngine {
           _parseMediaType(mimeType),
           null,
         ));
-        // Found one working stream — no need to check more
-        break;
       }
-      if (result.isNotEmpty) break;
+    }
+
+    // Pass 2 — strict last resort: only when NO audio-only stream is usable,
+    // fall back to a single video mux (video+audio combined) so the song
+    // still plays. A mux never appears in the manifest when audio-only
+    // streams exist — so downloads/cache stay audio-only.
+    if (result.isEmpty) {
+      for (final list in [adaptiveFormats, formats]) {
+        for (int i = 0; i < list.length; i++) {
+          final f = list[i] as Map<String, dynamic>;
+          final mimeType = f["mimeType"]?.toString() ?? "";
+          final hasAudioCodec = mimeType.contains("mp4a") ||
+              mimeType.contains("opus") ||
+              mimeType.contains("mp3");
+          final hasAudioQuality = f.containsKey("audioQuality");
+          if (mimeType.startsWith("audio/") ||
+              (!hasAudioCodec && !hasAudioQuality)) {
+            continue;
+          }
+          var url = f["url"]?.toString();
+          if (url == null) {
+            final cipher =
+                f["signatureCipher"]?.toString() ?? f["cipher"]?.toString();
+            if (cipher != null) {
+              try {
+                final params = Uri.splitQueryString(cipher);
+                url = params["url"]!;
+                final allParams = <String, String>{};
+                final sp = params["sp"];
+                final s = params["s"];
+                params.forEach((k, v) {
+                  if (k != "url" && k != "sp" && k != "s" && k != sp) {
+                    allParams[k] = v;
+                  }
+                });
+                if (sp != null && s != null && sp.isNotEmpty && s.isNotEmpty) {
+                  final decodedSig = await _NsigDecoder.decodeSignature(s);
+                  if (decodedSig != null) allParams[sp] = decodedSig;
+                }
+                url = Uri.parse(url)
+                    .replace(queryParameters: allParams)
+                    .toString();
+              } catch (_) {
+                url = null;
+              }
+            }
+          }
+          if (url == null) continue;
+          url = await _NsigDecoder.applyToUrl(url);
+          final h = _YtMusicClient.headersForStreamUrl(url);
+          if (h != null) {
+            AndroidYtDlpEngine.setHeadersForUrl(url, h);
+          }
+          result.add(AudioOnlyStreamInfo(
+            VideoId(videoId),
+            f["itag"] as int? ?? 0,
+            Uri.parse(url),
+            _parseContainer(mimeType),
+            f["contentLength"] != null
+                ? FileSize(int.tryParse(f["contentLength"].toString()) ?? 0)
+                : FileSize.unknown,
+            Bitrate(f["bitrate"] as int? ?? 0),
+            _parseCodec(mimeType),
+            f["qualityLabel"]?.toString() ?? "",
+            [],
+            _parseMediaType(mimeType),
+            null,
+          ));
+          AppLogger.log.i(
+              "[yt_music] mux_fallback videoId=$videoId itag=${f["itag"]} (no audio-only streams)");
+          break;
+        }
+        if (result.isNotEmpty) break;
+      }
     }
 
     if (result.isEmpty) {

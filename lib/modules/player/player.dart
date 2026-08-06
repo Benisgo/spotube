@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:auto_route/auto_route.dart';
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:flutter/services.dart';
@@ -423,10 +425,10 @@ class _AlbumArtSwipeArea extends HookWidget {
     required this.onSwipeRight,
   });
 
-  Widget _buildAlbumArt(String path) {
+  Widget _buildAlbumArt(String path, double size) {
     return Container(
-      width: 260,
-      height: 260,
+      width: size,
+      height: size,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
@@ -443,6 +445,11 @@ class _AlbumArtSwipeArea extends HookWidget {
           path: path,
           placeholder: Assets.images.albumPlaceholder.path,
           fit: BoxFit.cover,
+          // Decode at display size instead of full-res (640px+) album art —
+          // decoding large images on the UI thread is a major Android jank
+          // source. CachedNetworkImageProvider resizes via maxWidth/maxHeight.
+          width: size,
+          height: size,
         ),
       ),
     );
@@ -487,7 +494,13 @@ class _AlbumArtSwipeArea extends HookWidget {
       },
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final size = constraints.maxWidth.clamp(200.0, 320.0);
+          // Size the album art to BOTH available width and height so it
+          // shrinks in short/narrow windows (e.g. split-screen) instead of a
+          // fixed 200-320px square that squeezes out the controls.
+          final size = math.min(
+            constraints.maxWidth.clamp(140.0, 320.0),
+            constraints.maxHeight,
+          );
           return SizedBox(
             width: size,
             height: size,
@@ -499,7 +512,7 @@ class _AlbumArtSwipeArea extends HookWidget {
                     offset: Offset(-280 + dragOffset.value, 0),
                     child: Opacity(
                       opacity: ((dragOffset.value - 20) / 200).clamp(0.0, 1.0),
-                      child: _buildAlbumArt(prevAlbumArt!),
+                      child: _buildAlbumArt(prevAlbumArt!, size),
                     ),
                   ),
                 if (dragOffset.value < 0 && nextAlbumArt != null)
@@ -508,7 +521,7 @@ class _AlbumArtSwipeArea extends HookWidget {
                     child: Opacity(
                       opacity:
                           (((-dragOffset.value) - 20) / 200).clamp(0.0, 1.0),
-                      child: _buildAlbumArt(nextAlbumArt!),
+                      child: _buildAlbumArt(nextAlbumArt!, size),
                     ),
                   ),
                 AnimatedContainer(
@@ -517,7 +530,7 @@ class _AlbumArtSwipeArea extends HookWidget {
                   ),
                   curve: Curves.easeInOut,
                   transform: Matrix4.translationValues(dragOffset.value, 0, 0),
-                  child: _buildAlbumArt(currentAlbumArt),
+                  child: _buildAlbumArt(currentAlbumArt, size),
                 ),
               ],
             ),

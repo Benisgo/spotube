@@ -108,6 +108,12 @@ class SourcedTrack extends BasicSourcedTrack {
   static final Map<String, List<SpotubeAudioSourceStreamObject>>
       _streamFetches = {};
   static final Map<String, DateTime> _validatedStreams = {};
+
+  /// URLs known to have died mid-stream (e.g. "Connection closed" from the
+  /// upstream CDN). They must never be short-circuited back to via
+  /// hasFreshValidatedStream / signed-expiry — otherwise a throttled/dead CDN
+  /// node is retried forever with the same URL.
+  static final Set<String> _deadStreams = {};
   final Ref ref;
 
   SourcedTrack({
@@ -119,15 +125,58 @@ class SourcedTrack extends BasicSourcedTrack {
     required super.sources,
   });
 
+  static bool isUrlExpired(String? url) {
+    if (url == null || url.isEmpty) return true;
+    if (url.startsWith("file://")) return false;
+    try {
+      final uri = Uri.parse(url);
+      final expireStr = uri.queryParameters['expire'];
+      if (expireStr != null) {
+        final expireSec = int.tryParse(expireStr);
+        if (expireSec != null) {
+          final nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+          if (nowSec >= (expireSec - 60)) {
+            return true;
+          }
+        }
+      }
+    } catch (_) {}
+    return false;
+  }
+
+  static void invalidate(String trackId) {
+    _resolvedFetches.remove(trackId);
+    _siblingFetches.remove(trackId);
+    _inFlightStreamFetches.remove(trackId);
+    _streamFetches.remove(trackId);
+  }
+
+  /// Forget that [url] was validated and mark it dead, so a stream that died
+  /// mid-transfer (CDN throttle / connection closed) is not re-short-circuited
+  /// back to by hasFreshValidatedStream / resolve_playable — forcing a fresh
+  /// re-resolution instead of hammering the same dead CDN node.
+  static void invalidateStreamValidation(String url) {
+    _validatedStreams.remove(url);
+    _deadStreams.add(url);
+  }
+
   static Future<SourcedTrack> fetchFromTrack({
     required SpotubeFullTrackObject query,
     required Ref ref,
+    bool forceRefresh = false,
   }) async {
     PlaybackStartTrace.markTrack(query.id, 'sourced_track.fetch.start');
-    final resolved = _resolvedFetches[query.id];
-    if (resolved != null) {
-      PlaybackStartTrace.markTrack(query.id, 'sourced_track.fetch.cache_hit');
-      return resolved;
+    if (!forceRefresh) {
+      final resolved = _resolvedFetches[query.id];
+      if (resolved != null && !isUrlExpired(resolved.url)) {
+        PlaybackStartTrace.markTrack(query.id, 'sourced_track.fetch.cache_hit');
+        return resolved;
+      }
+      if (resolved != null && isUrlExpired(resolved.url)) {
+        invalidate(query.id);
+      }
+    } else {
+      invalidate(query.id);
     }
 
     final inflight = _inFlightFetches[query.id];
@@ -157,6 +206,43 @@ class SourcedTrack extends BasicSourcedTrack {
     }
   }
 
+  static bool _isMatchingCachedFile(File file, SpotubeFullTrackObject query) {
+    final fileName = basename(file.path).toLowerCase();
+    if (fileName.endsWith('.part')) return false;
+
+    // Ignore and auto-purge corrupted or truncated files (< 10 KB)
+    try {
+      if (file.lengthSync() < 10240) {
+        file.deleteSync();
+        return false;
+      }
+    } catch (_) {
+      return false;
+    }
+
+    final trackId = query.id.toLowerCase();
+    if (fileName.contains(trackId)) return true;
+
+    final sanitizedName =
+        ServiceUtils.sanitizeFilename(query.name).toLowerCase();
+    final baseName = ServiceUtils.sanitizeFilename(
+      '${query.name} - ${query.artists.map((d) => d.name).join(",")}',
+    ).toLowerCase();
+
+    if (fileName.startsWith(baseName)) return true;
+
+    final artistNames = query.artists
+        .map((d) => d.name.toLowerCase())
+        .where((a) => a.length >= 2)
+        .toList();
+    if (sanitizedName.length >= 3 && fileName.contains(sanitizedName)) {
+      if (artistNames.isEmpty || artistNames.any((a) => fileName.contains(a))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   static File? findLocalCachedFileSync(SpotubeFullTrackObject query) {
     try {
       final cacheDir = UserPreferencesNotifier.getMusicCacheDirSync();
@@ -164,22 +250,10 @@ class SourcedTrack extends BasicSourcedTrack {
       final dir = Directory(cacheDir);
       if (!dir.existsSync()) return null;
 
-      final trackId = query.id.toLowerCase();
-      final sanitizedName =
-          ServiceUtils.sanitizeFilename(query.name).toLowerCase();
-      final baseName = ServiceUtils.sanitizeFilename(
-        '${query.name} - ${query.artists.map((d) => d.name).join(",")}',
-      ).toLowerCase();
-
       final entries = dir.listSync();
       for (final entry in entries) {
-        if (entry is File) {
-          final fileName = basename(entry.path).toLowerCase();
-          if (fileName.contains(trackId) ||
-              fileName.startsWith(baseName) ||
-              (sanitizedName.length >= 3 && fileName.contains(sanitizedName))) {
-            return entry;
-          }
+        if (entry is File && _isMatchingCachedFile(entry, query)) {
+          return entry;
         }
       }
     } catch (_) {}
@@ -192,22 +266,10 @@ class SourcedTrack extends BasicSourcedTrack {
       final dir = Directory(cacheDir);
       if (!await dir.exists()) return null;
 
-      final trackId = query.id.toLowerCase();
-      final sanitizedName =
-          ServiceUtils.sanitizeFilename(query.name).toLowerCase();
-      final baseName = ServiceUtils.sanitizeFilename(
-        '${query.name} - ${query.artists.map((d) => d.name).join(",")}',
-      ).toLowerCase();
-
       final entries = await dir.list().toList();
       for (final entry in entries) {
-        if (entry is File) {
-          final fileName = basename(entry.path).toLowerCase();
-          if (fileName.contains(trackId) ||
-              fileName.startsWith(baseName) ||
-              (sanitizedName.length >= 3 && fileName.contains(sanitizedName))) {
-            return entry;
-          }
+        if (entry is File && _isMatchingCachedFile(entry, query)) {
+          return entry;
         }
       }
     } catch (_) {}
@@ -933,6 +995,13 @@ class SourcedTrack extends BasicSourcedTrack {
     Future<SpotubeAudioSourceStreamObject?> validateStream(
       SpotubeAudioSourceStreamObject source,
     ) async {
+      if (_deadStreams.contains(source.url)) {
+        // Known-dead URL (failed mid-transfer) — never re-select it, even
+        // though its signed expiry is still in the future.
+        _validatedStreams.remove(source.url);
+        return null;
+      }
+
       if (_isRecentlyValidated(source.url)) {
         return source;
       }
@@ -1015,6 +1084,7 @@ class SourcedTrack extends BasicSourcedTrack {
   bool get hasFreshValidatedStream {
     final preferredStream = preferredPlaybackStream;
     return preferredStream != null &&
+        !_deadStreams.contains(preferredStream.url) &&
         (_isRecentlyValidated(preferredStream.url) ||
             _hasFreshSignedExpiry(preferredStream.url));
   }
@@ -1115,9 +1185,9 @@ class SourcedTrack extends BasicSourcedTrack {
     final sorted = [...sources]..sort((a, b) {
         int score(SpotubeAudioSourceStreamObject source) {
           var value = 0;
-          if (source.container == "mp4") {
+          if (source.container == "webm") {
             value += 4;
-          } else if (source.container == "webm") {
+          } else if (source.container == "mp4") {
             value += 3;
           } else {
             value += 1;

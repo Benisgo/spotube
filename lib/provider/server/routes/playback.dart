@@ -37,7 +37,14 @@ class ServerPlaybackRoutes {
   final Map<String, int> _upstreamAttemptCounts = {};
   final Map<String, Future<SourcedTrack?>> _inFlightTrackLookups = {};
 
-  ServerPlaybackRoutes(this.ref) : dio = Dio();
+  ServerPlaybackRoutes(this.ref)
+      : dio = Dio(
+          BaseOptions(
+            connectTimeout: const Duration(seconds: 10),
+            receiveTimeout: const Duration(seconds: 30),
+            sendTimeout: const Duration(seconds: 10),
+          ),
+        );
 
   String _memoryLabel() =>
       "${(ProcessInfo.currentRss / (1024 * 1024)).toStringAsFixed(1)}MB";
@@ -490,7 +497,6 @@ class ServerPlaybackRoutes {
               "referer": "https://www.youtube.com/",
               "Cache-Control": "max-age=3600",
               "Connection": "close",
-              "host": Uri.parse(fallbackUrl).host,
             },
             validateStatus: (status) => status! < 500,
           );
@@ -637,17 +643,19 @@ class ServerPlaybackRoutes {
       };
     }
 
-    Options optionsFor(String sourceUrl) => Options(
-          headers: {
-            ...headers,
-            ...ytDlpOrFallbackHeaders(sourceUrl),
-            "referer": "https://www.youtube.com/",
-            "host": Uri.parse(sourceUrl).host,
-            "accept-encoding": "identity",
-          },
-          responseType: ResponseType.stream,
-          validateStatus: (_) => true,
-        );
+    Options optionsFor(String sourceUrl) {
+      final h = Map<String, String>.from(headers);
+      h.addAll(ytDlpOrFallbackHeaders(sourceUrl));
+      h["referer"] = "https://www.youtube.com/";
+      h["accept-encoding"] = "identity";
+      h.remove("host");
+      h.remove("Host");
+      return Options(
+        headers: h,
+        responseType: ResponseType.stream,
+        validateStatus: (_) => true,
+      );
+    }
 
     Future<dio_lib.Response<ResponseBody>> fetchStream(String sourceUrl) {
       final attemptCount = (_upstreamAttemptCounts[requestedUri] =
@@ -699,6 +707,10 @@ class ServerPlaybackRoutes {
               e.error.toString().contains("Connection closed")) {
             _trace(
                 "Upstream connection closed prematurely for uri=$requestedUri");
+            // Mark this stream URL dead so resolve_playable / refresh no
+            // longer short-circuit back to the same throttled CDN node — the
+            // retry below re-resolves a fresh URL instead of hammering it.
+            SourcedTrack.invalidateStreamValidation(url);
             tempRes = null;
           } else {
             AppLogger.reportError(e, stack);
@@ -743,29 +755,48 @@ class ServerPlaybackRoutes {
     if (tempRes == null ||
         (tempRes.statusCode != 200 && tempRes.statusCode != 206)) {
       _markStreamFailure(activeTrack);
+      SourcedTrack.invalidate(activeTrack.query.id);
 
       bool fallbackSuccess = false;
       try {
-        final fallbackEngine = YouTubeExplodeEngine();
-        final manifest =
-            await fallbackEngine.getStreamManifest(activeTrack.info.id);
-        if (manifest.audioOnly.isNotEmpty) {
-          final fallbackStreams = manifest.audioOnly.toList();
-          fallbackStreams.sort((a, b) =>
-              b.bitrate.bitsPerSecond.compareTo(a.bitrate.bitsPerSecond));
-          url = fallbackStreams.first.url.toString();
+        final freshTrack = await SourcedTrack.fetchFromTrack(
+          query: activeTrack.query,
+          ref: ref,
+          forceRefresh: true,
+        );
+        if (freshTrack.url != null) {
+          url = freshTrack.url!;
           tempRes = await fetchStream(url);
           if (tempRes.statusCode == 200 || tempRes.statusCode == 206) {
             _clearStreamFailure(activeTrack);
             fallbackSuccess = true;
           }
         }
-      } catch (fallbackError, fallbackStack) {
-        if (fallbackError is DioException &&
-            CancelToken.isCancel(fallbackError)) {
-          rethrow;
+      } catch (_) {}
+
+      if (!fallbackSuccess) {
+        try {
+          final fallbackEngine = YouTubeExplodeEngine();
+          final manifest =
+              await fallbackEngine.getStreamManifest(activeTrack.info.id);
+          if (manifest.audioOnly.isNotEmpty) {
+            final fallbackStreams = manifest.audioOnly.toList();
+            fallbackStreams.sort((a, b) =>
+                b.bitrate.bitsPerSecond.compareTo(a.bitrate.bitsPerSecond));
+            url = fallbackStreams.first.url.toString();
+            tempRes = await fetchStream(url);
+            if (tempRes.statusCode == 200 || tempRes.statusCode == 206) {
+              _clearStreamFailure(activeTrack);
+              fallbackSuccess = true;
+            }
+          }
+        } catch (fallbackError, fallbackStack) {
+          if (fallbackError is DioException &&
+              CancelToken.isCancel(fallbackError)) {
+            rethrow;
+          }
+          AppLogger.reportError(fallbackError, fallbackStack);
         }
-        AppLogger.reportError(fallbackError, fallbackStack);
       }
 
       if (!fallbackSuccess) {
@@ -864,6 +895,11 @@ class ServerPlaybackRoutes {
           _trace(
             "cache incomplete uri=$requestedUri track=${track.query.id} length=$fileLength expected=${contentRange.total}",
           );
+          try {
+            if (await trackPartialCacheFile.exists()) {
+              await trackPartialCacheFile.delete();
+            }
+          } catch (_) {}
           return;
         }
 
@@ -876,11 +912,18 @@ class ServerPlaybackRoutes {
         } catch (_) {
           try {
             await trackPartialCacheFile.copy(effectiveTrackCacheFile.path);
-            await trackPartialCacheFile.delete().catchError((_) => trackPartialCacheFile);
+            await trackPartialCacheFile
+                .delete()
+                .catchError((_) => trackPartialCacheFile);
           } catch (e) {
             _trace(
               "cache rename/copy failed uri=$requestedUri track=${track.query.id} error=$e",
             );
+            try {
+              if (await trackPartialCacheFile.exists()) {
+                await trackPartialCacheFile.delete();
+              }
+            } catch (_) {}
             return;
           }
         }
@@ -904,10 +947,15 @@ class ServerPlaybackRoutes {
           AppLogger.reportError(e, stackTrace);
         });
       },
-      onError: (e) {
+      onError: (e) async {
         _trace(
           "cache write error uri=$requestedUri track=${track.query.id} error=$e",
         );
+        try {
+          if (await trackPartialCacheFile.exists()) {
+            await trackPartialCacheFile.delete();
+          }
+        } catch (_) {}
       },
     );
     return res;

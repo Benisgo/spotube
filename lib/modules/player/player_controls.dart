@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -135,7 +137,10 @@ class PlayerControls extends HookConsumerWidget {
                             child: Text(context.l10n.slide_to_seek),
                           ).call,
                           child: SizedBox(
-                            width: mediaQuery.xlAndUp ? 600 : 500,
+                            width: math.min(
+                              mediaQuery.xlAndUp ? 600 : 500,
+                              mediaQuery.width,
+                            ),
                             child: Slider(
                               hintValue: SliderValue.single(bufferProgress),
                               value:

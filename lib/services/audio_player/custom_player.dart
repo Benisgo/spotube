@@ -40,7 +40,10 @@ class CustomPlayer extends Player {
       nativePlayer.setProperty(
           "cache-pause", "no"); // don't pause while filling
     } else if (kIsWindows) {
-      nativePlayer.setProperty("network-timeout", "5");
+      // 30s is enough for the shelf proxy to connect upstream (googlevideo)
+      // and start streaming. The old value of 5s was too tight and caused
+      // player.error before the proxy had a chance to respond.
+      nativePlayer.setProperty("network-timeout", "30");
       nativePlayer.setProperty(
         "demuxer-max-bytes",
         (10 * 1024 * 1024).toString(), // 10MB — cache entire song
@@ -69,6 +72,7 @@ class CustomPlayer extends Player {
       nativePlayer.setProperty("audio-buffer", "0.050"); // small audio buffer
       nativePlayer.setProperty("keep-open", "no"); // no post-EOF idle state
     } else {
+
       nativePlayer.setProperty("network-timeout", "120");
       nativePlayer.setProperty(
         "demuxer-max-bytes",

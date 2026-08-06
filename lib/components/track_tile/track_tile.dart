@@ -1,10 +1,7 @@
-import 'dart:io';
-
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/gestures.dart';
 
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:path/path.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 import 'package:spotube/collections/routes.gr.dart';
@@ -25,36 +22,19 @@ import 'package:spotube/provider/audio_player/querying_track_info.dart';
 import 'package:spotube/provider/blacklist_provider.dart';
 import 'package:spotube/provider/connectivity_provider.dart';
 import 'package:spotube/provider/multi_session/multi_session.dart';
-import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
 import 'package:spotube/services/connectivity_adapter.dart';
+import 'package:spotube/services/sourced_track/sourced_track.dart';
 import 'package:spotube/utils/platform.dart';
-import 'package:spotube/utils/service_utils.dart';
 
 final isTrackAudioCachedProvider =
     FutureProvider.family<bool, SpotubeTrackObject>((ref, track) async {
   if (track is SpotubeLocalTrackObject) return true;
+  if (track is! SpotubeFullTrackObject) return false;
   try {
-    final cacheDir = await UserPreferencesNotifier.getMusicCacheDir();
-    final dir = Directory(cacheDir);
-    if (!await dir.exists()) return false;
-
-    final trackId = track.id.toLowerCase();
-    final sanitizedName =
-        ServiceUtils.sanitizeFilename(track.name).toLowerCase();
-    final baseName = ServiceUtils.sanitizeFilename(
-      '${track.name} - ${track.artists.map((d) => d.name).join(",")}',
-    ).toLowerCase();
-
-    final entries = await dir.list().toList();
-    return entries.any((e) {
-      if (e is! File) return false;
-      final fileName = basename(e.path).toLowerCase();
-      return fileName.contains(trackId) ||
-          fileName.startsWith(baseName) ||
-          (sanitizedName.length >= 3 && fileName.contains(sanitizedName));
-    });
+    final cachedFile = await SourcedTrack.findLocalCachedFile(track);
+    return cachedFile != null;
   } catch (_) {
-    return true;
+    return false;
   }
 });
 

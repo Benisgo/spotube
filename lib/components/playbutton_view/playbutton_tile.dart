@@ -47,11 +47,16 @@ class PlaybuttonTile extends ConsumerWidget {
     final cleanDescription = description?.unescapeHtml().cleanHtml() ?? "";
     final scale = context.theme.scaling;
 
-    final multiSession = ref.watch(multiSessionProvider);
-    final canControlPlayback = !multiSession.connected ||
-        multiSession.can(MultiSessionPermission.controlPlayback);
-    final canEditQueue = !multiSession.connected ||
-        multiSession.can(MultiSessionPermission.editQueue);
+    final canControlPlayback = ref.watch(
+      multiSessionProvider.select(
+        (s) => !s.connected || s.can(MultiSessionPermission.controlPlayback),
+      ),
+    );
+    final canEditQueue = ref.watch(
+      multiSessionProvider.select(
+        (s) => !s.connected || s.can(MultiSessionPermission.editQueue),
+      ),
+    );
 
     return Button(
       leading: imageUrl != null
@@ -61,7 +66,11 @@ class PlaybuttonTile extends ConsumerWidget {
               decoration: BoxDecoration(
                 borderRadius: context.theme.borderRadiusMd,
                 image: DecorationImage(
-                  image: UniversalImage.imageProvider(imageUrl!),
+                  image: UniversalImage.imageProvider(
+                    imageUrl!,
+                    height: 100 * scale,
+                    width: 100 * scale,
+                  ),
                   fit: BoxFit.cover,
                 ),
               ),
@@ -131,7 +140,7 @@ class PlaybuttonTile extends ConsumerWidget {
           Text(title),
           if (cleanDescription.isNotEmpty)
             Text(
-              description!,
+              cleanDescription,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ).xSmall().muted(),

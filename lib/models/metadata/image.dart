@@ -27,23 +27,31 @@ final placeholderUrlMap = {
       "https://avatars.dicebear.com/api/bottts/${PrimitiveUtils.uuid.v4()}.png",
 };
 
+// Cache sorted image lists by list identity to avoid repeated O(n log n) sort
+// on every build() call. Expando uses weak references — entries are GC'd when
+// the source list is collected, so this never leaks memory.
+final _sortedImageCache = Expando<List<SpotubeImageObject>>();
+
+List<SpotubeImageObject>? _sortedImages(List<SpotubeImageObject>? images) {
+  if (images == null || images.isEmpty) return images;
+  return _sortedImageCache[images] ??= List.of(images)
+    ..sort((a, b) {
+      final widthCmp = (a.width ?? 0).compareTo(b.width ?? 0);
+      if (widthCmp != 0) return widthCmp;
+      return (a.height ?? 0).compareTo(b.height ?? 0);
+    });
+}
+
 extension SpotubeImageExtensions on List<SpotubeImageObject>? {
   /// Returns the URL of the image at the specified index.
   String asUrlString({
     int index = 1,
     required ImagePlaceholder placeholder,
   }) {
-    final sortedImage = this?.sorted((a, b) {
-      final widthComparison = (a.width ?? 0).compareTo(b.width ?? 0);
-      if (widthComparison != 0) return widthComparison;
-      return (a.height ?? 0).compareTo(b.height ?? 0);
-    });
-
-    return sortedImage != null && sortedImage.isNotEmpty
-        ? sortedImage[
-                index > sortedImage.length - 1 ? sortedImage.length - 1 : index]
-            .url
-        : placeholderUrlMap[placeholder]!;
+    final sorted = _sortedImages(this);
+    if (sorted == null || sorted.isEmpty) return placeholderUrlMap[placeholder]!;
+    final clampedIndex = index > sorted.length - 1 ? sorted.length - 1 : index;
+    return sorted[clampedIndex].url;
   }
 
   Uri asUri({
@@ -58,41 +66,24 @@ extension SpotubeImageExtensions on List<SpotubeImageObject>? {
   }
 
   String smallest(ImagePlaceholder placeholder) {
-    final sortedImage = this?.sorted((a, b) {
-      final widthComparison = (a.width ?? 0).compareTo(b.width ?? 0);
-      if (widthComparison != 0) return widthComparison;
-      return (a.height ?? 0).compareTo(b.height ?? 0);
-    });
-
-    return sortedImage != null && sortedImage.isNotEmpty
-        ? sortedImage.first.url
-        : placeholderUrlMap[placeholder]!;
+    final sorted = _sortedImages(this);
+    if (sorted == null || sorted.isEmpty) return placeholderUrlMap[placeholder]!;
+    return sorted.first.url;
   }
 
   String from200PxTo300PxOrSmallestImage([
     ImagePlaceholder placeholder = ImagePlaceholder.albumArt,
   ]) {
-    final placeholderUrl = placeholderUrlMap[placeholder]!;
-
-    // Sort images by width and height to find the smallest one
-    final sortedImage = this?.sorted((a, b) {
-      final widthComparison = (a.width ?? 0).compareTo(b.width ?? 0);
-      if (widthComparison != 0) return widthComparison;
-      return (a.height ?? 0).compareTo(b.height ?? 0);
-    });
-
-    return sortedImage != null && sortedImage.isNotEmpty
-        ? sortedImage.firstWhere(
-            (image) {
-              final width = image.width ?? 0;
-              final height = image.height ?? 0;
-              return width >= 200 &&
-                  height >= 200 &&
-                  width <= 300 &&
-                  height <= 300;
-            },
-            orElse: () => sortedImage.first,
-          ).url
-        : placeholderUrl;
+    final sorted = _sortedImages(this);
+    if (sorted == null || sorted.isEmpty) return placeholderUrlMap[placeholder]!;
+    return sorted.firstWhere(
+      (image) {
+        final width = image.width ?? 0;
+        final height = image.height ?? 0;
+        return width >= 200 && height >= 200 && width <= 300 && height <= 300;
+      },
+      orElse: () => sorted.first,
+    ).url;
   }
 }
+

@@ -37,23 +37,20 @@ class ArtistLink extends StatelessWidget {
             .asMap()
             .entries
             .map(
-              (artist) => Builder(builder: (context) {
-                return AnchorButton(
-                  (artist.key != artists.length - 1)
-                      ? "${artist.value.name}, "
-                      : artist.value.name,
-                  onTap: () {
-                    if (onRouteChange != null) {
-                      onRouteChange?.call("/artist/${artist.value.id}");
-                    } else {
-                      context
-                          .navigateTo(ArtistRoute(artistId: artist.value.id));
-                    }
-                  },
-                  overflow: TextOverflow.ellipsis,
-                  style: textStyle,
-                );
-              }),
+              (artist) => AnchorButton(
+                (artist.key != artists.length - 1)
+                    ? "${artist.value.name}, "
+                    : artist.value.name,
+                onTap: () {
+                  if (onRouteChange != null) {
+                    onRouteChange?.call("/artist/${artist.value.id}");
+                  } else {
+                    context.navigateTo(ArtistRoute(artistId: artist.value.id));
+                  }
+                },
+                overflow: TextOverflow.ellipsis,
+                style: textStyle,
+              ),
             ),
         if (hideOverflowArtist && artists.length > 3)
           AnchorButton(

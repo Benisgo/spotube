@@ -22,6 +22,8 @@ class ArtistCard extends HookConsumerWidget {
       artist.images.asUrlString(
         placeholder: ImagePlaceholder.artist,
       ),
+      height: 200,
+      width: 200,
     );
     final isBlackListed = ref.watch(
       blacklistProvider.select(

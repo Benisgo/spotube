@@ -57,6 +57,10 @@ class TrackOptionsButton extends HookConsumerWidget {
     final imageProvider = useMemoized(
       () => UniversalImage.imageProvider(
         (track.album.images).smallest(ImagePlaceholder.albumArt),
+        // Match the 40×40 Container in the drawer header — prevents the codec
+        // from decoding a ~300×300 px texture on a 3× DPI device.
+        height: 40,
+        width: 40,
       ),
       [track.album.images],
     );

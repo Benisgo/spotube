@@ -35,17 +35,16 @@ class AlbumCard extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, ref) {
-    final playlist = ref.watch(audioPlayerProvider);
+    final isPlaylistPlaying = ref.watch(
+      audioPlayerProvider.select(
+        (state) => state.containsCollection(album.id),
+      ),
+    );
     final playing =
         useStream(audioPlayer.playingStream).data ?? audioPlayer.isPlaying;
-    final playlistNotifier = ref.watch(audioPlayerProvider.notifier);
     final historyNotifier = ref.read(playbackHistoryActionsProvider);
     final isFetchingActiveTrack = ref.watch(queryingTrackInfoProvider);
-
-    final isPlaylistPlaying = useMemoized<bool>(
-      () => playlist.containsCollection(album.id),
-      [playlist, album.id],
-    );
+    final playlistNotifier = ref.read(audioPlayerProvider.notifier);
 
     final updating = useState(false);
 
@@ -93,6 +92,7 @@ class AlbumCard extends HookConsumerWidget {
             ),
           );
         } else {
+          final playlistNotifier = ref.read(audioPlayerProvider.notifier);
           await playlistNotifier.load(fetchedTracks, autoPlay: true);
           playlistNotifier.addCollection(album.id);
           historyNotifier.addAlbums([album]);

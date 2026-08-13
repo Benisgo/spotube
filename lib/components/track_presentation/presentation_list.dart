@@ -81,6 +81,69 @@ class _TrackPlaceholder extends StatelessWidget {
   }
 }
 
+/// Per-tile ConsumerWidget so that each tile subscribes to its own selection
+/// state via a granular `.select()` instead of the O(n) scan that previously
+/// ran inside the `SliverChildBuilderDelegate` callback for every visible tile.
+///
+/// With [RepaintBoundary] wrapping this widget, only the specific tile whose
+/// [isSelected] bit flips will mark itself dirty — all other tiles stay inert.
+class _PresentationTrackTile extends ConsumerWidget {
+  final SpotubeFullTrackObject track;
+  final int index;
+  final bool isUserPlaylist;
+  final String? collectionId;
+  final Object collection;
+  final Future<void> Function(SpotubeFullTrackObject, int) onTileTap;
+  final PresentationStateNotifier notifier;
+
+  const _PresentationTrackTile({
+    required this.track,
+    required this.index,
+    required this.isUserPlaylist,
+    required this.collectionId,
+    required this.collection,
+    required this.onTileTap,
+    required this.notifier,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // O(1) lookup per tile — only rebuilds when THIS track's selection flips.
+    final isSelected = ref.watch(
+      presentationStateProvider(collection).select(
+        (s) => s.selectedTracks.any((e) => e.id == track.id),
+      ),
+    );
+    final selectionModeActive = ref.watch(
+      presentationStateProvider(collection).select(
+        (s) => s.selectedTracks.isNotEmpty,
+      ),
+    );
+
+    return TrackTile(
+      userPlaylist: isUserPlaylist,
+      playlistId: collectionId,
+      index: index,
+      track: track,
+      selected: isSelected,
+      onTap: () => onTileTap(track, index),
+      onChanged: selectionModeActive
+          ? (selected) {
+              if (selected == true) {
+                notifier.selectTrack(track);
+              } else {
+                notifier.deselectTrack(track);
+              }
+            }
+          : null,
+      onLongPress: () {
+        notifier.selectTrack(track);
+        HapticFeedback.selectionClick();
+      },
+    );
+  }
+}
+
 class PresentationListSection extends HookConsumerWidget {
   const PresentationListSection({super.key});
 
@@ -258,30 +321,16 @@ class PresentationListSection extends HookConsumerWidget {
           final track = trackAt(index);
 
           if (track != null) {
-            final isSelected =
-                state.selectedTracks.any((e) => e.id == track.id);
             return RepaintBoundary(
               key: ValueKey(track.id),
-              child: TrackTile(
-                userPlaylist: isUserPlaylist,
-                playlistId: options.collectionId,
-                index: index,
+              child: _PresentationTrackTile(
                 track: track,
-                selected: isSelected,
-                onTap: () => onTileTap(track, index),
-                onChanged: state.selectedTracks.isEmpty
-                    ? null
-                    : (isSelected) {
-                        if (isSelected == true) {
-                          notifier.selectTrack(track);
-                        } else {
-                          notifier.deselectTrack(track);
-                        }
-                      },
-                onLongPress: () {
-                  notifier.selectTrack(track);
-                  HapticFeedback.selectionClick();
-                },
+                index: index,
+                isUserPlaylist: isUserPlaylist,
+                collectionId: options.collectionId,
+                collection: options.collection,
+                onTileTap: onTileTap,
+                notifier: notifier,
               ),
             );
           }

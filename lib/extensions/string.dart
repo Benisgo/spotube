@@ -1,10 +1,9 @@
 import 'package:html_unescape/html_unescape.dart';
-import 'package:html/parser.dart';
 
 final htmlEscape = HtmlUnescape();
 
 extension UnescapeHtml on String {
-  String cleanHtml() => parse("<p>$this</p>").documentElement!.text;
+  String cleanHtml() => replaceAll(RegExp(r'<[^>]*>'), '').unescapeHtml();
   String unescapeHtml() => htmlEscape.convert(this);
 }
 

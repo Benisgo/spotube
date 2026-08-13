@@ -39,20 +39,21 @@ class PlayerActions extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, ref) {
-    final playlist = ref.watch(audioPlayerProvider);
-    final isLocalTrack = playlist.activeTrack is SpotubeLocalTrackObject;
+    final activeTrack =
+        ref.watch(audioPlayerProvider.select((s) => s.activeTrack));
+    final isLocalTrack = activeTrack is SpotubeLocalTrackObject;
     ref.watch(downloadManagerProvider);
     final downloader = ref.watch(downloadManagerProvider.notifier);
     final isInQueue = useMemoized(() {
-      if (playlist.activeTrack is! SpotubeFullTrackObject) return false;
+      if (activeTrack is! SpotubeFullTrackObject) return false;
       final downloadTask =
-          downloader.getTaskByTrackId(playlist.activeTrack!.id);
+          downloader.getTaskByTrackId(activeTrack.id);
       return const [
         DownloadStatus.queued,
         DownloadStatus.downloading,
       ].contains(downloadTask?.status);
     }, [
-      playlist.activeTrack,
+      activeTrack,
       downloader,
     ]);
 
@@ -64,13 +65,13 @@ class PlayerActions extends HookConsumerWidget {
     final isDownloaded = useMemoized(() {
       return localTracks?.values.expand((e) => e).any(
                 (element) =>
-                    element.name == playlist.activeTrack?.name &&
-                    element.album.name == playlist.activeTrack?.album.name &&
+                    element.name == activeTrack?.name &&
+                    element.album.name == activeTrack?.album.name &&
                     element.artists.asString() ==
-                        playlist.activeTrack?.artists.asString(),
+                        activeTrack?.artists.asString(),
               ) ==
           true;
-    }, [localTracks, playlist.activeTrack]);
+    }, [localTracks, activeTrack]);
 
     final sleepTimerEntries = useMemoized(
       () => {
@@ -92,7 +93,7 @@ class PlayerActions extends HookConsumerWidget {
             tooltip: TooltipContainer(child: Text(context.l10n.queue)).call,
             child: IconButton.ghost(
               icon: const Icon(SpotubeIcons.queue),
-              enabled: playlist.activeTrack != null,
+              enabled: activeTrack != null,
               onPressed: () {
                 final screenSize = MediaQuery.sizeOf(context);
                 if (screenSize.smAndDown) {
@@ -134,7 +135,7 @@ class PlayerActions extends HookConsumerWidget {
               child: Text(context.l10n.alternative_track_sources),
             ).call,
             child: IconButton.ghost(
-              enabled: playlist.activeTrack != null,
+              enabled: activeTrack != null,
               icon: const Icon(SpotubeIcons.alternativeRoute),
               onPressed: () {
                 final screenSize = MediaQuery.sizeOf(context);
@@ -179,18 +180,18 @@ class PlayerActions extends HookConsumerWidget {
                 icon: Icon(
                   isDownloaded ? SpotubeIcons.done : SpotubeIcons.download,
                 ),
-                onPressed: playlist.activeTrack != null
+                onPressed: activeTrack != null
                     ? () => downloader.addToQueue(
-                        playlist.activeTrack! as SpotubeFullTrackObject)
+                        activeTrack as SpotubeFullTrackObject)
                     : null,
               ),
             ),
         if (showHeart &&
-            playlist.activeTrack != null &&
+            activeTrack != null &&
             !isLocalTrack &&
             authenticated.asData?.value == true)
           TrackHeartButton(
-            track: playlist.activeTrack!,
+            track: activeTrack,
             requireAuthentication: false,
           ),
         AdaptivePopSheetList<Duration>(

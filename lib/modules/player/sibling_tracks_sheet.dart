@@ -178,7 +178,7 @@ class SiblingTracksSheet extends HookConsumerWidget {
                               } else if (floating) {
                                 closeDrawer(context);
                               } else {
-                                context.popRoute();
+                                context.router.maybePop();
                               }
                             }
                           }

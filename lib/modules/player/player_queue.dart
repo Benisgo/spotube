@@ -270,7 +270,7 @@ class PlayerQueue extends HookConsumerWidget {
                                   if (floating) {
                                     closeDrawer(context);
                                   } else {
-                                    context.popRoute();
+                                    context.router.maybePop();
                                   }
                                 },
                               ),

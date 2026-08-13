@@ -71,9 +71,9 @@ class PlayerView extends HookConsumerWidget {
       return null;
     }, [mediaQuery.lgAndUp]);
 
-    final playlistState = ref.watch(audioPlayerProvider);
-    final tracks = playlistState.tracks;
-    final currentIndex = playlistState.currentIndex;
+    final tracks = ref.watch(audioPlayerProvider.select((s) => s.tracks));
+    final currentIndex =
+        ref.watch(audioPlayerProvider.select((s) => s.currentIndex));
 
     String currentAlbumArt = useMemoized(
       () => (currentActiveTrack?.album.images).asUrlString(

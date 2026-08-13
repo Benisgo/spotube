@@ -29,6 +29,17 @@ class UniversalImage extends HookWidget {
     super.key,
   });
 
+  static bool _isFile(String p) {
+    if (p.startsWith("file://")) return true;
+    if (p.startsWith("http") || p.startsWith("assets")) return false;
+    if (p.length > 500) return false;
+    try {
+      return File(p).existsSync();
+    } catch (_) {
+      return false;
+    }
+  }
+
   static ImageProvider imageProvider(
     String path, {
     final double? height,
@@ -43,12 +54,18 @@ class UniversalImage extends HookWidget {
         cacheKey: path,
         scale: scale,
       );
-    } else if (path.startsWith("assets/")) {
+    } else if (path.startsWith("assets")) {
       return AssetImage(path);
-    } else if (Uri.tryParse(path) != null) {
-      return FileImage(File(path), scale: scale);
+    } else if (_isFile(path)) {
+      final filePath =
+          path.startsWith("file://") ? path.replaceFirst("file://", "") : path;
+      return FileImage(File(filePath), scale: scale);
     }
-    return MemoryImage(base64Decode(path), scale: scale);
+    try {
+      return MemoryImage(base64Decode(path), scale: scale);
+    } catch (_) {
+      return AssetImage(Assets.images.placeholder.path);
+    }
   }
 
   @override
@@ -122,28 +139,6 @@ class UniversalImage extends HookWidget {
         filterQuality: FilterQuality.low,
         fit: fit,
       );
-    } else if (Uri.tryParse(path) != null && !path.startsWith("assets")) {
-      return Image.file(
-        File(path),
-        width: width,
-        height: height,
-        cacheHeight: height?.toInt(),
-        cacheWidth: width?.toInt(),
-        filterQuality: FilterQuality.low,
-        scale: scale,
-        fit: fit,
-        errorBuilder: (context, error, stackTrace) {
-          return Image.asset(
-            placeholder ?? Assets.images.placeholder.path,
-            width: width,
-            height: height,
-            cacheHeight: height?.toInt(),
-            cacheWidth: width?.toInt(),
-            filterQuality: FilterQuality.low,
-            scale: scale,
-          );
-        },
-      );
     } else if (path.startsWith("assets")) {
       return Image.asset(
         path,
@@ -166,28 +161,64 @@ class UniversalImage extends HookWidget {
           );
         },
       );
+    } else if (_isFile(path)) {
+      final filePath =
+          path.startsWith("file://") ? path.replaceFirst("file://", "") : path;
+      return Image.file(
+        File(filePath),
+        width: width,
+        height: height,
+        cacheHeight: height?.toInt(),
+        cacheWidth: width?.toInt(),
+        filterQuality: FilterQuality.low,
+        scale: scale,
+        fit: fit,
+        errorBuilder: (context, error, stackTrace) {
+          return Image.asset(
+            placeholder ?? Assets.images.placeholder.path,
+            width: width,
+            height: height,
+            cacheHeight: height?.toInt(),
+            cacheWidth: width?.toInt(),
+            filterQuality: FilterQuality.low,
+            scale: scale,
+          );
+        },
+      );
     }
 
-    return Image.memory(
-      base64Decode(path),
-      width: width,
-      height: height,
-      cacheHeight: height?.toInt(),
-      cacheWidth: width?.toInt(),
-      filterQuality: FilterQuality.low,
-      scale: scale,
-      fit: fit,
-      errorBuilder: (context, error, stackTrace) {
-        return Image.asset(
-          placeholder ?? Assets.images.placeholder.path,
-          width: width,
-          height: height,
-          cacheHeight: height?.toInt(),
-          cacheWidth: width?.toInt(),
-          filterQuality: FilterQuality.low,
-          scale: scale,
-        );
-      },
-    );
+    try {
+      return Image.memory(
+        base64Decode(path),
+        width: width,
+        height: height,
+        cacheHeight: height?.toInt(),
+        cacheWidth: width?.toInt(),
+        filterQuality: FilterQuality.low,
+        scale: scale,
+        fit: fit,
+        errorBuilder: (context, error, stackTrace) {
+          return Image.asset(
+            placeholder ?? Assets.images.placeholder.path,
+            width: width,
+            height: height,
+            cacheHeight: height?.toInt(),
+            cacheWidth: width?.toInt(),
+            filterQuality: FilterQuality.low,
+            scale: scale,
+          );
+        },
+      );
+    } catch (_) {
+      return Image.asset(
+        placeholder ?? Assets.images.placeholder.path,
+        width: width,
+        height: height,
+        cacheHeight: height?.toInt(),
+        cacheWidth: width?.toInt(),
+        filterQuality: FilterQuality.low,
+        scale: scale,
+      );
+    }
   }
 }

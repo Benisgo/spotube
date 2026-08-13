@@ -27,13 +27,14 @@ UseActionCallbacks useActionCallbacks(WidgetRef ref) {
   final isLoading = useState(false);
   final context = useContext();
   final options = TrackPresentationOptions.of(context);
-  final playlist = ref.watch(audioPlayerProvider);
+  final collections =
+      ref.watch(audioPlayerProvider.select((s) => s.collections));
   final playlistNotifier = ref.watch(audioPlayerProvider.notifier);
   final historyNotifier = ref.watch(playbackHistoryActionsProvider);
 
   final isActive = useMemoized(
-    () => playlist.collections.contains(options.collectionId),
-    [playlist.collections, options.collectionId],
+    () => collections.contains(options.collectionId),
+    [collections, options.collectionId],
   );
 
   final onShuffle = useCallback(() async {

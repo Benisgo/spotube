@@ -162,10 +162,10 @@ class SourcedTrack extends BasicSourcedTrack {
       for (final e in entries) {
         if (e is! File) continue;
         try {
-          final len = e.lengthSync();
+          final len = await e.length();
           if (len < 10240) {
-            // Opportunistic purge of corrupted/truncated cache files.
-            e.deleteSync();
+            // Opportunistic purge of corrupted/truncated cache files asynchronously.
+            await e.delete();
             continue;
           }
           result.add((
@@ -310,22 +310,26 @@ class SourcedTrack extends BasicSourcedTrack {
 
   static File? findLocalCachedFileSync(SpotubeFullTrackObject query) {
     try {
+      final q = _cacheQuery(query);
+      if (_cachedCacheFiles != null) {
+        for (final entry in _cachedCacheFiles!) {
+          if (_isMatchingCachedFile(entry, q)) {
+            return File(entry.path);
+          }
+        }
+      }
       final cacheDir = UserPreferencesNotifier.getMusicCacheDirSync();
       if (cacheDir == null) return null;
       final dir = Directory(cacheDir);
       if (!dir.existsSync()) return null;
 
-      final q = _cacheQuery(query);
       final entries = dir.listSync();
       for (final entry in entries) {
         if (entry is! File) continue;
         int length;
         try {
           length = entry.lengthSync();
-          if (length < 10240) {
-            entry.deleteSync();
-            continue;
-          }
+          if (length < 10240) continue;
         } catch (_) {
           continue;
         }

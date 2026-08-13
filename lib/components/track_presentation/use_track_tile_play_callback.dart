@@ -24,13 +24,14 @@ Future<void> Function(SpotubeTrackObject track, int index)
 ) {
   final context = useContext();
   final options = TrackPresentationOptions.of(context);
-  final playlist = ref.watch(audioPlayerProvider);
+  final collections =
+      ref.watch(audioPlayerProvider.select((s) => s.collections));
   final playlistNotifier = ref.watch(audioPlayerProvider.notifier);
   final historyNotifier = ref.watch(playbackHistoryActionsProvider);
 
   final isActive = useMemoized(
-    () => playlist.collections.contains(options.collectionId),
-    [playlist.collections, options.collectionId],
+    () => collections.contains(options.collectionId),
+    [collections, options.collectionId],
   );
 
   final onTapTrackTile =
@@ -97,9 +98,10 @@ Future<void> Function(SpotubeTrackObject track, int index)
         primeFuture = playlistNotifier.primeTrackPlayback(track);
       }
 
+      final currentPlaylist = ref.read(audioPlayerProvider);
       final hasActiveLocalSource =
-          audioPlayer.hasSource && playlist.currentIndex >= 0;
-      final isTrackQueued = playlist.tracks.containsBy(track, (a) => a.id);
+          audioPlayer.hasSource && currentPlaylist.currentIndex >= 0;
+      final isTrackQueued = currentPlaylist.tracks.containsBy(track, (a) => a.id);
       // Only jump within the current queue when the clicked track belongs to
       // the currently ACTIVE collection. If the user is viewing a different
       // playlist that happens to share a song with the active one, we must
@@ -216,7 +218,7 @@ Future<void> Function(SpotubeTrackObject track, int index)
         playlistNotifier.clearPendingPlaybackTrackId(track.id);
       }
     }
-  }, [isActive, playlist, options, playlistNotifier, historyNotifier]);
+  }, [isActive, options, playlistNotifier, historyNotifier]);
 
   return onTapTrackTile;
 }

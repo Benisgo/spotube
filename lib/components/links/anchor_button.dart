@@ -1,5 +1,6 @@
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
+import 'package:spotube/utils/platform.dart';
 
 class AnchorButton<T> extends HookWidget {
   final String text;
@@ -21,6 +22,19 @@ class AnchorButton<T> extends HookWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (kIsMobile) {
+      return GestureDetector(
+        onTap: onTap,
+        child: Text(
+          text,
+          style: style,
+          maxLines: maxLines,
+          textAlign: textAlign,
+          overflow: overflow,
+        ),
+      );
+    }
+
     var hover = useState(false);
     var tap = useState(false);
 

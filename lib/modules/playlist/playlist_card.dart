@@ -35,24 +35,26 @@ class PlaylistCard extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, ref) {
-    final playlistQueue = ref.watch(audioPlayerProvider);
-    final playlistNotifier = ref.watch(audioPlayerProvider.notifier);
+    final isPlaylistPlaying = ref.watch(
+      audioPlayerProvider.select(
+        (state) => state.containsCollection(playlist.id),
+      ),
+    );
     final isFetchingActiveTrack = ref.watch(queryingTrackInfoProvider);
     final historyNotifier = ref.read(playbackHistoryActionsProvider);
+    final playlistNotifier = ref.read(audioPlayerProvider.notifier);
 
     final playing =
         useStream(audioPlayer.playingStream).data ?? audioPlayer.isPlaying;
 
-    final isPlaylistPlaying = useMemoized<bool>(
-      () => playlistQueue.containsCollection(playlist.id),
-      [playlistQueue, playlist.id],
-    );
-
     final updating = useState(false);
     final me = ref.watch(metadataPluginUserProvider);
 
-    final pinnedPlaylists = ref.watch(pinnedPlaylistsProvider);
-    final isPinned = pinnedPlaylists.contains(playlist.id);
+    final isPinned = ref.watch(
+      pinnedPlaylistsProvider.select(
+        (pinned) => pinned.contains(playlist.id),
+      ),
+    );
     final pinnedPlaylistsNotifier = ref.read(pinnedPlaylistsProvider.notifier);
 
     final fetchInitialTracks = useCallback(() async {
@@ -108,6 +110,7 @@ class PlaylistCard extends HookConsumerWidget {
             ),
           );
         } else {
+          final playlistNotifier = ref.read(audioPlayerProvider.notifier);
           await playlistNotifier.load(fetchedInitialTracks, autoPlay: true);
           playlistNotifier.addCollection(playlist.id);
           historyNotifier.addPlaylists([playlist]);

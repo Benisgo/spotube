@@ -1,3 +1,4 @@
+import 'package:auto_route/auto_route.dart';
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter/services.dart';
@@ -266,7 +267,11 @@ class PlayerQueue extends HookConsumerWidget {
                                 icon: const Icon(SpotubeIcons.playlistRemove),
                                 onPressed: () {
                                   onStop();
-                                  closeDrawer(context);
+                                  if (floating) {
+                                    closeDrawer(context);
+                                  } else {
+                                    context.popRoute();
+                                  }
                                 },
                               ),
                             ),

@@ -2,16 +2,11 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "spotube",
-      "type": "dart",
-      "request": "launch",
-      "program": "lib/main.dart",
-    },
-    {
       "name": "spotube (mobile)",
       "type": "dart",
       "request": "launch",
       "program": "lib/main.dart",
+      "templateFor": "lib/main.dart",
       "args": [
         "--flavor",
         "dev"
@@ -29,18 +24,15 @@
       ]
     },
     {
-      "name": "spotube (profile)",
+      "name": "spotube (mobile) (profile)",
       "type": "dart",
       "request": "launch",
       "program": "lib/main.dart",
-      "flutterMode": "profile"
-    },
-    {
-      "name": "spotube (release)",
-      "type": "dart",
-      "request": "launch",
-      "program": "lib/main.dart",
-      "flutterMode": "release"
+      "flutterMode": "profile",
+      "args": [
+        "--flavor",
+        "dev"
+      ]
     },
     {
       "name": "spotube (mobile) (release)",
@@ -52,6 +44,29 @@
         "--flavor",
         "dev"
       ]
+    },
+    {
+      "name": "spotube (windows)",
+      "type": "dart",
+      "request": "launch",
+      "program": "lib/main.dart",
+      "deviceId": "windows"
+    },
+    {
+      "name": "spotube (windows) (profile)",
+      "type": "dart",
+      "request": "launch",
+      "program": "lib/main.dart",
+      "flutterMode": "profile",
+      "deviceId": "windows"
+    },
+    {
+      "name": "spotube (windows) (release)",
+      "type": "dart",
+      "request": "launch",
+      "program": "lib/main.dart",
+      "flutterMode": "release",
+      "deviceId": "windows"
     }
   ],
   "compounds": []

@@ -1,3 +1,4 @@
+import 'package:auto_route/auto_route.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
@@ -174,8 +175,10 @@ class SiblingTracksSheet extends HookConsumerWidget {
                             if (context.mounted) {
                               if (MediaQuery.sizeOf(context).mdAndUp) {
                                 closeOverlay(context);
-                              } else {
+                              } else if (floating) {
                                 closeDrawer(context);
+                              } else {
+                                context.popRoute();
                               }
                             }
                           }

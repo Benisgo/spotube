@@ -20,6 +20,10 @@ const supportedAudioTypes = [
   "audio/ogg",
   "audio/mpeg",
   "audio/mp4",
+  // Mux fallback (itag 18) files are real .mp4 → lookupMimeType returns
+  // "video/mp4", so include it or those tracks stay invisible in the Local
+  // Library / Cache folder pages and can't be managed or cleared.
+  "video/mp4",
   "audio/opus",
   "audio/wav",
   "audio/aac",

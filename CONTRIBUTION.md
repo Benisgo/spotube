@@ -147,6 +147,28 @@ Do the following:
 
 Do debugging/testing/build etc then submit to us with PR against the development branch (dev) & we'll review your code
 
+#### Android Release Signing (secrets, never committed)
+
+- Signing keys are **never committed**. `android/key.properties`, `keystore.b64`, and `upload-keystore.jks` are all in `.gitignore`.
+- Local release builds read `android/key.properties` (see `android/key.properties.example` for the format).
+- For CI / automated release builds, source the keystore and passwords from **GitHub repository secrets** instead of checking them in:
+  - `KEYSTORE_BASE64` — base64-encoded `upload-keystore.jks`
+  - `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`
+  - Decode and write `android/key.properties` in the workflow, e.g.:
+    ```yaml
+    - name: Set up signing keys
+      env:
+        KEYSTORE_B64: ${{ secrets.KEYSTORE_BASE64 }}
+        KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+      run: |
+        echo "$KEYSTORE_B64" | base64 -d > ../upload-keystore.jks
+        echo "storeFile=../upload-keystore.jks" > android/key.properties
+        echo "storePassword=$KEY_PASSWORD" >> android/key.properties
+        echo "keyAlias=upload" >> android/key.properties
+        echo "keyPassword=$KEY_PASSWORD" >> android/key.properties
+    ```
+- ⚠️ If a keystore or its password was ever exposed (e.g. in a fork, a screenshot, or a PR), **rotate it**: generate a new keystore and upload a fresh `KEYSTORE_BASE64` secret.
+
 
 ### Submit Translations
 

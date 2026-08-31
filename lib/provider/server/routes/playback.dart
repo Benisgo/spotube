@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:math';
 import 'package:collection/collection.dart';
 import 'package:dio/dio.dart' hide Response;
 import 'package:dio/dio.dart' as dio_lib;
@@ -18,7 +17,6 @@ import 'package:spotube/provider/audio_player/state.dart';
 import 'package:spotube/provider/data_usage/data_usage_provider.dart';
 import 'package:spotube/provider/server/sourced_track_provider.dart';
 import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
-import 'package:spotube/services/audio_player/audio_player.dart';
 import 'package:spotube/services/youtube_engine/youtube_explode_engine.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 import 'package:spotube/services/logger/logger.dart';

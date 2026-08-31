@@ -7,7 +7,6 @@ import 'package:path/path.dart' show basenameWithoutExtension;
 import 'package:dio/dio.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 
-import 'package:html/dom.dart' hide Text;
 import 'package:shadcn_flutter/shadcn_flutter.dart' hide Element;
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/pages/library/user_local_tracks/user_local_tracks.dart';
@@ -16,10 +15,6 @@ import 'package:spotube/modules/root/update_dialog.dart';
 import 'package:spotube/provider/database/database.dart';
 import 'package:spotube/services/dio/dio.dart';
 import 'package:spotube/services/logger/logger.dart';
-
-import 'package:spotube/utils/primitive_utils.dart';
-import 'package:collection/collection.dart';
-import 'package:html/parser.dart' as parser;
 
 import 'dart:async';
 
@@ -89,122 +84,10 @@ abstract class ServiceUtils {
         .trim();
   }
 
-  static Future<String?> extractLyrics(Uri url) async {
-    final response = await globalDio.getUri(
-      url,
-      options: Options(responseType: ResponseType.plain),
-    );
-
-    Document document = parser.parse(response.data);
-    String? lyrics = document.querySelector('div.lyrics')?.text.trim();
-    if (lyrics == null) {
-      lyrics = "";
-      document
-          .querySelectorAll("div[class^=\"Lyrics__Container\"]")
-          .forEach((element) {
-        if (element.text.trim().isNotEmpty) {
-          final snippet = element.innerHtml.replaceAll("<br>", "\n").replaceAll(
-                RegExp("<(?!\\s*br\\s*\\/?)[^>]+>", caseSensitive: false),
-                "",
-              );
-          final el = document.createElement("textarea");
-          el.innerHtml = snippet;
-          lyrics = "$lyrics${el.text.trim()}\n\n";
-        }
-      });
-    }
-
-    return lyrics;
-  }
-
-  @Deprecated("In favor spotify lyrics api, this isn't needed anymore")
-  static Future<List?> searchSong(
-    String title,
-    List<String> artist, {
-    String? apiKey,
-    bool optimizeQuery = false,
-    bool authHeader = false,
-  }) async {
-    if (apiKey == "" || apiKey == null) {
-      apiKey = PrimitiveUtils.getRandomElement(/* lyricsSecrets */ []);
-    }
-    const searchUrl = 'https://api.genius.com/search?q=';
-    String song =
-        optimizeQuery ? getTitle(title, artists: artist) : "$title $artist";
-
-    String reqUrl = "$searchUrl${Uri.encodeComponent(song)}";
-    Map<String, String> headers = {"Authorization": 'Bearer $apiKey'};
-    final response = await globalDio.getUri(
-      Uri.parse(authHeader ? reqUrl : "$reqUrl&access_token=$apiKey"),
-      options: Options(
-        headers: authHeader ? headers : null,
-        responseType: ResponseType.json,
-      ),
-    );
-    Map data = response.data["response"];
-    if (data["hits"]?.length == 0) return null;
-    List results = data["hits"]?.map((val) {
-      return <String, dynamic>{
-        "id": val["result"]["id"],
-        "full_title": val["result"]["full_title"],
-        "albumArt": val["result"]["song_art_image_url"],
-        "url": val["result"]["url"],
-        "author": val["result"]["primary_artist"]["name"],
-      };
-    }).toList();
-    return results;
-  }
-
-  @Deprecated("In favor spotify lyrics api, this isn't needed anymore")
-  static Future<String?> getLyrics(
-    String title,
-    List<String> artists, {
-    required String apiKey,
-    bool optimizeQuery = false,
-    bool authHeader = false,
-  }) async {
-    final results = await searchSong(
-      title,
-      artists,
-      apiKey: apiKey,
-      optimizeQuery: optimizeQuery,
-      authHeader: authHeader,
-    );
-    if (results == null) return null;
-    title = getTitle(
-      title,
-      artists: artists,
-      onlyCleanArtist: true,
-    ).trim();
-    final ratedLyrics = results.map((result) {
-      final gTitle = (result["full_title"] as String).toLowerCase();
-      int points = 0;
-      final hasTitle = gTitle.contains(title);
-      final hasAllArtists =
-          artists.every((artist) => gTitle.contains(artist.toLowerCase()));
-      final String lyricAuthor = result["author"].toLowerCase();
-      final fromOriginalAuthor =
-          lyricAuthor.contains(artists.first.toLowerCase());
-
-      for (final criteria in [
-        hasTitle,
-        hasAllArtists,
-        fromOriginalAuthor,
-      ]) {
-        if (criteria) points++;
-      }
-      return {"result": result, "points": points};
-    }).sorted(
-      (a, b) => ((a["points"] as int).compareTo(a["points"] as int)),
-    );
-    final worthyOne = ratedLyrics.first["result"];
-
-    String? lyrics = await extractLyrics(Uri.parse(worthyOne["url"]));
-    return lyrics;
-  }
-
   static DateTime parseSpotifyAlbumDate(SpotubeSimpleAlbumObject? album) {
-    if (album == null || album.releaseDate == null || album.releaseDate!.isEmpty) {
+    if (album == null ||
+        album.releaseDate == null ||
+        album.releaseDate!.isEmpty) {
       return DateTime(1975);
     }
     final raw = album.releaseDate!;
@@ -235,9 +118,13 @@ abstract class ServiceUtils {
           case SortBy.duration:
             return a.durationMs.compareTo(b.durationMs);
           case SortBy.artist:
-            return a.artists.first.name.toLowerCase().compareTo(b.artists.first.name.toLowerCase());
+            return a.artists.first.name
+                .toLowerCase()
+                .compareTo(b.artists.first.name.toLowerCase());
           case SortBy.album:
-            return a.album.name.toLowerCase().compareTo(b.album.name.toLowerCase());
+            return a.album.name
+                .toLowerCase()
+                .compareTo(b.album.name.toLowerCase());
           default:
             return 0;
         }

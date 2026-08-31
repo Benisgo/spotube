@@ -151,6 +151,9 @@ class AppLocalizationsPt extends AppLocalizations {
   String get sort_tracks => 'Ordenar Faixas';
 
   @override
+  String get reverse_order => 'Reverse order';
+
+  @override
   String currently_downloading(Object tracks_length) {
     return 'Baixando no momento ($tracks_length)';
   }

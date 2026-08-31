@@ -151,6 +151,9 @@ class AppLocalizationsFa extends AppLocalizations {
   String get sort_tracks => 'مرتب سازی آهنگ ها';
 
   @override
+  String get reverse_order => 'Reverse order';
+
+  @override
   String currently_downloading(Object tracks_length) {
     return 'در حال بارگیری ($tracks_length)';
   }

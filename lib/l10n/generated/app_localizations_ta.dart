@@ -151,6 +151,9 @@ class AppLocalizationsTa extends AppLocalizations {
   String get sort_tracks => 'பாடல்களை வரிசைப்படுத்து';
 
   @override
+  String get reverse_order => 'Reverse order';
+
+  @override
   String currently_downloading(Object tracks_length) {
     return 'தற்போது பதிவிறக்குகிறது ($tracks_length)';
   }

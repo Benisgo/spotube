@@ -151,6 +151,9 @@ class AppLocalizationsVi extends AppLocalizations {
   String get sort_tracks => 'Sắp xếp các bài hát';
 
   @override
+  String get reverse_order => 'Reverse order';
+
+  @override
   String currently_downloading(Object tracks_length) {
     return 'Đang tải về ($tracks_length bài hát)';
   }

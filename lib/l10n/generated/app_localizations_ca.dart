@@ -151,6 +151,9 @@ class AppLocalizationsCa extends AppLocalizations {
   String get sort_tracks => 'Ordenar Cançons';
 
   @override
+  String get reverse_order => 'Reverse order';
+
+  @override
   String currently_downloading(Object tracks_length) {
     return 'Descàrrega en curs ($tracks_length)';
   }

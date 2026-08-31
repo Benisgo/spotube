@@ -151,6 +151,9 @@ class AppLocalizationsCs extends AppLocalizations {
   String get sort_tracks => 'Seřadit skladby';
 
   @override
+  String get reverse_order => 'Reverse order';
+
+  @override
   String currently_downloading(Object tracks_length) {
     return 'Právě se stahuje ($tracks_length)';
   }

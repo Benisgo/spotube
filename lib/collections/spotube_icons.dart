@@ -30,6 +30,7 @@ abstract class SpotubeIcons {
   static const done = Icons.check_circle_outline_rounded;
   static const alternativeRoute = Icons.alt_route_rounded;
   static const sort = Icons.sort_rounded;
+  static const reverse = Icons.swap_vert_rounded;
   static const moreVertical = Icons.more_vert_rounded;
   static const moreHorizontal = Icons.more_horiz_rounded;
   static const share = Icons.share_outlined;

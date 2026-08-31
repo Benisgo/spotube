@@ -38,8 +38,7 @@ class TrackPresentationModifiersSection extends HookConsumerWidget {
     final searchProgress = state.searchQuery.isEmpty
         ? null
         : savedTracksFetchProgress ?? (state.isSearchLoading ? null : null);
-    final showSearchProgress =
-        state.searchQuery.isNotEmpty &&
+    final showSearchProgress = state.searchQuery.isNotEmpty &&
         (savedTracksFetchProgress != null || state.isSearchLoading);
 
     return LayoutBuilder(builder: (context, constrains) {
@@ -57,9 +56,10 @@ class TrackPresentationModifiersSection extends HookConsumerWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Checkbox(
-                      state: state.selectedTracks.length == options.tracks.length
-                          ? CheckboxState.checked
-                          : CheckboxState.unchecked,
+                      state:
+                          state.selectedTracks.length == options.tracks.length
+                              ? CheckboxState.checked
+                              : CheckboxState.unchecked,
                       onChanged: (value) {
                         if (value == CheckboxState.checked) {
                           notifier.selectAllTracks();
@@ -125,8 +125,8 @@ class TrackPresentationModifiersSection extends HookConsumerWidget {
                                         crossFadeState: controller.text.isEmpty
                                             ? CrossFadeState.showFirst
                                             : CrossFadeState.showSecond,
-                                        firstChild:
-                                            const SizedBox.square(dimension: 20),
+                                        firstChild: const SizedBox.square(
+                                            dimension: 20),
                                         secondChild: AnimatedScale(
                                           duration:
                                               const Duration(milliseconds: 300),
@@ -134,7 +134,8 @@ class TrackPresentationModifiersSection extends HookConsumerWidget {
                                               controller.text.isEmpty ? 0 : 1,
                                           child: IconButton.ghost(
                                             size: const ButtonSize(.6),
-                                            icon: const Icon(SpotubeIcons.close),
+                                            icon:
+                                                const Icon(SpotubeIcons.close),
                                             onPressed: () {
                                               controller.clear();
                                               notifier.clearFilter();
@@ -153,6 +154,22 @@ class TrackPresentationModifiersSection extends HookConsumerWidget {
                         onChanged: (value) {
                           notifier.sortTracks(value);
                         },
+                      ),
+                      Tooltip(
+                        tooltip: TooltipContainer(
+                          child: Text(context.l10n.reverse_order),
+                        ).call,
+                        child: SelectedButton(
+                          value: state.reversed,
+                          onChanged: (_) => notifier.toggleReverse(),
+                          style: const ButtonStyle.ghost(
+                            size: ButtonSize.small,
+                          ),
+                          selectedStyle: const ButtonStyle.secondary(
+                            size: ButtonSize.small,
+                          ),
+                          child: const Icon(SpotubeIcons.reverse, size: 18),
+                        ),
                       ),
                       const TrackPresentationActionsSection(),
                     ],

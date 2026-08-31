@@ -1,146 +1,175 @@
 {
   "ar": [
     "sort_largest",
-    "sort_smallest"
+    "sort_smallest",
+    "reverse_order"
   ],
 
   "bn": [
     "sort_largest",
-    "sort_smallest"
+    "sort_smallest",
+    "reverse_order"
   ],
 
   "ca": [
     "sort_largest",
-    "sort_smallest"
+    "sort_smallest",
+    "reverse_order"
   ],
 
   "cs": [
     "sort_largest",
-    "sort_smallest"
+    "sort_smallest",
+    "reverse_order"
   ],
 
   "de": [
     "sort_largest",
-    "sort_smallest"
+    "sort_smallest",
+    "reverse_order"
   ],
 
   "es": [
     "sort_largest",
-    "sort_smallest"
+    "sort_smallest",
+    "reverse_order"
   ],
 
   "eu": [
     "sort_largest",
-    "sort_smallest"
+    "sort_smallest",
+    "reverse_order"
   ],
 
   "fa": [
     "sort_largest",
-    "sort_smallest"
+    "sort_smallest",
+    "reverse_order"
   ],
 
   "fi": [
     "sort_largest",
-    "sort_smallest"
+    "sort_smallest",
+    "reverse_order"
   ],
 
   "fr": [
     "sort_largest",
-    "sort_smallest"
+    "sort_smallest",
+    "reverse_order"
   ],
 
   "hi": [
     "sort_largest",
-    "sort_smallest"
+    "sort_smallest",
+    "reverse_order"
   ],
 
   "id": [
     "sort_largest",
-    "sort_smallest"
+    "sort_smallest",
+    "reverse_order"
   ],
 
   "it": [
     "sort_largest",
-    "sort_smallest"
+    "sort_smallest",
+    "reverse_order"
   ],
 
   "ja": [
     "sort_largest",
-    "sort_smallest"
+    "sort_smallest",
+    "reverse_order"
   ],
 
   "ka": [
     "sort_largest",
-    "sort_smallest"
+    "sort_smallest",
+    "reverse_order"
   ],
 
   "ko": [
     "sort_largest",
-    "sort_smallest"
+    "sort_smallest",
+    "reverse_order"
   ],
 
   "ne": [
     "sort_largest",
-    "sort_smallest"
+    "sort_smallest",
+    "reverse_order"
   ],
 
   "nl": [
     "sort_largest",
-    "sort_smallest"
+    "sort_smallest",
+    "reverse_order"
   ],
 
   "pl": [
     "sort_largest",
-    "sort_smallest"
+    "sort_smallest",
+    "reverse_order"
   ],
 
   "pt": [
     "sort_largest",
-    "sort_smallest"
+    "sort_smallest",
+    "reverse_order"
   ],
 
   "ru": [
     "sort_largest",
-    "sort_smallest"
+    "sort_smallest",
+    "reverse_order"
   ],
 
   "ta": [
     "sort_largest",
-    "sort_smallest"
+    "sort_smallest",
+    "reverse_order"
   ],
 
   "th": [
     "sort_largest",
-    "sort_smallest"
+    "sort_smallest",
+    "reverse_order"
   ],
 
   "tl": [
     "sort_largest",
-    "sort_smallest"
+    "sort_smallest",
+    "reverse_order"
   ],
 
   "tr": [
     "sort_largest",
-    "sort_smallest"
+    "sort_smallest",
+    "reverse_order"
   ],
 
   "uk": [
     "sort_largest",
-    "sort_smallest"
+    "sort_smallest",
+    "reverse_order"
   ],
 
   "vi": [
     "sort_largest",
-    "sort_smallest"
+    "sort_smallest",
+    "reverse_order"
   ],
 
   "zh": [
     "sort_largest",
-    "sort_smallest"
+    "sort_smallest",
+    "reverse_order"
   ],
 
   "zh_TW": [
     "sort_largest",
-    "sort_smallest"
+    "sort_smallest",
+    "reverse_order"
   ]
 }

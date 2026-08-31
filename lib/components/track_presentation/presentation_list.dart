@@ -202,7 +202,8 @@ class PresentationListSection extends HookConsumerWidget {
     } catch (_) {
       final collection = options.collection;
       if (collection is SpotubeSimplePlaylistObject) {
-        final cached = await PlaylistCacheService.loadPlaylistTracks(collection.id);
+        final cached =
+            await PlaylistCacheService.loadPlaylistTracks(collection.id);
         if (cached != null && cached.items.isNotEmpty) {
           var newCache = Map<int, SpotubeFullTrackObject>.from(cache.value);
           for (int i = 0; i < cached.items.length; i++) {
@@ -227,7 +228,8 @@ class PresentationListSection extends HookConsumerWidget {
 
     final useVirtualScrolling = options.pagination.total != null &&
         state.searchQuery.isEmpty &&
-        state.sortBy == SortBy.none;
+        state.sortBy == SortBy.none &&
+        !state.reversed;
 
     // ------------------------------------------------------------------
     // Random-access track cache (index -> SpotubeFullTrackObject)

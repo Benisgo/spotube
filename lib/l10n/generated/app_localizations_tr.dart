@@ -152,6 +152,9 @@ class AppLocalizationsTr extends AppLocalizations {
   String get sort_tracks => 'Parçaları sırala';
 
   @override
+  String get reverse_order => 'Reverse order';
+
+  @override
   String currently_downloading(Object tracks_length) {
     return 'Şu anda indirilenler ($tracks_length)';
   }

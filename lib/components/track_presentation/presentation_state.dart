@@ -17,6 +17,7 @@ class PresentationState {
   final SortBy sortBy;
   final String searchQuery;
   final bool isSearchLoading;
+  final bool reversed;
 
   const PresentationState({
     required this.selectedTracks,
@@ -24,6 +25,7 @@ class PresentationState {
     required this.sortBy,
     required this.searchQuery,
     required this.isSearchLoading,
+    this.reversed = false,
   });
 
   PresentationState copyWith({
@@ -32,6 +34,7 @@ class PresentationState {
     SortBy? sortBy,
     String? searchQuery,
     bool? isSearchLoading,
+    bool? reversed,
   }) {
     return PresentationState(
       selectedTracks: selectedTracks ?? this.selectedTracks,
@@ -39,6 +42,7 @@ class PresentationState {
       sortBy: sortBy ?? this.sortBy,
       searchQuery: searchQuery ?? this.searchQuery,
       isSearchLoading: isSearchLoading ?? this.isSearchLoading,
+      reversed: reversed ?? this.reversed,
     );
   }
 }
@@ -53,7 +57,8 @@ int _scorePresentationTrack(
   final normalizedTitle = title.toLowerCase();
   final normalizedAlbum = album.toLowerCase();
   final normalizedArtists = artists.toLowerCase();
-  final combined = [normalizedTitle, normalizedAlbum, normalizedArtists].join(" ");
+  final combined =
+      [normalizedTitle, normalizedAlbum, normalizedArtists].join(" ");
 
   if (normalizedTitle == normalizedQuery) return 300;
   if (normalizedTitle.startsWith(normalizedQuery)) return 240;
@@ -226,7 +231,8 @@ class PresentationStateNotifier
               .toList(),
         },
       );
-      filteredTracks = rankedIndexes.map((index) => sourceTracks[index]).toList();
+      filteredTracks =
+          rankedIndexes.map((index) => sourceTracks[index]).toList();
     }
 
     return ServiceUtils.sortTracks(filteredTracks, sortBy);
@@ -256,8 +262,14 @@ class PresentationStateNotifier
 
     if (generation != _searchGeneration) return;
 
+    // Reverse is an independent visual toggle — persist it across re-sorts
+    // and re-searches (applied after sorting).
+    final visibleTracks = state.reversed
+        ? presentationTracks.reversed.toList()
+        : presentationTracks;
+
     state = state.copyWith(
-      presentationTracks: presentationTracks,
+      presentationTracks: visibleTracks,
       sortBy: effectiveSortBy,
       searchQuery: effectiveQuery,
       isSearchLoading: false,
@@ -332,6 +344,16 @@ class PresentationStateNotifier
         sourceTracks: tracks,
         sortBy: sortBy,
       ),
+    );
+  }
+
+  /// Inverts the current visible order (visual only — does not change the
+  /// underlying playlist/album). Persists across sort/search changes.
+  void toggleReverse() {
+    final reversed = !state.reversed;
+    state = state.copyWith(
+      reversed: reversed,
+      presentationTracks: [...state.presentationTracks.reversed],
     );
   }
 }

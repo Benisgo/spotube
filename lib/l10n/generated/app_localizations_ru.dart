@@ -151,6 +151,9 @@ class AppLocalizationsRu extends AppLocalizations {
   String get sort_tracks => 'Сортировать треки';
 
   @override
+  String get reverse_order => 'Reverse order';
+
+  @override
   String currently_downloading(Object tracks_length) {
     return 'Загружается ($tracks_length)';
   }

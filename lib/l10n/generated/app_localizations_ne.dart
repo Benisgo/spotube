@@ -151,6 +151,9 @@ class AppLocalizationsNe extends AppLocalizations {
   String get sort_tracks => 'ट्र्याकहरूलाई क्रमबद्ध गर्नुहोस्';
 
   @override
+  String get reverse_order => 'Reverse order';
+
+  @override
   String currently_downloading(Object tracks_length) {
     return 'हाल डाउनलोड गर्दैछ ($tracks_length)';
   }

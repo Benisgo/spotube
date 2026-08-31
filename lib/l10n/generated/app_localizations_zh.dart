@@ -151,6 +151,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get sort_tracks => '排序方式';
 
   @override
+  String get reverse_order => 'Reverse order';
+
+  @override
   String currently_downloading(Object tracks_length) {
     return '正在下载 ($tracks_length)';
   }

@@ -45,6 +45,7 @@
   "sort_smallest": "Sort by smallest size",
   "sort_duration": "Sort by Duration",
   "sort_tracks": "Sort Tracks",
+  "reverse_order": "Reverse order",
   "currently_downloading": "Currently Downloading ({tracks_length})",
   "cancel_all": "Cancel All",
   "filter_artist": "Filter artists...",

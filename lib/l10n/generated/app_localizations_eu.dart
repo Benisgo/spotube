@@ -151,6 +151,9 @@ class AppLocalizationsEu extends AppLocalizations {
   String get sort_tracks => 'Ordenatu Kantak';
 
   @override
+  String get reverse_order => 'Reverse order';
+
+  @override
   String currently_downloading(Object tracks_length) {
     return 'Oraintxe ($tracks_length) deskargatzen';
   }

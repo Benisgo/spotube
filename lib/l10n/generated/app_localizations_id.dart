@@ -151,6 +151,9 @@ class AppLocalizationsId extends AppLocalizations {
   String get sort_tracks => 'Urutkan trek';
 
   @override
+  String get reverse_order => 'Reverse order';
+
+  @override
   String currently_downloading(Object tracks_length) {
     return 'Sedang Mengunduh ($tracks_length)';
   }

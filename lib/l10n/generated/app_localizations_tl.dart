@@ -152,6 +152,9 @@ class AppLocalizationsTl extends AppLocalizations {
   String get sort_tracks => 'Ayusin ang mga Track';
 
   @override
+  String get reverse_order => 'Reverse order';
+
+  @override
   String currently_downloading(Object tracks_length) {
     return 'Kasalukuyang Nagda-download ($tracks_length)';
   }

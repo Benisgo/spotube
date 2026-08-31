@@ -151,6 +151,9 @@ class AppLocalizationsAr extends AppLocalizations {
   String get sort_tracks => 'ترتيب المقطوعات';
 
   @override
+  String get reverse_order => 'Reverse order';
+
+  @override
   String currently_downloading(Object tracks_length) {
     return 'يتم التنزيل ($tracks_length)';
   }

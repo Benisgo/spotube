@@ -151,6 +151,9 @@ class AppLocalizationsKa extends AppLocalizations {
   String get sort_tracks => 'ტრეკების დალაგება';
 
   @override
+  String get reverse_order => 'Reverse order';
+
+  @override
   String currently_downloading(Object tracks_length) {
     return 'მიმდინარეობს ჩამოტვირთვა ($tracks_length)';
   }

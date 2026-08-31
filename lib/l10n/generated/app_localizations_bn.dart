@@ -151,6 +151,9 @@ class AppLocalizationsBn extends AppLocalizations {
   String get sort_tracks => 'গানের ক্রম';
 
   @override
+  String get reverse_order => 'Reverse order';
+
+  @override
   String currently_downloading(Object tracks_length) {
     return 'ডাউনলোড করা হচ্ছে ($tracks_length)';
   }

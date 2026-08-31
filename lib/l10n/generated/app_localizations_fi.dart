@@ -151,6 +151,9 @@ class AppLocalizationsFi extends AppLocalizations {
   String get sort_tracks => 'Suodata Kappaleet';
 
   @override
+  String get reverse_order => 'Reverse order';
+
+  @override
   String currently_downloading(Object tracks_length) {
     return 'Ladataan ($tracks_length)';
   }

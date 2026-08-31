@@ -429,6 +429,12 @@ abstract class AppLocalizations {
   /// **'Sort Tracks'**
   String get sort_tracks;
 
+  /// No description provided for @reverse_order.
+  ///
+  /// In en, this message translates to:
+  /// **'Reverse order'**
+  String get reverse_order;
+
   /// No description provided for @currently_downloading.
   ///
   /// In en, this message translates to:

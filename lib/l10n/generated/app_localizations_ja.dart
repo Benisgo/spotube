@@ -151,6 +151,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get sort_tracks => '曲の並び替え';
 
   @override
+  String get reverse_order => 'Reverse order';
+
+  @override
   String currently_downloading(Object tracks_length) {
     return 'ダウンロード中 ($tracks_length) 曲';
   }

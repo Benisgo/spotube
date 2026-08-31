@@ -151,6 +151,9 @@ class AppLocalizationsKo extends AppLocalizations {
   String get sort_tracks => '곡명 순으로 정렬';
 
   @override
+  String get reverse_order => 'Reverse order';
+
+  @override
   String currently_downloading(Object tracks_length) {
     return '현재 ($tracks_length) 곡 다운로드 중';
   }

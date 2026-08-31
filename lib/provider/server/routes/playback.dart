@@ -931,7 +931,10 @@ class ServerPlaybackRoutes {
     final triedSiblingIds = <String>{activeTrack.info.id};
     final notifier = ref.read(sourcedTrackProvider(activeTrack.query).notifier);
 
-    int maxAttempts = activeTrack.siblings.length + 2;
+    // Fixed generous cap: siblings are populated lazily (the primary
+    // short-circuit leaves siblings empty), so the count isn't known up front.
+    // The loop exits early when all siblings are exhausted.
+    const maxAttempts = 12;
     var firstWas403 = false;
 
     for (int attempt = 0; attempt < maxAttempts; attempt++) {
@@ -992,7 +995,15 @@ class ServerPlaybackRoutes {
             requestedUri,
           );
         } else {
-          final nextSibling = activeTrack.siblings.firstWhereOrNull(
+          // The primary's stream resolved fine (its 1-byte probe passes) so
+          // _resolvePlayableTrack SHORT-CIRCUITED before populating siblings —
+          // ensure they're loaded before hunting for a playable upload of the
+          // same song (e.g. ACJQ0Kqhw6Y instead of the locked Gs3Tr1HrI-E).
+          var withSiblings = activeTrack;
+          if (withSiblings.siblings.isEmpty) {
+            withSiblings = await notifier.copyWithSibling();
+          }
+          final nextSibling = withSiblings.siblings.firstWhereOrNull(
             (sibling) => !triedSiblingIds.contains(sibling.id),
           );
           if (nextSibling == null) break;

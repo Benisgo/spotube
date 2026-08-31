@@ -22,6 +22,13 @@ linter:
   # `// ignore_for_file: name_of_lint` syntax on the line or in the file
   # producing the lint.
   rules:
+    # Resource-lifecycle lints: catch StreamSubscriptions that are never
+    # cancelled (leaks). close_sinks is also enabled; discarded_futures was
+    # tried but produces ~346 hits in this codebase (intentional fire-and-
+    # forget from void callbacks), so it is left off to avoid drowning real
+    # issues.
+    cancel_subscriptions: true
+    close_sinks: true
     # avoid_print: false  # Uncomment to disable the `avoid_print` rule
     # prefer_single_quotes: true  # Uncomment to enable the `prefer_single_quotes` rule
     file_names: false

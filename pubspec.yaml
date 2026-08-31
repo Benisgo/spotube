@@ -137,7 +137,6 @@ dependencies:
       ref: main
   hetu_spotube_plugin:
     path: packages/hetu_spotube_plugin
-  get_it: ^8.0.3
   flutter_markdown_plus: ^1.0.3
   pub_semver: ^2.2.0
   change_case: ^1.1.0

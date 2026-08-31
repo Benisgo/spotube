@@ -46,6 +46,7 @@ class WindowsAudioService {
       'setPlaybackStatus(stopped)',
     ));
 
+    // ignore: cancel_subscriptions — added to subscriptions, cancelled in dispose().
     final buttonStream = smtc.buttonPressStream.listen((event) {
       switch (event) {
         case PressedButton.play:
@@ -68,10 +69,12 @@ class WindowsAudioService {
       }
     });
 
+    // ignore: cancel_subscriptions — added to subscriptions, cancelled in dispose().
     final shuffleRequestStream = smtc.shuffleChangeStream.listen((enabled) {
       audioPlayer.setShuffle(enabled);
     });
 
+    // ignore: cancel_subscriptions — added to subscriptions, cancelled in dispose().
     final repeatRequestStream = smtc.repeatModeChangeStream.listen((mode) {
       audioPlayer.setLoopMode(switch (mode) {
         RepeatMode.none => PlaylistMode.none,
@@ -80,6 +83,7 @@ class WindowsAudioService {
       });
     });
 
+    // ignore: cancel_subscriptions — added to subscriptions, cancelled in dispose().
     final playerStateStream =
         audioPlayer.playerStateStream.listen((state) async {
       if (_updatingPlaybackState || _lastReportedPlaybackState == state) {
@@ -125,12 +129,14 @@ class WindowsAudioService {
       }
     });
 
+    // ignore: cancel_subscriptions — added to subscriptions, cancelled in dispose().
     final positionStream = audioPlayer.positionStream.listen((pos) async {
       if (_updatingPosition) return;
 
       await _pushPositionToSmtc(pos);
     });
 
+    // ignore: cancel_subscriptions — added to subscriptions, cancelled in dispose().
     final durationStream = audioPlayer.durationStream.listen((duration) async {
       if (_updatingDuration || duration == Duration.zero) {
         return;

@@ -89,6 +89,7 @@ class SyncedLyrics extends HookConsumerWidget {
     );
 
     useEffect(() {
+      // ignore: cancel_subscriptions - cancelled in the effect cleanup below.
       StreamSubscription? subscription;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         subscription = audioPlayer.positionStream.listen((event) {
@@ -262,14 +263,18 @@ class SyncedLyrics extends HookConsumerWidget {
                             context: context,
                             builder: (dialogContext) {
                               return FutureBuilder<List<SubtitleSimple>>(
-                                future: SyncedLyricsNotifier.searchLRCLibCandidates(track),
+                                future:
+                                    SyncedLyricsNotifier.searchLRCLibCandidates(
+                                        track),
                                 builder: (context, snapshot) {
-                                  if (snapshot.connectionState == ConnectionState.waiting) {
+                                  if (snapshot.connectionState ==
+                                      ConnectionState.waiting) {
                                     return const AlertDialog(
                                       title: Text("Searching lyrics..."),
                                       content: SizedBox(
                                         height: 100,
-                                        child: Center(child: CircularProgressIndicator()),
+                                        child: Center(
+                                            child: CircularProgressIndicator()),
                                       ),
                                     );
                                   }
@@ -278,12 +283,14 @@ class SyncedLyrics extends HookConsumerWidget {
                                   if (candidates.isEmpty) {
                                     return AlertDialog(
                                       title: const Text("Alternative Lyrics"),
-                                      content: const Text("No alternative lyrics found on LRCLib."),
+                                      content: const Text(
+                                          "No alternative lyrics found on LRCLib."),
                                       actions: [
                                         Button(
                                           style: ButtonVariance.secondary,
                                           child: const Text("Close"),
-                                          onPressed: () => Navigator.of(dialogContext).pop(),
+                                          onPressed: () =>
+                                              Navigator.of(dialogContext).pop(),
                                         ),
                                       ],
                                     );
@@ -299,21 +306,26 @@ class SyncedLyrics extends HookConsumerWidget {
                                         itemCount: candidates.length,
                                         itemBuilder: (context, index) {
                                           final item = candidates[index];
-                                          final isSynced = item.lyrics.any((l) => l.time > Duration.zero);
+                                          final isSynced = item.lyrics.any(
+                                              (l) => l.time > Duration.zero);
                                           return ButtonTile(
                                             title: Text(item.name),
                                             subtitle: Text(
                                               "${item.provider} • ${isSynced ? 'Synced' : 'Plain'}",
                                             ),
                                             trailing: isSynced
-                                                ? const Icon(SpotubeIcons.done, color: Colors.green)
+                                                ? const Icon(SpotubeIcons.done,
+                                                    color: Colors.green)
                                                 : null,
                                             onPressed: () async {
                                               await ref
-                                                  .read(syncedLyricsProvider(track).notifier)
+                                                  .read(syncedLyricsProvider(
+                                                          track)
+                                                      .notifier)
                                                   .updateSelectedLyrics(item);
                                               if (dialogContext.mounted) {
-                                                Navigator.of(dialogContext).pop();
+                                                Navigator.of(dialogContext)
+                                                    .pop();
                                               }
                                             },
                                           );
@@ -324,7 +336,8 @@ class SyncedLyrics extends HookConsumerWidget {
                                       Button(
                                         style: ButtonVariance.secondary,
                                         child: const Text("Cancel"),
-                                        onPressed: () => Navigator.of(dialogContext).pop(),
+                                        onPressed: () =>
+                                            Navigator.of(dialogContext).pop(),
                                       ),
                                     ],
                                   );
@@ -336,8 +349,9 @@ class SyncedLyrics extends HookConsumerWidget {
                 ),
                 ZoomControls(
                   value: delay,
-                  onChanged: (value) =>
-                      ref.read(syncedLyricsDelayProvider.notifier).state = value,
+                  onChanged: (value) => ref
+                      .read(syncedLyricsDelayProvider.notifier)
+                      .state = value,
                   interval: 1,
                   unit: "s",
                   increaseIcon: const Icon(SpotubeIcons.add),

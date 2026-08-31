@@ -24,6 +24,7 @@ import 'package:spotube/services/youtube_engine/yt_dlp_worker.dart';
 
 class AudioPlayerStreamListeners {
   final Ref ref;
+
   /// Resolves the shared audio engine through Riverpod so it can be
   /// overridden in tests / with alternate backends.
   SpotubeAudioPlayer get audioPlayer => ref.read(audioPlayerServiceProvider);
@@ -261,6 +262,7 @@ class AudioPlayerStreamListeners {
   }
 
   StreamSubscription subscribeToBufferingAndState() {
+    // ignore: cancel_subscriptions — returned to the subscriptions list, cancelled in onDispose.
     final bufferingSubscription =
         audioPlayer.bufferingStream.listen((buffering) {
       final activeTrackId = audioPlayerState.activeTrack?.id;
@@ -271,6 +273,7 @@ class AudioPlayerStreamListeners {
       );
     });
 
+    // ignore: cancel_subscriptions — returned to the subscriptions list, cancelled in onDispose.
     final playerStateSubscription =
         audioPlayer.playerStateStream.listen((state) {
       final activeTrackId = audioPlayerState.activeTrack?.id;
@@ -288,6 +291,7 @@ class AudioPlayerStreamListeners {
   }
 
   StreamSubscription subscribeToCrossfadeTransitions() {
+    // ignore: cancel_subscriptions — returned via _CompositeSubscription, cancelled in onDispose.
     final positionSubscription =
         audioPlayer.positionStream.listen((position) async {
       try {
@@ -332,6 +336,7 @@ class AudioPlayerStreamListeners {
       }
     });
 
+    // ignore: cancel_subscriptions — returned via _CompositeSubscription, cancelled in onDispose.
     final indexSubscription = audioPlayer.currentIndexChangedStream.listen((
       index,
     ) async {

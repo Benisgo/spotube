@@ -18,6 +18,7 @@ mixin MultiSessionSync on Notifier<MultiSessionState> {
   static const _localActionGraceMs = 2000;
 
   WebSocketChannel? _channel;
+  // ignore: cancel_subscriptions — cancelled in _connect/_disposeConnection/onDispose.
   StreamSubscription? _subscription;
   Timer? _positionTimer;
   Timer? _reconnectTimer;

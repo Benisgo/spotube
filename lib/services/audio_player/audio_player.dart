@@ -18,6 +18,23 @@ import 'package:spotube/utils/platform.dart';
 part 'audio_players_streams_mixin.dart';
 part 'audio_player_impl.dart';
 
+/// Deterministic hash-based signature for a playlist. Avoids building a
+/// ~600KB joined URI string on every playlist change for large queues.
+/// Collisions are negligible for the dedup this feeds (same content always
+/// produces the same hash).
+String playlistContentSignature({
+  required int length,
+  required int index,
+  required Iterable<String> uris,
+}) {
+  var hash = length;
+  hash = 31 * hash + index;
+  for (final uri in uris) {
+    hash = (hash * 31) ^ uri.hashCode;
+  }
+  return '$hash';
+}
+
 class SpotubeMedia extends mk.Media {
   static int serverPort = 0;
   static const _directUrlExtrasKey = '_spotubeDirectUrl';
@@ -169,17 +186,11 @@ abstract class AudioPlayerInterface {
   String? _lastEmittedPlaylistSignature;
   DateTime? _lastPositionForwardedAt;
 
-  String _playlistSignature(mk.Playlist playlist) {
-    // Hash-based signature: avoids building a ~600KB joined URI string on
-    // every playlist change for large queues. Collisions are negligible for
-    // the dedup this feeds (same content -> same hash deterministically).
-    var hash = playlist.medias.length;
-    hash = 31 * hash + playlist.index;
-    for (final media in playlist.medias) {
-      hash = (hash * 31) ^ media.uri.hashCode;
-    }
-    return '$hash';
-  }
+  String _playlistSignature(mk.Playlist playlist) => playlistContentSignature(
+        length: playlist.medias.length,
+        index: playlist.index,
+        uris: playlist.medias.map((media) => media.uri),
+      );
 
   void _emitPlaylistSnapshot(mk.Playlist playlist) {
     if (_playlistStreamController.isClosed) return;

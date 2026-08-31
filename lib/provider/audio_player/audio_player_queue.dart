@@ -1,5 +1,42 @@
 part of 'audio_player.dart';
 
+/// Stable queue dedup key: local tracks are keyed by their file path,
+/// everything else by id. Matches the queue's comparison semantics.
+String trackQueueKey(SpotubeTrackObject track) =>
+    track is SpotubeLocalTrackObject ? "local:${track.path}" : track.id;
+
+/// Returns [tracks] filtered to those whose queue key is not already present
+/// in [existingKeys], unless [allowDuplicates] is true. Set-based dedup keeps
+/// large queue operations O(N+M) instead of O(N*M).
+List<SpotubeTrackObject> deduplicateQueueTracks(
+  Iterable<SpotubeTrackObject> tracks,
+  Set<String> existingKeys, {
+  bool allowDuplicates = false,
+}) {
+  return tracks
+      .where(
+        (track) =>
+            allowDuplicates || !existingKeys.contains(trackQueueKey(track)),
+      )
+      .toList();
+}
+
+/// Indexes (descending) of the tracks in [tracks] whose id is in [trackIds].
+/// Descending order keeps parallel-array removals (e.g. the media_kit
+/// playlist) valid: removing the highest index first means earlier indexes
+/// are never shifted out from under subsequent removals. The returned indexes
+/// are ORIGINAL positions in [tracks], not positions in a filtered copy.
+List<int> descendingTrackIndexes(
+  List<SpotubeTrackObject> tracks,
+  Set<String> trackIds,
+) {
+  final indexes = <int>[];
+  for (var i = 0; i < tracks.length; i++) {
+    if (trackIds.contains(tracks[i].id)) indexes.add(i);
+  }
+  return indexes.reversed.toList();
+}
+
 /// Queue & collection mutation operations for [AudioPlayerNotifier].
 ///
 /// Owns adding/removing tracks and collections, queue reconciliation against
@@ -174,14 +211,12 @@ mixin AudioPlayerQueueOps on AudioPlayerPersistence {
   }) async {
     _assertAllowedTracks(tracks);
     // Set-based dedup: O(N+M) instead of O(N*M) for large existing queues.
-    final existingKeys = state.tracks.map(_trackKey).toSet();
-    final addableTracks = _blacklist
-        .filter(tracks)
-        .where(
-          (track) =>
-              allowDuplicates || !existingKeys.contains(_trackKey(track)),
-        )
-        .toList();
+    final existingKeys = state.tracks.map(trackQueueKey).toSet();
+    final addableTracks = deduplicateQueueTracks(
+      _blacklist.filter(tracks),
+      existingKeys,
+      allowDuplicates: allowDuplicates,
+    );
     if (addableTracks.isEmpty) return;
 
     if (state.tracks.isEmpty ||
@@ -313,10 +348,12 @@ mixin AudioPlayerQueueOps on AudioPlayerPersistence {
     _assertAllowedTracks(tracks);
 
     // Set-based dedup: O(N+M) instead of O(N*M) for large existing queues.
-    final existingKeys = state.tracks.map(_trackKey).toSet();
-    tracks = _blacklist.filter(tracks).where((track) {
-      return allowDuplicates || !existingKeys.contains(_trackKey(track));
-    }).toList();
+    final existingKeys = state.tracks.map(trackQueueKey).toSet();
+    tracks = deduplicateQueueTracks(
+      _blacklist.filter(tracks),
+      existingKeys,
+      allowDuplicates: allowDuplicates,
+    );
     if (tracks.isEmpty) return;
 
     if (!audioPlayer.hasSource || state.currentIndex < 0) {
@@ -404,22 +441,22 @@ mixin AudioPlayerQueueOps on AudioPlayerPersistence {
   }
 
   Future<void> removeTracks(Iterable<String> trackIds) async {
-    final trackIndexes = state.tracks
-        .where((element) => trackIds.any((trackId) => trackId == element.id))
-        .mapIndexed((index, element) => index);
-
-    final tracks = state.tracks.where(
-      (element) => !trackIds.contains(element.id),
-    );
+    final trackIdSet = trackIds.toSet();
+    final tracks = state.tracks
+        .where((element) => !trackIdSet.contains(element.id))
+        .toList();
 
     state = state.copyWith(
-      tracks: tracks.toList(),
+      tracks: tracks,
     );
 
     // Remove from the player's playlist highest index first: each removal
     // shifts the remaining indexes, so removing in ascending order would hit
-    // the wrong (or out-of-range) track after the first removal.
-    for (final index in trackIndexes.toList().reversed) {
+    // the wrong (or out-of-range) track after the first removal. The indexes
+    // are the ORIGINAL positions in state.tracks (not positions in a filtered
+    // copy), so they stay valid against the player's parallel playlist.
+    final trackIndexes = descendingTrackIndexes(state.tracks, trackIdSet);
+    for (final index in trackIndexes) {
       await audioPlayer.removeTrack(index);
     }
 
@@ -441,11 +478,6 @@ mixin AudioPlayerQueueOps on AudioPlayerPersistence {
         ? a.path == b.path
         : a.id == b.id;
   }
-
-  /// Stable dedup key matching [_compareTracks] semantics: local tracks are
-  /// keyed by path, everything else by id.
-  String _trackKey(SpotubeTrackObject track) =>
-      track is SpotubeLocalTrackObject ? "local:${track.path}" : track.id;
 
   Future<void> load(
     List<SpotubeTrackObject> tracks, {

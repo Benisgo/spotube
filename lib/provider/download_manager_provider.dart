@@ -351,61 +351,90 @@ class DownloadManagerNotifier extends Notifier<List<DownloadTask>> {
       // URLs that 403 for ANY content (only 1-byte probes pass), so if that
       // fails we re-resolve the audio via youtube_explode — its URLs download
       // freely in the same region — then fall back to the mux (itag 18).
-      var success = await _downloadToFile(
-        task,
-        track,
-        url,
-        savePath,
-        metadataContainer: container,
-      );
+      // The primary upload may be audio-only-locked (Gs3Tr1HrI-E) while a
+      // sibling upload of the same song plays fine (ACJQ0Kqhw6Y) — the same
+      // situation playback swaps for. Try the primary + its sibling uploads.
+      var downloadTrack = track;
+      if (downloadTrack.siblings.isEmpty) {
+        try {
+          downloadTrack = await ref
+              .read(sourcedTrackProvider(task.track).notifier)
+              .copyWithSibling();
+        } catch (_) {}
+      }
+      final candidateVideoIds = <String>[downloadTrack.info.id];
+      for (final s in downloadTrack.siblings.take(3)) {
+        if (!candidateVideoIds.contains(s.id)) candidateVideoIds.add(s.id);
+      }
+
+      // A file:// source means the "URL" is really a local cached/downloaded
+      // file — skip it here; it would either fail in dio or copy the wrong
+      // (mux) format. The cache-reuse block and the sibling passes handle it.
+      final primaryScheme = Uri.tryParse(url)?.scheme;
+      var success = primaryScheme == 'file' || primaryScheme == null
+          ? false
+          : await _downloadToFile(
+              task,
+              track,
+              url,
+              savePath,
+              metadataContainer: container,
+            );
       if (!success && !task.cancelToken.isCancelled) {
         // NOTE: track.query.id is the source (Spotify) ID — the YouTube
         // videoId lives on track.info.id (the resolved match).
-        // Flow parity: try clients in priority order, first whose audio URL
-        // actually downloads wins.
-        for (final clients in _downloadClients) {
+        // Try audio for the primary + sibling uploads × clients.
+        for (final videoId in candidateVideoIds) {
           if (task.cancelToken.isCancelled) break;
-          final audioUrl = await _resolveAudioUrl(
-            track.info.id,
-            container: container,
-            clients: clients,
-          );
-          if (audioUrl == null) continue;
-          success = await _downloadToFile(
-            task,
-            track,
-            audioUrl,
-            savePath,
-            metadataContainer: container,
-          );
-          if (success) {
-            AppLogger.log.w(
-                "[download] app URL blocked for ${track.query.id}; saved audio via client ${_clientName(clients)}");
-            break;
+          for (final clients in _downloadClients) {
+            if (task.cancelToken.isCancelled) break;
+            final audioUrl = await _resolveAudioUrl(
+              videoId,
+              container: container,
+              clients: clients,
+            );
+            if (audioUrl == null) continue;
+            success = await _downloadToFile(
+              task,
+              track,
+              audioUrl,
+              savePath,
+              metadataContainer: container,
+            );
+            if (success) {
+              AppLogger.log.w(
+                  "[download] app URL blocked for ${track.query.id}; saved audio via client ${_clientName(clients)} video=$videoId");
+              break;
+            }
           }
+          if (success) break;
         }
       }
       if (!success && !task.cancelToken.isCancelled) {
-        for (final clients in _downloadClients) {
+        for (final videoId in candidateVideoIds) {
           if (task.cancelToken.isCancelled) break;
-          final muxUrl = await _resolveMuxUrl(
-            track.info.id,
-            clients: clients,
-          );
-          if (muxUrl == null) continue;
-          final muxSavePath = join(downloadLocation, "$baseName.mp4");
-          success = await _downloadToFile(
-            task,
-            track,
-            muxUrl,
-            muxSavePath,
-            metadataContainer: container,
-          );
-          if (success) {
-            AppLogger.log.w(
-                "[download] audio-only blocked for ${track.query.id}; saved mux fallback (${_clientName(clients)})");
-            break;
+          for (final clients in _downloadClients) {
+            if (task.cancelToken.isCancelled) break;
+            final muxUrl = await _resolveMuxUrl(
+              videoId,
+              clients: clients,
+            );
+            if (muxUrl == null) continue;
+            final muxSavePath = join(downloadLocation, "$baseName.mp4");
+            success = await _downloadToFile(
+              task,
+              track,
+              muxUrl,
+              muxSavePath,
+              metadataContainer: container,
+            );
+            if (success) {
+              AppLogger.log.w(
+                  "[download] audio-only blocked for ${track.query.id}; saved mux fallback (${_clientName(clients)}) video=$videoId");
+              break;
+            }
           }
+          if (success) break;
         }
       }
 
@@ -469,6 +498,20 @@ class DownloadManagerNotifier extends Notifier<List<DownloadTask>> {
     required SpotubeAudioSourceContainerPreset metadataContainer,
   }) async {
     try {
+      // A file:// URL is a local cached/downloaded file — copy it directly;
+      // dio cannot fetch file:// URIs ("Unsupported scheme 'file'").
+      if (Uri.tryParse(url)?.scheme == 'file') {
+        final local = File.fromUri(Uri.parse(url));
+        if (!await local.exists()) return false;
+        final target = File(savePath);
+        if (await target.exists()) await target.delete();
+        await target.create(recursive: true);
+        await local.copy(savePath);
+        if (metadataContainer.getFileExtension() != "weba") {
+          await _tagDownloadFile(task, track, savePath);
+        }
+        return true;
+      }
       final response = await dio.chunkDownload(
         url,
         savePath,

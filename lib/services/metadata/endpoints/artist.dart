@@ -1,6 +1,7 @@
 import 'package:hetu_script/hetu_script.dart';
 import 'package:hetu_script/values.dart';
 import 'package:spotube/models/metadata/metadata.dart';
+import 'normalize.dart';
 
 class MetadataPluginArtistEndpoint {
   final Hetu hetu;
@@ -35,9 +36,7 @@ class MetadataPluginArtistEndpoint {
 
     return SpotubePaginationResponseObject<SpotubeFullTrackObject>.fromJson(
       raw.cast<String, dynamic>(),
-      (Map json) => SpotubeFullTrackObject.fromJson(
-        json.cast<String, dynamic>(),
-      ),
+      (Map json) => SpotubeFullTrackObject.fromJson(normalizeTrackMap(json)),
     );
   }
 

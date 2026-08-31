@@ -1,6 +1,7 @@
 import 'package:hetu_script/hetu_script.dart';
 import 'package:hetu_script/values.dart';
 import 'package:spotube/models/metadata/metadata.dart';
+import 'normalize.dart';
 
 class MetadataPluginPlaylistEndpoint {
   final Hetu hetu;
@@ -35,15 +36,7 @@ class MetadataPluginPlaylistEndpoint {
 
     return SpotubePaginationResponseObject<SpotubeFullTrackObject>.fromJson(
       raw.cast<String, dynamic>(),
-      (Map json) {
-        final map = json.cast<String, dynamic>();
-        if (map.containsKey("added_at") && map["track"] is Map) {
-          final trackMap = Map<String, dynamic>.from(map["track"] as Map);
-          trackMap["added_at"] = map["added_at"];
-          return SpotubeFullTrackObject.fromJson(trackMap);
-        }
-        return SpotubeFullTrackObject.fromJson(map);
-      },
+      (Map json) => SpotubeFullTrackObject.fromJson(normalizeTrackMap(json)),
     );
   }
 

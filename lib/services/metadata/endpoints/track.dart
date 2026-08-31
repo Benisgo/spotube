@@ -1,6 +1,7 @@
 import 'package:hetu_script/hetu_script.dart';
 import 'package:hetu_script/values.dart';
 import 'package:spotube/models/metadata/metadata.dart';
+import 'normalize.dart';
 import 'package:spotube/services/logger/logger.dart';
 
 class MetadataPluginTrackEndpoint {
@@ -16,7 +17,7 @@ class MetadataPluginTrackEndpoint {
         await hetuMetadataTrack.invoke("getTrack", positionalArgs: [id]) as Map;
 
     return SpotubeFullTrackObject.fromJson(
-      raw.cast<String, dynamic>(),
+      normalizeTrackMap(raw),
     );
   }
 
@@ -38,7 +39,7 @@ class MetadataPluginTrackEndpoint {
       return (result as List)
           .map(
             (e) => SpotubeFullTrackObject.fromJson(
-              (e as Map).cast<String, dynamic>(),
+              normalizeTrackMap(e as Map),
             ),
           )
           .toList();

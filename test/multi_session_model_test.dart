@@ -69,15 +69,15 @@ void main() {
 
   test('normalizes relay urls before validation', () {
     expect(
-      MultiSessionNotifier.normalizeRelayUrl('relay.example.com'),
+      normalizeRelayUrl('relay.example.com'),
       'https://relay.example.com',
     );
     expect(
-      MultiSessionNotifier.normalizeRelayUrl('wss://relay.example.com/ws'),
+      normalizeRelayUrl('wss://relay.example.com/ws'),
       'https://relay.example.com/ws',
     );
     expect(
-      MultiSessionNotifier.normalizeRelayUrl('localhost:8787'),
+      normalizeRelayUrl('localhost:8787'),
       'http://localhost:8787',
     );
   });

@@ -27,6 +27,7 @@ extension _WebsocketSinkExts on WebSocketSink {
 
 class ServerConnectRoutes {
   final Ref ref;
+
   /// Resolves the shared audio engine through Riverpod.
   SpotubeAudioPlayer get audioPlayer => ref.read(audioPlayerServiceProvider);
   final StreamController<String> _connectClientStreamController;

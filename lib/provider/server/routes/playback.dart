@@ -31,6 +31,7 @@ import 'package:spotube/utils/service_utils.dart';
 class ServerPlaybackRoutes {
   static const _streamFailureCooldown = Duration(seconds: 8);
   final Ref ref;
+
   /// Resolves the shared audio engine through Riverpod.
   SpotubeAudioPlayer get audioPlayer => ref.read(audioPlayerServiceProvider);
   UserPreferences get userPreferences => ref.read(userPreferencesProvider);

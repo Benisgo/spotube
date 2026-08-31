@@ -102,7 +102,8 @@ Future<void> Function(SpotubeTrackObject track, int index)
       final currentPlaylist = ref.read(audioPlayerProvider);
       final hasActiveLocalSource =
           audioPlayer.hasSource && currentPlaylist.currentIndex >= 0;
-      final isTrackQueued = currentPlaylist.tracks.containsBy(track, (a) => a.id);
+      final isTrackQueued =
+          currentPlaylist.tracks.containsBy(track, (a) => a.id);
       // Only jump within the current queue when the clicked track belongs to
       // the currently ACTIVE collection. If the user is viewing a different
       // playlist that happens to share a song with the active one, we must

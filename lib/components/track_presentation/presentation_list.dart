@@ -228,8 +228,7 @@ class PresentationListSection extends HookConsumerWidget {
 
     final useVirtualScrolling = options.pagination.total != null &&
         state.searchQuery.isEmpty &&
-        state.sortBy == SortBy.none &&
-        !state.reversed;
+        state.sortBy == SortBy.none;
 
     // ------------------------------------------------------------------
     // Random-access track cache (index -> SpotubeFullTrackObject)
@@ -242,10 +241,16 @@ class PresentationListSection extends HookConsumerWidget {
     // ------------------------------------------------------------------
     // ensurePageLoaded  (called by the tile builder)
     // ------------------------------------------------------------------
-    void ensurePageLoaded(int index) {
-      if (trackCache.value.containsKey(index)) return;
-      if (index < state.presentationTracks.length) return;
-      final page = index ~/ _pageSize;
+    void ensurePageLoaded(int visibleIndex) {
+      // In the reversed virtual view, the visible position maps to the
+      // mirrored source index — load that page so placeholders fill in the
+      // true last track at the top instead of the last loaded one.
+      final sourceIndex =
+          state.reversed ? options.total - 1 - visibleIndex : visibleIndex;
+      if (sourceIndex < 0 || sourceIndex >= options.total) return;
+      if (trackCache.value.containsKey(sourceIndex)) return;
+      if (sourceIndex < state.presentationTracks.length) return;
+      final page = sourceIndex ~/ _pageSize;
       if (loadingPages.value.contains(page)) return;
       loadingPages.value = {...loadingPages.value, page};
 
@@ -259,10 +264,25 @@ class PresentationListSection extends HookConsumerWidget {
     // Track resolver
     // ------------------------------------------------------------------
     SpotubeFullTrackObject? trackAt(int index) {
-      if (index < state.presentationTracks.length) {
-        return state.presentationTracks[index] as SpotubeFullTrackObject;
+      if (useVirtualScrolling) {
+        // Virtual scrolling covers the whole playlist by source index;
+        // reversed mirrors the visible position to the opposite end so the
+        // true last track sits at the top (with a placeholder until loaded).
+        final sourceIndex = state.reversed ? options.total - 1 - index : index;
+        if (sourceIndex < 0 || sourceIndex >= options.total) return null;
+        if (sourceIndex < state.presentationTracks.length) {
+          return state.presentationTracks[sourceIndex]
+              as SpotubeFullTrackObject;
+        }
+        return trackCache.value[sourceIndex];
       }
-      return trackCache.value[index];
+      // Non-virtual: presentationTracks is the full (sorted/filtered) list.
+      final listIndex =
+          state.reversed ? state.presentationTracks.length - 1 - index : index;
+      if (listIndex < 0 || listIndex >= state.presentationTracks.length) {
+        return null;
+      }
+      return state.presentationTracks[listIndex] as SpotubeFullTrackObject;
     }
 
     // ------------------------------------------------------------------

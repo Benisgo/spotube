@@ -159,16 +159,12 @@ class TrackPresentationModifiersSection extends HookConsumerWidget {
                         tooltip: TooltipContainer(
                           child: Text(context.l10n.reverse_order),
                         ).call,
-                        child: SelectedButton(
-                          value: state.reversed,
-                          onChanged: (_) => notifier.toggleReverse(),
-                          style: const ButtonStyle.ghost(
-                            size: ButtonSize.small,
-                          ),
-                          selectedStyle: const ButtonStyle.secondary(
-                            size: ButtonSize.small,
-                          ),
-                          child: const Icon(SpotubeIcons.reverse, size: 18),
+                        child: IconButton(
+                          variance: state.reversed
+                              ? ButtonVariance.secondary
+                              : ButtonVariance.outline,
+                          icon: const Icon(SpotubeIcons.reverse),
+                          onPressed: () => notifier.toggleReverse(),
                         ),
                       ),
                       const TrackPresentationActionsSection(),

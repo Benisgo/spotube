@@ -262,14 +262,12 @@ class PresentationStateNotifier
 
     if (generation != _searchGeneration) return;
 
-    // Reverse is an independent visual toggle — persist it across re-sorts
-    // and re-searches (applied after sorting).
-    final visibleTracks = state.reversed
-        ? presentationTracks.reversed.toList()
-        : presentationTracks;
-
+    // NOTE: presentationTracks is kept in its natural (sorted) order. The
+    // `reversed` flag is applied at RENDER time (presentation_list) so that
+    // paginated playlists still virtual-scroll with loading placeholders for
+    // not-yet-fetched pages in the mirrored direction.
     state = state.copyWith(
-      presentationTracks: visibleTracks,
+      presentationTracks: presentationTracks,
       sortBy: effectiveSortBy,
       searchQuery: effectiveQuery,
       isSearchLoading: false,
@@ -339,22 +337,78 @@ class PresentationStateNotifier
 
   void sortTracks(SortBy sortBy) {
     state = state.copyWith(sortBy: sortBy);
-    unawaited(
-      _refreshPresentationTracks(
-        sourceTracks: tracks,
-        sortBy: sortBy,
-      ),
+    unawaited(_sortPresentationTracks(sortBy));
+  }
+
+  /// Sorting must apply to the WHOLE collection, not just the first fetched
+  /// page (the providers build with a ~20-track page). Load the remaining
+  /// pages first so every track participates and none disappear once sorted.
+  Future<void> _sortPresentationTracks(SortBy sortBy) async {
+    var sourceTracks = tracks;
+    final total = _collectionTotal;
+    if (total != null && sourceTracks.length < total) {
+      try {
+        final all = await _fetchAllCollectionTracks();
+        if (all.length > sourceTracks.length) {
+          sourceTracks = all;
+        }
+      } catch (_) {
+        // Fall back to the currently loaded tracks.
+      }
+    }
+    await _refreshPresentationTracks(
+      sourceTracks: sourceTracks,
+      sortBy: sortBy,
     );
   }
 
+  int? get _collectionTotal {
+    if (isSavedTrackPlaylist) {
+      return ref.read(metadataPluginSavedTracksProvider).value?.total;
+    }
+    if (arg is SpotubeSimplePlaylistObject) {
+      return ref
+          .read(metadataPluginPlaylistTracksProvider(
+              (arg as SpotubeSimplePlaylistObject).id))
+          .value
+          ?.total;
+    }
+    return ref
+        .read(metadataPluginAlbumTracksProvider(
+            (arg as SpotubeSimpleAlbumObject).id))
+        .value
+        ?.total;
+  }
+
+  Future<List<SpotubeTrackObject>> _fetchAllCollectionTracks() async {
+    if (isSavedTrackPlaylist) {
+      return (await ref
+              .read(metadataPluginSavedTracksProvider.notifier)
+              .fetchAll())
+          .cast<SpotubeTrackObject>();
+    }
+    if (arg is SpotubeSimplePlaylistObject) {
+      return (await ref
+              .read(metadataPluginPlaylistTracksProvider(
+                      (arg as SpotubeSimplePlaylistObject).id)
+                  .notifier)
+              .fetchAll())
+          .cast<SpotubeTrackObject>();
+    }
+    return (await ref
+            .read(metadataPluginAlbumTracksProvider(
+                    (arg as SpotubeSimpleAlbumObject).id)
+                .notifier)
+            .fetchAll())
+        .cast<SpotubeTrackObject>();
+  }
+
   /// Inverts the current visible order (visual only — does not change the
-  /// underlying playlist/album). Persists across sort/search changes.
+  /// underlying playlist/album). Persists across sort/search changes; the
+  /// actual reversal happens at render time so paginated playlists keep
+  /// their loading placeholders in the mirrored direction.
   void toggleReverse() {
-    final reversed = !state.reversed;
-    state = state.copyWith(
-      reversed: reversed,
-      presentationTracks: [...state.presentationTracks.reversed],
-    );
+    state = state.copyWith(reversed: !state.reversed);
   }
 }
 

@@ -97,6 +97,18 @@ abstract class ServiceUtils {
     return DateTime.tryParse(raw) ?? DateTime(1975);
   }
 
+  /// Best available "date" for sorting by added: the real added date (saved
+  /// tracks carry `added_at`), else the file's added date (local tracks),
+  /// else the album release date as a last resort.
+  static DateTime _trackSortDate(SpotubeTrackObject track) {
+    final addedAt = track.addedAt;
+    if (addedAt != null) return addedAt;
+    if (track is SpotubeLocalTrackObject && track.dateAdded != null) {
+      return track.dateAdded!;
+    }
+    return parseSpotifyAlbumDate(track.album);
+  }
+
   static List<T> sortTracks<T extends SpotubeTrackObject>(
       List<T> tracks, SortBy sortBy) {
     if (sortBy == SortBy.none) return tracks;
@@ -108,21 +120,9 @@ abstract class ServiceUtils {
           case SortBy.descending:
             return b.name.toLowerCase().compareTo(a.name.toLowerCase());
           case SortBy.newest:
-            final aDate = a is SpotubeLocalTrackObject
-                ? (a.dateAdded ?? DateTime(1975))
-                : parseSpotifyAlbumDate(a.album);
-            final bDate = b is SpotubeLocalTrackObject
-                ? (b.dateAdded ?? DateTime(1975))
-                : parseSpotifyAlbumDate(b.album);
-            return bDate.compareTo(aDate);
+            return _trackSortDate(b).compareTo(_trackSortDate(a));
           case SortBy.oldest:
-            final aDate = a is SpotubeLocalTrackObject
-                ? (a.dateAdded ?? DateTime(1975))
-                : parseSpotifyAlbumDate(a.album);
-            final bDate = b is SpotubeLocalTrackObject
-                ? (b.dateAdded ?? DateTime(1975))
-                : parseSpotifyAlbumDate(b.album);
-            return aDate.compareTo(bDate);
+            return _trackSortDate(a).compareTo(_trackSortDate(b));
           case SortBy.duration:
             return a.durationMs.compareTo(b.durationMs);
           case SortBy.artist:

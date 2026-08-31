@@ -215,22 +215,39 @@ class DownloadManagerNotifier extends Notifier<List<DownloadTask>> {
     }
   }
 
-  /// The on-disk streaming cache file for `track` — the SAME path the
-  /// playback server writes when cacheMusic is enabled. Reusing it for a
+  /// The on-disk streaming cache file for `track` — the file the playback
+  /// server writes when cacheMusic is enabled. Locates it regardless of the
+  /// container extension (audio-only m4a OR mux mp4). Reusing it for a
   /// download makes downloading a song you already streamed cost ZERO
-  /// network. Kept in sync with ServerPlaybackRoutes._getTrackCacheFilePath.
+  /// network. Kept in sync with ServerPlaybackRoutes cache helpers.
   Future<File?> _getStreamCacheFile(SourcedTrack track) async {
     try {
       final cacheDir = await UserPreferencesNotifier.getMusicCacheDir();
       final baseName = ServiceUtils.sanitizeFilename(
         '${track.query.name} - ${track.query.artists.map((d) => d.name).join(",")}',
       );
-      final ext = track.qualityPreset?.getFileExtension() ?? "m4a";
-      return File(join(cacheDir, '$baseName [${track.info.id}].$ext'));
+      final expected = File(
+        join(
+          cacheDir,
+          '$baseName [${track.info.id}].'
+          '${track.qualityPreset?.getFileExtension() ?? "m4a"}',
+        ),
+      );
+      if (await expected.exists()) return expected;
+      final dir = Directory(cacheDir);
+      if (!await dir.exists()) return null;
+      final prefix = '$baseName [${track.info.id}].';
+      await for (final entry in dir.list()) {
+        if (entry is File &&
+            basename(entry.path).startsWith(prefix) &&
+            !entry.path.endsWith('.part')) {
+          return entry;
+        }
+      }
     } catch (e) {
-      AppLogger.log.w("[download] could not compute stream cache path: $e");
-      return null;
+      AppLogger.log.w("[download] could not find stream cache: $e");
     }
+    return null;
   }
 
   Future<void> _downloadTrack(DownloadTask task) async {
@@ -299,9 +316,7 @@ class DownloadManagerNotifier extends Notifier<List<DownloadTask>> {
       // data usage. This makes downloading a streamed song as cheap as
       // streaming it.
       final cachedStream = await _getStreamCacheFile(track);
-      if (cachedStream != null &&
-          await cachedStream.exists() &&
-          !cachedStream.path.endsWith('.part')) {
+      if (cachedStream != null) {
         final cachedExt = extension(cachedStream.path);
         if (cachedExt == '.${container.getFileExtension()}') {
           try {

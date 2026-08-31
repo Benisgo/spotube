@@ -313,11 +313,14 @@ class ServerPlaybackRoutes {
     required int start,
     required int end,
     required bool isPartial,
+    String? containerExt,
   }) {
     final contentLength = totalLength == 0 ? 0 : (end - start + 1);
 
     return {
-      "content-type": ["audio/${track.qualityPreset?.name ?? 'mp4'}"],
+      "content-type": [
+        "audio/${containerExt ?? track.qualityPreset?.name ?? 'mp4'}"
+      ],
       "content-length": ["$contentLength"],
       "accept-ranges": ["bytes"],
       "connection": ["close"],
@@ -328,25 +331,37 @@ class ServerPlaybackRoutes {
 
   bool _shouldBypassStreamingProxy(SourcedTrack track) => false;
 
-  Future<String> _getTrackCacheFilePath(SourcedTrack track) async {
+  Future<String> _getTrackCacheFilePath(
+    SourcedTrack track, {
+    String? servedContainerExt,
+  }) async {
     final cacheDir = await UserPreferencesNotifier.getMusicCacheDir();
     final baseName = ServiceUtils.sanitizeFilename(
       '${track.query.name} - ${track.query.artists.map((d) => d.name).join(",")}',
     );
-    final ext = track.qualityPreset?.getFileExtension() ?? "m4a";
+    // A track that only plays via the mux fallback (audio-only 403s in
+    // gcr=eg) is cached with the MUX container's extension (mp4), not the
+    // preferred audio-only stream's (m4a). servedContainerExt is set by the
+    // mux fallback so the written file is named by its real content.
+    final ext =
+        servedContainerExt ?? track.qualityPreset?.getFileExtension() ?? "m4a";
     final expectedFileName = '$baseName [${track.info.id}].$ext';
     final targetPath = join(cacheDir, expectedFileName);
 
-    // Purge stale cache files for this track if they were recorded for a
-    // different video ID or old format, ensuring we never play old audio
-    // after an audio source change or algorithm improvement.
+    // Purge stale cache files recorded for a DIFFERENT video ID (audio
+    // source change), so we never play old audio. Same-video caches of any
+    // extension are kept — audio-only and mux containers may both be present.
     final dir = Directory(cacheDir);
     if (await dir.exists()) {
       final entries = await dir.list().toList();
+      final staleRe = RegExp(r'^(.+?) \[([^\]]+)\]\.');
       for (final entry in entries) {
         if (entry is File && !entry.path.endsWith('.part')) {
           final fileName = basename(entry.path);
-          if (fileName.startsWith(baseName) && fileName != expectedFileName) {
+          final match = staleRe.firstMatch(fileName);
+          if (match != null &&
+              match.group(1) == baseName &&
+              match.group(2) != track.info.id) {
             try {
               await entry.delete();
             } catch (_) {}
@@ -356,6 +371,31 @@ class ServerPlaybackRoutes {
     }
 
     return targetPath;
+  }
+
+  /// Locate the on-disk cache file for `track` regardless of which container
+  /// extension was used (audio-only m4a OR mux mp4). Returns null when the
+  /// song hasn't been fully cached yet.
+  Future<File?> _findCachedStreamFile(SourcedTrack track) async {
+    final expected = File(await _getTrackCacheFilePath(track));
+    if (await expected.exists()) return expected;
+    try {
+      final cacheDir = await UserPreferencesNotifier.getMusicCacheDir();
+      final baseName = ServiceUtils.sanitizeFilename(
+        '${track.query.name} - ${track.query.artists.map((d) => d.name).join(",")}',
+      );
+      final prefix = '$baseName [${track.info.id}].';
+      final dir = Directory(cacheDir);
+      if (!await dir.exists()) return null;
+      await for (final entry in dir.list()) {
+        if (entry is File &&
+            basename(entry.path).startsWith(prefix) &&
+            !entry.path.endsWith('.part')) {
+          return entry;
+        }
+      }
+    } catch (_) {}
+    return null;
   }
 
   Future<SourcedTrack?> _getSourcedTrack(
@@ -505,8 +545,8 @@ class ServerPlaybackRoutes {
     );
 
     if (userPreferences.cacheMusic) {
-      final trackCacheFile = File(await _getTrackCacheFilePath(track));
-      if (await trackCacheFile.exists()) {
+      final trackCacheFile = await _findCachedStreamFile(track);
+      if (trackCacheFile != null) {
         final fileLength = await trackCacheFile.length();
         final requestedRange = _getRequestedRange(request);
         final resolvedRange = _resolveByteRange(fileLength, requestedRange);
@@ -521,6 +561,7 @@ class ServerPlaybackRoutes {
               start: resolvedRange.start,
               end: resolvedRange.end,
               isPartial: isPartial,
+              containerExt: extension(trackCacheFile.path).substring(1),
             ),
           ),
           requestOptions: RequestOptions(path: request.requestedUri.toString()),
@@ -627,10 +668,13 @@ class ServerPlaybackRoutes {
       "GET uri=$requestedUri track=${track.query.id} count=$requestCount queueIndex=${playlist.currentIndex} queueSize=${playlist.tracks.length}",
     );
     File? trackCacheFile;
+    // Set when the mux fallback serves (itag 18 mp4) so the disk cache is
+    // named by its REAL container, not the preferred audio-only stream's.
+    String? servedContainerExt;
 
     if (userPreferences.cacheMusic) {
-      trackCacheFile = File(await _getTrackCacheFilePath(track));
-      if (await trackCacheFile.exists()) {
+      trackCacheFile = await _findCachedStreamFile(track);
+      if (trackCacheFile != null) {
         PlaybackStartTrace.markTrack(
             track.query.id, 'server.stream_route.cache_hit');
         final cachedFileLength = await trackCacheFile.length();
@@ -657,6 +701,7 @@ class ServerPlaybackRoutes {
               start: resolvedRange.start,
               end: resolvedRange.end,
               isPartial: isPartial,
+              containerExt: extension(trackCacheFile.path).substring(1),
             ),
           ),
           requestOptions: RequestOptions(path: request.requestedUri.toString()),
@@ -1034,6 +1079,16 @@ class ServerPlaybackRoutes {
             url = candidate.url.toString();
             tempRes = await fetchStream(url);
             if (tempRes.statusCode == 200 || tempRes.statusCode == 206) {
+              // The mux URL carries no `clen`, so fetchStream couldn't
+              // synthesize Content-Range. Bake it in from the manifest's
+              // known size so the disk cache gets a real total and finalizes.
+              final knownTotal = candidate.size.totalBytes;
+              if (knownTotal > 0 &&
+                  (tempRes.headers.value('content-range')?.isEmpty ?? true)) {
+                tempRes.headers.set(
+                    'content-range', 'bytes 0-${knownTotal - 1}/$knownTotal');
+              }
+              servedContainerExt = candidate.container.name;
               _trace(
                 "fallback ok for ${activeTrack.query.id} "
                 "itag=${candidate.tag} status=${tempRes.statusCode} "
@@ -1116,16 +1171,29 @@ class ServerPlaybackRoutes {
     );
 
     final effectiveTrackCacheFile = userPreferences.cacheMusic
-        ? File(await _getTrackCacheFilePath(activeTrack))
+        ? File(await _getTrackCacheFilePath(
+            activeTrack,
+            servedContainerExt: servedContainerExt,
+          ))
         : null;
     if (effectiveTrackCacheFile == null) {
       res.data?.stream = upstream;
       return res;
     }
 
-    final contentRange = res.headers.value("content-range") != null
-        ? ContentRangeHeader.parse(res.headers.value("content-range") ?? "")
-        : ContentRangeHeader(0, 0, 0);
+    // googlevideo mux (itag 18) URLs carry no `clen`, so fetchStream can't
+    // synthesize a Content-Range — the server still sends Content-Length.
+    // Fall back to it so the disk cache gets a real `total` and finalizes;
+    // without it a fully-streamed song was never cached (fileLength never
+    // equals total=0, so the .part was deleted on completion).
+    final contentRangeHeader = res.headers.value("content-range");
+    final contentRange = contentRangeHeader != null
+        ? ContentRangeHeader.parse(contentRangeHeader)
+        : ContentRangeHeader(
+            0,
+            0,
+            int.tryParse(res.headers.value("content-length") ?? "") ?? 0,
+          );
 
     // Only write to the disk cache when downloading from the START of the
     // file. A partial (Range) response from a seek must NOT be appended to

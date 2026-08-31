@@ -173,12 +173,13 @@ mixin AudioPlayerQueueOps on AudioPlayerPersistence {
     bool allowDuplicates = false,
   }) async {
     _assertAllowedTracks(tracks);
+    // Set-based dedup: O(N+M) instead of O(N*M) for large existing queues.
+    final existingKeys = state.tracks.map(_trackKey).toSet();
     final addableTracks = _blacklist
         .filter(tracks)
         .where(
           (track) =>
-              allowDuplicates ||
-              !state.tracks.any((element) => _compareTracks(element, track)),
+              allowDuplicates || !existingKeys.contains(_trackKey(track)),
         )
         .toList();
     if (addableTracks.isEmpty) return;
@@ -311,9 +312,10 @@ mixin AudioPlayerQueueOps on AudioPlayerPersistence {
   }) async {
     _assertAllowedTracks(tracks);
 
+    // Set-based dedup: O(N+M) instead of O(N*M) for large existing queues.
+    final existingKeys = state.tracks.map(_trackKey).toSet();
     tracks = _blacklist.filter(tracks).where((track) {
-      return allowDuplicates ||
-          !state.tracks.any((element) => _compareTracks(element, track));
+      return allowDuplicates || !existingKeys.contains(_trackKey(track));
     }).toList();
     if (tracks.isEmpty) return;
 
@@ -437,6 +439,11 @@ mixin AudioPlayerQueueOps on AudioPlayerPersistence {
         : a.id == b.id;
   }
 
+  /// Stable dedup key matching [_compareTracks] semantics: local tracks are
+  /// keyed by path, everything else by id.
+  String _trackKey(SpotubeTrackObject track) =>
+      track is SpotubeLocalTrackObject ? "local:${track.path}" : track.id;
+
   Future<void> load(
     List<SpotubeTrackObject> tracks, {
     int initialIndex = 0,
@@ -558,8 +565,7 @@ mixin AudioPlayerQueueOps on AudioPlayerPersistence {
   Future<void> jumpToTrack(SpotubeTrackObject track) async {
     final pendingId = ref.read(pendingPlaybackTrackIdProvider);
     if (pendingId != null && pendingId != track.id) return;
-    final index =
-        state.tracks.toList().indexWhere((element) => element.id == track.id);
+    final index = state.tracks.indexWhere((element) => element.id == track.id);
     if (index == -1) return;
     PlaybackStartTrace.markTrack(
       track.id,

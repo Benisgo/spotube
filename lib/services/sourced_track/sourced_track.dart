@@ -54,24 +54,29 @@ final featuredArtistRegex = RegExp(
   caseSensitive: false,
 );
 
+final _nonAlnumRegex = RegExp(r'[^a-z0-9\s]');
+final _whitespaceRegex = RegExp(r'\s+');
+final _parenDecoratorRegex = RegExp(r'\([^)]*\)');
+final _bracketDecoratorRegex = RegExp(r'\[[^\]]*\]');
+final _titleDecoratorRegex = RegExp(
+  r'\b(official|audio|video|lyrics?|lyric video|visualizer|topic|provided to youtube by|music video)\b',
+  caseSensitive: false,
+);
+
 String _normalizeSearchText(String value) {
   return value
       .toLowerCase()
-      .replaceAll(RegExp(r'[^a-z0-9\s]'), ' ')
-      .replaceAll(RegExp(r'\s+'), ' ')
+      .replaceAll(_nonAlnumRegex, ' ')
+      .replaceAll(_whitespaceRegex, ' ')
       .trim();
 }
 
 String _stripDecorators(String value) {
   return value
-      .replaceAll(RegExp(r'\([^)]*\)'), ' ')
-      .replaceAll(RegExp(r'\[[^\]]*\]'), ' ')
-      .replaceAll(
-          RegExp(
-              r'\b(official|audio|video|lyrics?|lyric video|visualizer|topic|provided to youtube by|music video)\b',
-              caseSensitive: false),
-          ' ')
-      .replaceAll(RegExp(r'\s+'), ' ')
+      .replaceAll(_parenDecoratorRegex, ' ')
+      .replaceAll(_bracketDecoratorRegex, ' ')
+      .replaceAll(_titleDecoratorRegex, ' ')
+      .replaceAll(_whitespaceRegex, ' ')
       .trim();
 }
 

@@ -146,6 +146,7 @@ abstract class AudioPlayerInterface {
       _volumeInitialized = true;
     } catch (_) {}
   }
+
   bool _primaryPlayerActive = true;
   bool _isCrossfading = false;
   bool _crossfadePreloadEnabled = false;
@@ -168,8 +169,17 @@ abstract class AudioPlayerInterface {
   String? _lastEmittedPlaylistSignature;
   DateTime? _lastPositionForwardedAt;
 
-  String _playlistSignature(mk.Playlist playlist) =>
-      '${playlist.medias.length}:${playlist.index}:${playlist.medias.map((m) => m.uri).join("|")}';
+  String _playlistSignature(mk.Playlist playlist) {
+    // Hash-based signature: avoids building a ~600KB joined URI string on
+    // every playlist change for large queues. Collisions are negligible for
+    // the dedup this feeds (same content -> same hash deterministically).
+    var hash = playlist.medias.length;
+    hash = 31 * hash + playlist.index;
+    for (final media in playlist.medias) {
+      hash = (hash * 31) ^ media.uri.hashCode;
+    }
+    return '$hash';
+  }
 
   void _emitPlaylistSnapshot(mk.Playlist playlist) {
     if (_playlistStreamController.isClosed) return;

@@ -932,6 +932,7 @@ class ServerPlaybackRoutes {
     final notifier = ref.read(sourcedTrackProvider(activeTrack.query).notifier);
 
     int maxAttempts = activeTrack.siblings.length + 2;
+    var firstWas403 = false;
 
     for (int attempt = 0; attempt < maxAttempts; attempt++) {
       _ensurePlaybackRequestRelevant(requestedUri);
@@ -952,12 +953,13 @@ class ServerPlaybackRoutes {
         if (tempRes.statusCode == 200 || tempRes.statusCode == 206) {
           break; // Success!
         }
-        if (tempRes.statusCode == 403) {
-          // googlevideo rejects non-zero-offset ranges on audio-only streams
-          // without a logged-in session in some regions (gcr=eg). Retrying
-          // more audio-only siblings will fail the same way — bail to the
-          // mux fallback instead of burning seconds on futile re-resolves.
-          break;
+        if (tempRes.statusCode == 403 && attempt == 0) {
+          // A 403 here usually means THIS upload is audio-only-locked (sign-in
+          // / region) even though a SIBLING upload of the same song is NOT —
+          // e.g. "graduate frau" exists as both Gs3Tr1HrI-E (locked) and
+          // ACJQ0Kqhw6Y (plays fine as audio-only). Don't waste a refresh on
+          // the same locked video; fall through and swap to the next sibling.
+          firstWas403 = true;
         }
       } catch (e, stack) {
         if (e is DioException) {
@@ -984,7 +986,7 @@ class ServerPlaybackRoutes {
       _ensurePlaybackRequestRelevant(requestedUri);
 
       try {
-        if (attempt == 0) {
+        if (attempt == 0 && !firstWas403) {
           activeTrack = await _resolvePlayableTrack(
             await notifier.refreshStreamingUrl(),
             requestedUri,
@@ -1054,18 +1056,42 @@ class ServerPlaybackRoutes {
             "status=${tempRes?.statusCode} regionLocked=$isRegionLocked → mux fallback");
         final fallbackYt = YoutubeExplode();
         try {
-          // The IP is kept quiet now (IOS-first resolve fires 1 request
-          // instead of the 4-client ladder, so youtube_explode's getManifest
-          // ANDROID/TVHTML5 clients are not bot-walled here and resolve on the
-          // first try). Prefer audio-only (small), but googlevideo 403s
-          // non-zero-offset ranges on audio-only without a logged-in session
-          // in some regions (gcr=eg). Include the muxed (video+audio) streams
-          // as a reliable fallback — they stream and seek fine regardless of
-          // login. When we already know audio-only is region-locked, try the
-          // mux FIRST so the user gets audio sooner instead of a futile 403
-          // round-trip.
-          final manifest = await fallbackYt.videos.streamsClient
-              .getManifest(activeTrack.info.id);
+          // For region-locked songs (audio-only 403s AND the mux is the only
+          // anonymous source), youtube_explode's getManifest (ANDROID/TVHTML5)
+          // is TRANSIENTLY bot-walled when it fires right after the resolve —
+          // the wall clears after a few seconds of quiet (this is exactly the
+          // "go back to the song and it plays" behavior). Retry with a short
+          // backoff so the mux still plays on the first tap instead of
+          // skipping; nothing else fires during the wait, so the IP cools.
+          StreamManifest? manifest;
+          Object? lastError;
+          const retryDelays = [Duration(seconds: 2), Duration(seconds: 4)];
+          for (var attempt = 0; attempt <= retryDelays.length; attempt++) {
+            try {
+              manifest = await fallbackYt.videos.streamsClient
+                  .getManifest(activeTrack.info.id);
+              break;
+            } catch (e) {
+              lastError = e;
+              if (e is DioException && CancelToken.isCancel(e)) rethrow;
+              if (attempt < retryDelays.length) {
+                AppLogger.log.w(
+                    "[playback] mux getManifest attempt ${attempt + 1} failed "
+                    "for ${activeTrack.query.id} ($e) — retrying in "
+                    "${retryDelays[attempt].inSeconds}s (transient bot-wall)");
+                await Future.delayed(retryDelays[attempt]);
+              }
+            }
+          }
+          if (manifest == null) {
+            throw lastError ?? StateError("mux manifest failed");
+          }
+          // Prefer audio-only (small), but googlevideo 403s non-zero-offset
+          // ranges on audio-only without a logged-in session in some regions
+          // (gcr=eg). Include the muxed (video+audio) streams as a reliable
+          // fallback — they stream and seek fine regardless of login. When we
+          // already know audio-only is region-locked, try the mux FIRST so
+          // the user gets audio sooner instead of a futile 403 round-trip.
           final audioCandidates = manifest.audioOnly.toList()
             ..sort((a, b) =>
                 b.bitrate.bitsPerSecond.compareTo(a.bitrate.bitsPerSecond));

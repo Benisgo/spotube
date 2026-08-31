@@ -478,17 +478,20 @@ class DownloadManagerNotifier extends Notifier<List<DownloadTask>> {
   }
 
   Future<void> _startDownloading() async {
-    for (final task in state) {
-      if (task.status == DownloadStatus.downloading) return;
-
-      if (task.status == DownloadStatus.queued) {
-        try {
-          await _downloadTrack(task);
-        } finally {
-          // After completion, check for more queued tasks
-          // Ignore errors of the prior task to allow next task to complete
-          await _startDownloading();
-        }
+    // Iterative queue drain: processes queued downloads one at a time. A
+    // recursive implementation grew one stack frame per queued task (e.g. a
+    // 1000-download queue meant a 1000-deep call stack of retained state).
+    while (true) {
+      if (state.any((task) => task.status == DownloadStatus.downloading)) {
+        return;
+      }
+      final task = state
+          .firstWhereOrNull((task) => task.status == DownloadStatus.queued);
+      if (task == null) return;
+      try {
+        await _downloadTrack(task);
+      } catch (_) {
+        // Ignore errors of the prior task so the next queued task can run.
       }
     }
   }

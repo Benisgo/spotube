@@ -416,7 +416,10 @@ mixin AudioPlayerQueueOps on AudioPlayerPersistence {
       tracks: tracks.toList(),
     );
 
-    for (final index in trackIndexes) {
+    // Remove from the player's playlist highest index first: each removal
+    // shifts the remaining indexes, so removing in ascending order would hit
+    // the wrong (or out-of-range) track after the first removal.
+    for (final index in trackIndexes.toList().reversed) {
       await audioPlayer.removeTrack(index);
     }
 

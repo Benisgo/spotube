@@ -120,37 +120,6 @@ class _NsigDecoder {
   }
 }
 
-/// Races [resolve] across [clients] and completes with the first non-null
-/// result (first-success-wins). Abandoned clients are NOT awaited — their
-/// HTTP calls finish in the background and are ignored, so we never pay the
-/// "wait for the slowest client" tail. Returns null only if every client
-/// resolves to null (all failed).
-Future<StreamManifest?> _raceFirstSuccess(
-  List<YoutubeApiClient> clients,
-  Future<StreamManifest?> Function(YoutubeApiClient client) resolve,
-) async {
-  final completer = Completer<StreamManifest?>();
-  var pending = clients.length;
-  for (final client in clients) {
-    unawaited(() async {
-      try {
-        final result = await resolve(client);
-        if (result != null && !completer.isCompleted) {
-          completer.complete(result);
-        }
-      } catch (_) {
-        // resolve() swallows its own errors; be defensive.
-      } finally {
-        pending--;
-        if (pending == 0 && !completer.isCompleted) {
-          completer.complete(null);
-        }
-      }
-    }());
-  }
-  return completer.future;
-}
-
 /// Uses youtube_explode_dart's IOS InnerTube client + PipePipe nsig decode.
 class _YtMusicClient {
   static final YoutubeHttpClient _http = YoutubeHttpClient();
@@ -285,11 +254,6 @@ class _YtMusicClient {
 
   /// Last client's UA string, used by headersForStreamUrl to match the CDN.
   static String _lastUA = "";
-
-  /// Name of the most recent client that returned playable audio streams.
-  /// getStreamManifest reorders its first wave so this client leads, reusing
-  /// the proven path on steady-state track changes (client-context reuse).
-  static String? _preferredClientName;
 
   /// Random 16-char client playback nonce (base64-url charset) — same shape
   /// YouTube's own apps send. Flow attaches a cpn to every player request so
@@ -856,7 +820,6 @@ class YtMusicEngine implements YouTubeEngine {
         final data = await _YtMusicClient.player(videoId, client: client);
         final streams = await _toAudioOnlyStreams(data, videoId);
         if (streams.isNotEmpty) {
-          _YtMusicClient._preferredClientName = name;
           AppLogger.log.i(
               "[yt_music] client_ok videoId=$videoId client=$name audio=${streams.length}");
           return StreamManifest(streams);
@@ -886,28 +849,19 @@ class YtMusicEngine implements YouTubeEngine {
     ];
 
     // First wave: the 4 clients Flow itself uses (ANDROID_VR, MWEB, IOS,
-    // ANDROID_CREATOR) fired concurrently, RACED first-success-wins. Racing
-    // returns on the FIRST client that yields audio instead of waiting for
-    // the slowest of the 4 (YouTube slow-rolls rejected clients, so the
-    // slowest is usually a loser). If a previous resolve succeeded, that
-    // client leads the wave so steady-state track changes reuse the proven
-    // path (client-context reuse). Losers are abandoned, not awaited. If all
-    // four fail, continue the rest sequentially rather than firing all 11
-    // requests at YouTube at once.
-    final wave = clients.take(4).toList();
-    final preferred = _YtMusicClient._preferredClientName;
-    if (preferred != null) {
-      final preferredIndex = wave.indexWhere(
-        (client) =>
-            client.payload["context"]["client"]["clientName"] == preferred,
-      );
-      if (preferredIndex > 0) {
-        final knownGood = wave.removeAt(preferredIndex);
-        wave.insert(0, knownGood);
-      }
+    // ANDROID_CREATOR) fired concurrently and are WAITED for (Future.wait),
+    // taking the first success in priority order. This matches master's
+    // proven behavior: racing (returning on the first success and abandoning
+    // the losers) let slow-rolled client requests keep hitting YouTube in the
+    // background, overlapping with the next resolve and the mux fallback —
+    // piling onto the IP's rate-limit and throttling youtube_explode's mux
+    // fallback, which failed where master's succeeds. If all four fail,
+    // continue the rest sequentially rather than firing all 11 requests at
+    // YouTube at once.
+    final firstWaveResults = await Future.wait(clients.take(4).map(_tryClient));
+    for (final manifest in firstWaveResults) {
+      if (manifest != null) return manifest;
     }
-    final firstWaveManifest = await _raceFirstSuccess(wave, _tryClient);
-    if (firstWaveManifest != null) return firstWaveManifest;
     for (final client in clients.skip(4)) {
       final manifest = await _tryClient(client);
       if (manifest != null) return manifest;

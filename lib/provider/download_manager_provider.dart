@@ -549,9 +549,12 @@ class DownloadManagerNotifier extends Notifier<List<DownloadTask>> {
               ytClients: clients,
             )
             .timeout(const Duration(seconds: 20));
+        // LOWEST mux first: the mux's video track is wasted data for an
+        // audio download, and the audio is identical across mux itags — so
+        // pick the smallest one (data-efficient) instead of the biggest.
         final muxed = manifest.muxed.toList()
           ..sort((a, b) =>
-              b.bitrate.bitsPerSecond.compareTo(a.bitrate.bitsPerSecond));
+              a.bitrate.bitsPerSecond.compareTo(b.bitrate.bitsPerSecond));
         if (muxed.isNotEmpty) return muxed.first.url.toString();
       } finally {
         yt.close();

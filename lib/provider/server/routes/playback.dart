@@ -1069,9 +1069,14 @@ class ServerPlaybackRoutes {
           final audioCandidates = manifest.audioOnly.toList()
             ..sort((a, b) =>
                 b.bitrate.bitsPerSecond.compareTo(a.bitrate.bitsPerSecond));
+          // LOWEST mux first: in muxed (video+audio) formats the audio track
+          // is roughly identical (~128kbps AAC) across itags — only the
+          // video scales (360p->720p->1080p). As an audio player the video is
+          // wasted bytes, so pick the smallest mux for the same audio quality
+          // (audio-only above stays highest-first, where quality matters).
           final muxCandidates = manifest.muxed.toList()
             ..sort((a, b) =>
-                b.bitrate.bitsPerSecond.compareTo(a.bitrate.bitsPerSecond));
+                a.bitrate.bitsPerSecond.compareTo(b.bitrate.bitsPerSecond));
           final candidates = isRegionLocked
               ? [...muxCandidates, ...audioCandidates]
               : [...audioCandidates, ...muxCandidates];

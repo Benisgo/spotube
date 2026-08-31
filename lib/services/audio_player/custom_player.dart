@@ -65,8 +65,9 @@ class CustomPlayer extends Player {
       // Disable video output entirely — audio-only app
       nativePlayer.setProperty("vo", "null");
       nativePlayer.setProperty("video", "no");
-      // Use wasapi for low-overhead audio on Windows
-      nativePlayer.setProperty("ao", "wasapi");
+      // Use wasapi for low-overhead audio on Windows, with a fallback chain
+      // so audio still works if WASAPI is unavailable (e.g. Remote Desktop).
+      nativePlayer.setProperty("ao", "wasapi,directsound,");
       // No hardware decoding needed for audio-only
       nativePlayer.setProperty("hwdec", "no");
       // Reduce mpv event rate to prevent Windows task runner flooding.
@@ -76,7 +77,9 @@ class CustomPlayer extends Player {
           "video-sync", "audio"); // sync to audio clock only
       nativePlayer.setProperty(
           "video-output", "no"); // completely disable video output
-      nativePlayer.setProperty("audio-buffer", "0.050"); // small audio buffer
+      // 200ms is the standard audio output buffer; 50ms was very aggressive
+      // and caused high-frequency buffer refills on Windows.
+      nativePlayer.setProperty("audio-buffer", "0.200");
       nativePlayer.setProperty("keep-open", "no"); // no post-EOF idle state
     } else {
       nativePlayer.setProperty("network-timeout", "120");

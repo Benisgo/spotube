@@ -529,12 +529,13 @@ mixin AudioPlayerQueueOps on AudioPlayerPersistence {
     }
 
     final safeInitialIndex = initialIndex.clamp(0, medias.length - 1).toInt();
-    final selectedTrack = medias[safeInitialIndex].track;
+    var openIndex = safeInitialIndex;
+    var selectedTrack = medias[safeInitialIndex].track;
 
     state = state.copyWith(
       // These are filtered tracks as well
       tracks: medias.map((media) => media.track).toList(),
-      currentIndex: safeInitialIndex,
+      currentIndex: openIndex,
       collections: [],
     );
     _prefetchAdjacentSources();
@@ -545,7 +546,30 @@ mixin AudioPlayerQueueOps on AudioPlayerPersistence {
     // open() and the queued play() command times out ("active.play" 4s
     // TimeoutException). primeTrackPlayback catches its own errors, so a
     // failure here still lets the playlist open and the proxy report it.
-    await primeTrackPlayback(selectedTrack);
+    //
+    // Skip ahead past unplayable (geo-blocked / dead) tracks: prime each
+    // candidate and open at the first playable one, so a dead video advances
+    // cleanly to the next song instead of hanging or error-storming. Local
+    // tracks are always playable. The scan is capped to bound the worst case
+    // (a whole run of dead tracks falls back to the original index and the
+    // player's cascade handles it).
+    const maxUnplayableSkip = 8;
+    final scanEnd =
+        (safeInitialIndex + maxUnplayableSkip).clamp(0, medias.length).toInt();
+    for (var i = safeInitialIndex; i < scanEnd; i++) {
+      final candidate = medias[i].track;
+      if (await primeTrackPlayback(candidate)) {
+        openIndex = i;
+        selectedTrack = candidate;
+        break;
+      }
+      AppLogger.log.w(
+        "[playback] track ${candidate.id} (index $i) unplayable — skipping ahead",
+      );
+    }
+    if (openIndex != safeInitialIndex) {
+      state = state.copyWith(currentIndex: openIndex);
+    }
     PlaybackStartTrace.markTrack(
       selectedTrack.id,
       'audio_player.open_playlist.start',
@@ -553,7 +577,7 @@ mixin AudioPlayerQueueOps on AudioPlayerPersistence {
     );
     await audioPlayer.openPlaylist(
       medias,
-      initialIndex: safeInitialIndex,
+      initialIndex: openIndex,
       autoPlay: autoPlay,
     );
     PlaybackStartTrace.markTrack(

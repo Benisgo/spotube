@@ -12,11 +12,14 @@ mixin AudioPlayerPersistence on Notifier<AudioPlayerState> {
   /// overridden in tests / with alternate backends.
   SpotubeAudioPlayer get audioPlayer => ref.read(audioPlayerServiceProvider);
 
-  Future<void> primeTrackPlayback(
+  /// Resolves the track's streaming source and reports whether it ended up
+  /// playable (local tracks always are). Catches its own errors, so callers
+  /// rely on the bool return — this never throws.
+  Future<bool> primeTrackPlayback(
     SpotubeTrackObject track, {
     bool refreshStream = true,
   }) async {
-    if (track is! SpotubeFullTrackObject) return;
+    if (track is! SpotubeFullTrackObject) return true;
 
     try {
       await YtDlpExecutionContext.runForeground(() async {
@@ -44,6 +47,11 @@ mixin AudioPlayerPersistence on Notifier<AudioPlayerState> {
         }
         PlaybackStartTrace.markTrack(track.id, 'prime_track.done');
       }, cancelGroup: 'playback:${track.id}');
+      // Check the settled provider state directly (ref.read returns the
+      // AsyncValue without rethrowing the underlying error).
+      final sourced = ref.read(sourcedTrackProvider(track));
+      return sourced.hasValue &&
+          sourced.value?.preferredPlaybackStream?.url != null;
     } catch (error, stack) {
       PlaybackStartTrace.markTrack(
         track.id,
@@ -55,6 +63,7 @@ mixin AudioPlayerPersistence on Notifier<AudioPlayerState> {
         stack,
         "Failed to prime track playback ${track.id}",
       );
+      return false;
     }
   }
 

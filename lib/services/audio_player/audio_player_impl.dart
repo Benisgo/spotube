@@ -111,13 +111,22 @@ class SpotubeAudioPlayer extends AudioPlayerInterface
   Future<void> dispose() async {
     if (_isDisposed) return;
     _isDisposed = true;
-    await _stopCrossfade(restoreActiveVolume: false);
-    for (final subscription in _playerSubscriptions) {
-      await subscription.cancel();
+    try {
+      _crossfadeTimer?.cancel();
+      _crossfadeHandoffTimer?.cancel();
+      _completedAdvanceTimer?.cancel();
+      await _stopCrossfade(restoreActiveVolume: false);
+      for (final subscription in _playerSubscriptions) {
+        await subscription.cancel();
+      }
+      _playerSubscriptions.clear();
+      await _primaryPlayer.dispose();
+      await _disposeSecondaryPlayer();
+    } finally {
+      // Always close the broadcast controllers so the 16 streams can't
+      // leak, even if a teardown step above throws.
+      await disposeControllers();
     }
-    await disposeControllers();
-    await _primaryPlayer.dispose();
-    await _disposeSecondaryPlayer();
   }
 
   Future<void> openPlaylist(

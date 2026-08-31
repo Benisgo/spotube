@@ -80,6 +80,9 @@ class DownloadManagerNotifier extends Notifier<List<DownloadTask>> {
         }
         task._downloadedBytesStreamController.close();
       }
+      // Shut down the shared HTTP client. Dio.close() releases the underlying
+      // HttpClient; without this the manager leaked one client per app run.
+      dio.close();
     });
 
     return [];

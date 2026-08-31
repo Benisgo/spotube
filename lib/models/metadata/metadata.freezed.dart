@@ -4947,7 +4947,9 @@ mixin _$SpotubeTrackObject {
             List<SpotubeSimpleArtistObject> artists,
             SpotubeSimpleAlbumObject album,
             int durationMs,
-            String path)
+            String path,
+            int fileSize,
+            DateTime? dateAdded)
         local,
     required TResult Function(
             String id,
@@ -4971,7 +4973,9 @@ mixin _$SpotubeTrackObject {
             List<SpotubeSimpleArtistObject> artists,
             SpotubeSimpleAlbumObject album,
             int durationMs,
-            String path)?
+            String path,
+            int fileSize,
+            DateTime? dateAdded)?
         local,
     TResult? Function(
             String id,
@@ -4995,7 +4999,9 @@ mixin _$SpotubeTrackObject {
             List<SpotubeSimpleArtistObject> artists,
             SpotubeSimpleAlbumObject album,
             int durationMs,
-            String path)?
+            String path,
+            int fileSize,
+            DateTime? dateAdded)?
         local,
     TResult Function(
             String id,
@@ -5135,7 +5141,9 @@ abstract class _$$SpotubeLocalTrackObjectImplCopyWith<$Res>
       List<SpotubeSimpleArtistObject> artists,
       SpotubeSimpleAlbumObject album,
       int durationMs,
-      String path});
+      String path,
+      int fileSize,
+      DateTime? dateAdded});
 
   @override
   $SpotubeSimpleAlbumObjectCopyWith<$Res> get album;
@@ -5163,6 +5171,8 @@ class __$$SpotubeLocalTrackObjectImplCopyWithImpl<$Res>
     Object? album = null,
     Object? durationMs = null,
     Object? path = null,
+    Object? fileSize = null,
+    Object? dateAdded = freezed,
   }) {
     return _then(_$SpotubeLocalTrackObjectImpl(
       id: null == id
@@ -5193,6 +5203,14 @@ class __$$SpotubeLocalTrackObjectImplCopyWithImpl<$Res>
           ? _value.path
           : path // ignore: cast_nullable_to_non_nullable
               as String,
+      fileSize: null == fileSize
+          ? _value.fileSize
+          : fileSize // ignore: cast_nullable_to_non_nullable
+              as int,
+      dateAdded: freezed == dateAdded
+          ? _value.dateAdded
+          : dateAdded // ignore: cast_nullable_to_non_nullable
+              as DateTime?,
     ));
   }
 }
@@ -5208,6 +5226,8 @@ class _$SpotubeLocalTrackObjectImpl implements SpotubeLocalTrackObject {
       required this.album,
       required this.durationMs,
       required this.path,
+      this.fileSize = 0,
+      this.dateAdded,
       final String? $type})
       : _artists = artists,
         $type = $type ?? 'local';
@@ -5236,13 +5256,18 @@ class _$SpotubeLocalTrackObjectImpl implements SpotubeLocalTrackObject {
   final int durationMs;
   @override
   final String path;
+  @override
+  @JsonKey()
+  final int fileSize;
+  @override
+  final DateTime? dateAdded;
 
   @JsonKey(name: 'runtimeType')
   final String $type;
 
   @override
   String toString() {
-    return 'SpotubeTrackObject.local(id: $id, name: $name, externalUri: $externalUri, artists: $artists, album: $album, durationMs: $durationMs, path: $path)';
+    return 'SpotubeTrackObject.local(id: $id, name: $name, externalUri: $externalUri, artists: $artists, album: $album, durationMs: $durationMs, path: $path, fileSize: $fileSize, dateAdded: $dateAdded)';
   }
 
   @override
@@ -5258,13 +5283,26 @@ class _$SpotubeLocalTrackObjectImpl implements SpotubeLocalTrackObject {
             (identical(other.album, album) || other.album == album) &&
             (identical(other.durationMs, durationMs) ||
                 other.durationMs == durationMs) &&
-            (identical(other.path, path) || other.path == path));
+            (identical(other.path, path) || other.path == path) &&
+            (identical(other.fileSize, fileSize) ||
+                other.fileSize == fileSize) &&
+            (identical(other.dateAdded, dateAdded) ||
+                other.dateAdded == dateAdded));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
   @override
-  int get hashCode => Object.hash(runtimeType, id, name, externalUri,
-      const DeepCollectionEquality().hash(_artists), album, durationMs, path);
+  int get hashCode => Object.hash(
+      runtimeType,
+      id,
+      name,
+      externalUri,
+      const DeepCollectionEquality().hash(_artists),
+      album,
+      durationMs,
+      path,
+      fileSize,
+      dateAdded);
 
   /// Create a copy of SpotubeTrackObject
   /// with the given fields replaced by the non-null parameter values.
@@ -5285,7 +5323,9 @@ class _$SpotubeLocalTrackObjectImpl implements SpotubeLocalTrackObject {
             List<SpotubeSimpleArtistObject> artists,
             SpotubeSimpleAlbumObject album,
             int durationMs,
-            String path)
+            String path,
+            int fileSize,
+            DateTime? dateAdded)
         local,
     required TResult Function(
             String id,
@@ -5299,7 +5339,8 @@ class _$SpotubeLocalTrackObjectImpl implements SpotubeLocalTrackObject {
             DateTime? addedAt)
         full,
   }) {
-    return local(id, name, externalUri, artists, album, durationMs, path);
+    return local(id, name, externalUri, artists, album, durationMs, path,
+        fileSize, dateAdded);
   }
 
   @override
@@ -5312,7 +5353,9 @@ class _$SpotubeLocalTrackObjectImpl implements SpotubeLocalTrackObject {
             List<SpotubeSimpleArtistObject> artists,
             SpotubeSimpleAlbumObject album,
             int durationMs,
-            String path)?
+            String path,
+            int fileSize,
+            DateTime? dateAdded)?
         local,
     TResult? Function(
             String id,
@@ -5326,7 +5369,8 @@ class _$SpotubeLocalTrackObjectImpl implements SpotubeLocalTrackObject {
             DateTime? addedAt)?
         full,
   }) {
-    return local?.call(id, name, externalUri, artists, album, durationMs, path);
+    return local?.call(id, name, externalUri, artists, album, durationMs, path,
+        fileSize, dateAdded);
   }
 
   @override
@@ -5339,7 +5383,9 @@ class _$SpotubeLocalTrackObjectImpl implements SpotubeLocalTrackObject {
             List<SpotubeSimpleArtistObject> artists,
             SpotubeSimpleAlbumObject album,
             int durationMs,
-            String path)?
+            String path,
+            int fileSize,
+            DateTime? dateAdded)?
         local,
     TResult Function(
             String id,
@@ -5355,7 +5401,8 @@ class _$SpotubeLocalTrackObjectImpl implements SpotubeLocalTrackObject {
     required TResult orElse(),
   }) {
     if (local != null) {
-      return local(id, name, externalUri, artists, album, durationMs, path);
+      return local(id, name, externalUri, artists, album, durationMs, path,
+          fileSize, dateAdded);
     }
     return orElse();
   }
@@ -5407,7 +5454,9 @@ abstract class SpotubeLocalTrackObject implements SpotubeTrackObject {
       final List<SpotubeSimpleArtistObject> artists,
       required final SpotubeSimpleAlbumObject album,
       required final int durationMs,
-      required final String path}) = _$SpotubeLocalTrackObjectImpl;
+      required final String path,
+      final int fileSize,
+      final DateTime? dateAdded}) = _$SpotubeLocalTrackObjectImpl;
 
   factory SpotubeLocalTrackObject.fromJson(Map<String, dynamic> json) =
       _$SpotubeLocalTrackObjectImpl.fromJson;
@@ -5425,6 +5474,8 @@ abstract class SpotubeLocalTrackObject implements SpotubeTrackObject {
   @override
   int get durationMs;
   String get path;
+  int get fileSize;
+  DateTime? get dateAdded;
 
   /// Create a copy of SpotubeTrackObject
   /// with the given fields replaced by the non-null parameter values.
@@ -5629,7 +5680,9 @@ class _$SpotubeFullTrackObjectImpl implements SpotubeFullTrackObject {
             List<SpotubeSimpleArtistObject> artists,
             SpotubeSimpleAlbumObject album,
             int durationMs,
-            String path)
+            String path,
+            int fileSize,
+            DateTime? dateAdded)
         local,
     required TResult Function(
             String id,
@@ -5657,7 +5710,9 @@ class _$SpotubeFullTrackObjectImpl implements SpotubeFullTrackObject {
             List<SpotubeSimpleArtistObject> artists,
             SpotubeSimpleAlbumObject album,
             int durationMs,
-            String path)?
+            String path,
+            int fileSize,
+            DateTime? dateAdded)?
         local,
     TResult? Function(
             String id,
@@ -5685,7 +5740,9 @@ class _$SpotubeFullTrackObjectImpl implements SpotubeFullTrackObject {
             List<SpotubeSimpleArtistObject> artists,
             SpotubeSimpleAlbumObject album,
             int durationMs,
-            String path)?
+            String path,
+            int fileSize,
+            DateTime? dateAdded)?
         local,
     TResult Function(
             String id,

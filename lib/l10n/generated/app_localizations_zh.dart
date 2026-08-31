@@ -139,6 +139,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get sort_album => '按专辑';
 
   @override
+  String get sort_largest => 'Sort by largest size';
+
+  @override
+  String get sort_smallest => 'Sort by smallest size';
+
+  @override
   String get sort_duration => '按时长排序';
 
   @override

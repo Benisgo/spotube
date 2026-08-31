@@ -1,1 +1,146 @@
-{}
+{
+  "ar": [
+    "sort_largest",
+    "sort_smallest"
+  ],
+
+  "bn": [
+    "sort_largest",
+    "sort_smallest"
+  ],
+
+  "ca": [
+    "sort_largest",
+    "sort_smallest"
+  ],
+
+  "cs": [
+    "sort_largest",
+    "sort_smallest"
+  ],
+
+  "de": [
+    "sort_largest",
+    "sort_smallest"
+  ],
+
+  "es": [
+    "sort_largest",
+    "sort_smallest"
+  ],
+
+  "eu": [
+    "sort_largest",
+    "sort_smallest"
+  ],
+
+  "fa": [
+    "sort_largest",
+    "sort_smallest"
+  ],
+
+  "fi": [
+    "sort_largest",
+    "sort_smallest"
+  ],
+
+  "fr": [
+    "sort_largest",
+    "sort_smallest"
+  ],
+
+  "hi": [
+    "sort_largest",
+    "sort_smallest"
+  ],
+
+  "id": [
+    "sort_largest",
+    "sort_smallest"
+  ],
+
+  "it": [
+    "sort_largest",
+    "sort_smallest"
+  ],
+
+  "ja": [
+    "sort_largest",
+    "sort_smallest"
+  ],
+
+  "ka": [
+    "sort_largest",
+    "sort_smallest"
+  ],
+
+  "ko": [
+    "sort_largest",
+    "sort_smallest"
+  ],
+
+  "ne": [
+    "sort_largest",
+    "sort_smallest"
+  ],
+
+  "nl": [
+    "sort_largest",
+    "sort_smallest"
+  ],
+
+  "pl": [
+    "sort_largest",
+    "sort_smallest"
+  ],
+
+  "pt": [
+    "sort_largest",
+    "sort_smallest"
+  ],
+
+  "ru": [
+    "sort_largest",
+    "sort_smallest"
+  ],
+
+  "ta": [
+    "sort_largest",
+    "sort_smallest"
+  ],
+
+  "th": [
+    "sort_largest",
+    "sort_smallest"
+  ],
+
+  "tl": [
+    "sort_largest",
+    "sort_smallest"
+  ],
+
+  "tr": [
+    "sort_largest",
+    "sort_smallest"
+  ],
+
+  "uk": [
+    "sort_largest",
+    "sort_smallest"
+  ],
+
+  "vi": [
+    "sort_largest",
+    "sort_smallest"
+  ],
+
+  "zh": [
+    "sort_largest",
+    "sort_smallest"
+  ],
+
+  "zh_TW": [
+    "sort_largest",
+    "sort_smallest"
+  ]
+}

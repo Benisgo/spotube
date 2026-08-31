@@ -139,6 +139,12 @@ class AppLocalizationsAr extends AppLocalizations {
   String get sort_album => 'فرز حسب الألبوم';
 
   @override
+  String get sort_largest => 'Sort by largest size';
+
+  @override
+  String get sort_smallest => 'Sort by smallest size';
+
+  @override
   String get sort_duration => 'ترتيب حسب المدة';
 
   @override

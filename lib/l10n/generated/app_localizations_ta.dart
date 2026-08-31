@@ -139,6 +139,12 @@ class AppLocalizationsTa extends AppLocalizations {
   String get sort_album => 'ஆல்பம் மூலம் வரிசைப்படுத்து';
 
   @override
+  String get sort_largest => 'Sort by largest size';
+
+  @override
+  String get sort_smallest => 'Sort by smallest size';
+
+  @override
   String get sort_duration => 'கால அளவு மூலம் வரிசைப்படுத்து';
 
   @override

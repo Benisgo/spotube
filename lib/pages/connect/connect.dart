@@ -43,42 +43,81 @@ class ConnectPage extends HookConsumerWidget {
                 ),
               ),
               const SliverGap(10),
-              SliverList.separated(
-                itemCount: discoveredDevices?.length ?? 0,
-                separatorBuilder: (context, index) => const Gap(10),
-                itemBuilder: (context, index) {
-                  final device = discoveredDevices![index];
-                  final selected =
-                      connectClients.asData?.value.resolvedService?.name ==
-                          device.name;
-                  return ButtonTile(
-                    selected: selected,
-                    leading: const Icon(SpotubeIcons.monitor),
-                    title: Text(device.name),
-                    subtitle: selected
-                        ? Text(
-                            "${connectClients.asData?.value.resolvedService?.host}"
-                            ":${connectClients.asData?.value.resolvedService?.port}",
-                          )
-                        : null,
-                    trailing: selected
-                        ? IconButton.outline(
-                            icon: const Icon(SpotubeIcons.power),
-                            size: ButtonSize.small,
-                            onPressed: () =>
-                                connectClientsNotifier.clearResolvedService(),
-                          )
-                        : null,
-                    onPressed: () {
-                      if (selected) {
-                        context.navigateTo(const ConnectControlRoute());
-                      } else {
-                        connectClientsNotifier.resolveService(device);
-                      }
-                    },
-                  );
-                },
-              ),
+              if (connectClients.isLoading)
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                  sliver: SliverToBoxAdapter(
+                    child: Text(context.l10n.loading).muted().small(),
+                  ),
+                )
+              else if (connectClients.hasError)
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                  sliver: SliverToBoxAdapter(
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            context.l10n.error(
+                              connectClients.error.toString(),
+                            ),
+                          ).muted().small(),
+                        ),
+                        IconButton.outline(
+                          size: ButtonSize.small,
+                          icon: const Icon(SpotubeIcons.refresh),
+                          onPressed: () {
+                            ref.invalidate(connectClientsProvider);
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else if ((discoveredDevices?.length ?? 0) == 0)
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                  sliver: SliverToBoxAdapter(
+                    child: Text(context.l10n.nothing_found).muted().small(),
+                  ),
+                )
+              else
+                SliverList.separated(
+                  itemCount: discoveredDevices?.length ?? 0,
+                  separatorBuilder: (context, index) => const Gap(10),
+                  itemBuilder: (context, index) {
+                    final device = discoveredDevices![index];
+                    final selected =
+                        connectClients.asData?.value.resolvedService?.name ==
+                            device.name;
+                    return ButtonTile(
+                      selected: selected,
+                      leading: const Icon(SpotubeIcons.monitor),
+                      title: Text(device.name),
+                      subtitle: selected
+                          ? Text(
+                              "${connectClients.asData?.value.resolvedService?.host}"
+                              ":${connectClients.asData?.value.resolvedService?.port}",
+                            )
+                          : null,
+                      trailing: selected
+                          ? IconButton.outline(
+                              icon: const Icon(SpotubeIcons.power),
+                              size: ButtonSize.small,
+                              onPressed: () =>
+                                  connectClientsNotifier.clearResolvedService(),
+                            )
+                          : null,
+                      onPressed: () {
+                        if (selected) {
+                          context.navigateTo(const ConnectControlRoute());
+                        } else {
+                          connectClientsNotifier.resolveService(device);
+                        }
+                      },
+                    );
+                  },
+                ),
               const ConnectPageLocalDevices(),
             ],
           ),

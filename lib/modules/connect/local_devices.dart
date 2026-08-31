@@ -21,10 +21,7 @@ class ConnectPageLocalDevices extends HookConsumerWidget {
     final devices = devicesStream.data ?? devicesFuture.data;
     final selectedDevice =
         selectedDeviceStream.data ?? selectedDeviceFuture.data;
-
-    if (devices == null) {
-      return const SliverToBoxAdapter(child: SizedBox.shrink());
-    }
+    final devicesError = devicesFuture.error ?? devicesStream.error;
 
     return SliverMainAxisGroup(
       slivers: [
@@ -39,21 +36,43 @@ class ConnectPageLocalDevices extends HookConsumerWidget {
           ),
         ),
         const SliverGap(10),
-        SliverList.separated(
-          itemCount: devices.length,
-          separatorBuilder: (context, index) => const Gap(10),
-          itemBuilder: (context, index) {
-            final device = devices[index];
+        if (devicesError != null)
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+            sliver: SliverToBoxAdapter(
+              child: Text(context.l10n.error(devicesError)).muted().small(),
+            ),
+          )
+        else if (devices == null)
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+            sliver: SliverToBoxAdapter(
+              child: Text(context.l10n.loading).muted().small(),
+            ),
+          )
+        else if (devices.isEmpty)
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+            sliver: SliverToBoxAdapter(
+              child: Text(context.l10n.nothing_found).muted().small(),
+            ),
+          )
+        else
+          SliverList.separated(
+            itemCount: devices.length,
+            separatorBuilder: (context, index) => const Gap(10),
+            itemBuilder: (context, index) {
+              final device = devices[index];
 
-            return ButtonTile(
-              selected: selectedDevice == device,
-              onPressed: () => audioPlayer.setAudioDevice(device),
-              leading: const Icon(SpotubeIcons.speaker),
-              title: Text(device.description),
-              subtitle: Text(device.name),
-            );
-          },
-        ),
+              return ButtonTile(
+                selected: selectedDevice == device,
+                onPressed: () => audioPlayer.setAudioDevice(device),
+                leading: const Icon(SpotubeIcons.speaker),
+                title: Text(device.description),
+                subtitle: Text(device.name),
+              );
+            },
+          ),
         const SliverGap(200)
       ],
     );

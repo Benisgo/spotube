@@ -139,6 +139,12 @@ class AppLocalizationsKo extends AppLocalizations {
   String get sort_album => '앨범 순으로 정렬';
 
   @override
+  String get sort_largest => 'Sort by largest size';
+
+  @override
+  String get sort_smallest => 'Sort by smallest size';
+
+  @override
   String get sort_duration => '시간순 정렬';
 
   @override

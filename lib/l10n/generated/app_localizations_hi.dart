@@ -139,6 +139,12 @@ class AppLocalizationsHi extends AppLocalizations {
   String get sort_album => 'एल्बम के अनुसार सॉर्ट करें';
 
   @override
+  String get sort_largest => 'Sort by largest size';
+
+  @override
+  String get sort_smallest => 'Sort by smallest size';
+
+  @override
   String get sort_duration => 'समय के आधार पर क्रमबद्ध करें';
 
   @override

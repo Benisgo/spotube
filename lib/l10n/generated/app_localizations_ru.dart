@@ -139,6 +139,12 @@ class AppLocalizationsRu extends AppLocalizations {
   String get sort_album => 'Сортировать по альбомам';
 
   @override
+  String get sort_largest => 'Sort by largest size';
+
+  @override
+  String get sort_smallest => 'Sort by smallest size';
+
+  @override
   String get sort_duration => 'Сортировать по длительности';
 
   @override

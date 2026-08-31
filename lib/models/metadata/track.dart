@@ -10,6 +10,8 @@ class SpotubeTrackObject with _$SpotubeTrackObject {
     required SpotubeSimpleAlbumObject album,
     required int durationMs,
     required String path,
+    @Default(0) int fileSize,
+    DateTime? dateAdded,
   }) = SpotubeLocalTrackObject;
 
   factory SpotubeTrackObject.full({
@@ -72,6 +74,8 @@ class SpotubeTrackObject with _$SpotubeTrackObject {
       ),
       durationMs: metadata?.durationMs?.toInt() ?? 0,
       path: file.path,
+      fileSize: file.lengthSync(),
+      dateAdded: file.lastModifiedSync(),
     );
   }
 
@@ -81,7 +85,8 @@ class SpotubeTrackObject with _$SpotubeTrackObject {
             ? {...json, "runtimeType": "local"}
             : {
                 ...json,
-                if (json.containsKey("added_at") && !json.containsKey("addedAt"))
+                if (json.containsKey("added_at") &&
+                    !json.containsKey("addedAt"))
                   "addedAt": json["added_at"],
                 "runtimeType": "full",
               },

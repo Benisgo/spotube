@@ -65,9 +65,13 @@ class CustomPlayer extends Player {
       // Disable video output entirely — audio-only app
       nativePlayer.setProperty("vo", "null");
       nativePlayer.setProperty("video", "no");
-      // Use wasapi for low-overhead audio on Windows, with a fallback chain
-      // so audio still works if WASAPI is unavailable (e.g. Remote Desktop).
-      nativePlayer.setProperty("ao", "wasapi,directsound,");
+      // Use wasapi for low-overhead audio on Windows. (Audit P5 swapped this
+      // for a "wasapi,directsound," fallback chain to support Remote Desktop,
+      // but the multi-entry ao value breaks mpv's audio-device-list
+      // enumeration — the Devices page's "This device" section reads that
+      // list and came back empty. Reverted to the plain driver so device
+      // enumeration works again.)
+      nativePlayer.setProperty("ao", "wasapi");
       // No hardware decoding needed for audio-only
       nativePlayer.setProperty("hwdec", "no");
       // Reduce mpv event rate to prevent Windows task runner flooding.

@@ -33,6 +33,15 @@ import 'package:spotube/provider/user_preferences/user_preferences_provider.dart
 import 'package:spotube/utils/service_utils.dart';
 import 'package:auto_route/auto_route.dart';
 
+String formatFileSize(int bytes) {
+  if (bytes < 1024) return "$bytes B";
+  if (bytes < 1024 * 1024) return "${(bytes / 1024).toStringAsFixed(1)} KB";
+  if (bytes < 1024 * 1024 * 1024) {
+    return "${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB";
+  }
+  return "${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB";
+}
+
 @RoutePage()
 class LocalLibraryPage extends HookConsumerWidget {
   static const name = "local_library_page";
@@ -460,6 +469,9 @@ class LocalLibraryPage extends HookConsumerWidget {
                                         index: index,
                                         track: track,
                                         userPlaylist: false,
+                                        trailingExtra: Text(
+                                          formatFileSize(track.fileSize),
+                                        ).muted().small(),
                                         onTap: () async {
                                           await playLocalTracks(
                                             ref,

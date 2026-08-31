@@ -405,6 +405,18 @@ abstract class AppLocalizations {
   /// **'Sort by Album'**
   String get sort_album;
 
+  /// No description provided for @sort_largest.
+  ///
+  /// In en, this message translates to:
+  /// **'Sort by largest size'**
+  String get sort_largest;
+
+  /// No description provided for @sort_smallest.
+  ///
+  /// In en, this message translates to:
+  /// **'Sort by smallest size'**
+  String get sort_smallest;
+
   /// No description provided for @sort_duration.
   ///
   /// In en, this message translates to:

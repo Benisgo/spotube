@@ -139,6 +139,12 @@ class AppLocalizationsBn extends AppLocalizations {
   String get sort_album => 'অ্যালবামের ক্রমে সাজান';
 
   @override
+  String get sort_largest => 'Sort by largest size';
+
+  @override
+  String get sort_smallest => 'Sort by smallest size';
+
+  @override
   String get sort_duration => 'দৈর্ঘ্য অনুযায়ী বাছাই করুন';
 
   @override

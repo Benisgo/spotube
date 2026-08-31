@@ -139,6 +139,12 @@ class AppLocalizationsId extends AppLocalizations {
   String get sort_album => 'Urutkan berdasarkan Album';
 
   @override
+  String get sort_largest => 'Sort by largest size';
+
+  @override
+  String get sort_smallest => 'Sort by smallest size';
+
+  @override
   String get sort_duration => 'Urutkan berdasarkan Durasi';
 
   @override

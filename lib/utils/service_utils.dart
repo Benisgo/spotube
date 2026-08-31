@@ -108,12 +108,20 @@ abstract class ServiceUtils {
           case SortBy.descending:
             return b.name.toLowerCase().compareTo(a.name.toLowerCase());
           case SortBy.newest:
-            final aDate = parseSpotifyAlbumDate(a.album);
-            final bDate = parseSpotifyAlbumDate(b.album);
+            final aDate = a is SpotubeLocalTrackObject
+                ? (a.dateAdded ?? DateTime(1975))
+                : parseSpotifyAlbumDate(a.album);
+            final bDate = b is SpotubeLocalTrackObject
+                ? (b.dateAdded ?? DateTime(1975))
+                : parseSpotifyAlbumDate(b.album);
             return bDate.compareTo(aDate);
           case SortBy.oldest:
-            final aDate = parseSpotifyAlbumDate(a.album);
-            final bDate = parseSpotifyAlbumDate(b.album);
+            final aDate = a is SpotubeLocalTrackObject
+                ? (a.dateAdded ?? DateTime(1975))
+                : parseSpotifyAlbumDate(a.album);
+            final bDate = b is SpotubeLocalTrackObject
+                ? (b.dateAdded ?? DateTime(1975))
+                : parseSpotifyAlbumDate(b.album);
             return aDate.compareTo(bDate);
           case SortBy.duration:
             return a.durationMs.compareTo(b.durationMs);
@@ -125,6 +133,12 @@ abstract class ServiceUtils {
             return a.album.name
                 .toLowerCase()
                 .compareTo(b.album.name.toLowerCase());
+          case SortBy.largest:
+            return (b is SpotubeLocalTrackObject ? b.fileSize : 0)
+                .compareTo(a is SpotubeLocalTrackObject ? a.fileSize : 0);
+          case SortBy.smallest:
+            return (a is SpotubeLocalTrackObject ? a.fileSize : 0)
+                .compareTo(b is SpotubeLocalTrackObject ? b.fileSize : 0);
           default:
             return 0;
         }

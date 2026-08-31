@@ -64,6 +64,16 @@ class SortTracksDropdown extends StatelessWidget {
           enabled: value != SortBy.album,
           child: Text(context.l10n.sort_album),
         ),
+        AdaptiveMenuButton(
+          value: SortBy.largest,
+          enabled: value != SortBy.largest,
+          child: Text(context.l10n.sort_largest),
+        ),
+        AdaptiveMenuButton(
+          value: SortBy.smallest,
+          enabled: value != SortBy.smallest,
+          child: Text(context.l10n.sort_smallest),
+        ),
       ],
     );
   }

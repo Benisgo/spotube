@@ -63,6 +63,7 @@ class TrackTile extends HookConsumerWidget {
   final bool compact;
   final bool isFetchingActiveTrack;
   final List<Widget>? leadingActions;
+  final Widget? trailingExtra;
 
   const TrackTile({
     super.key,
@@ -78,6 +79,7 @@ class TrackTile extends HookConsumerWidget {
     this.compact = false,
     this.isFetchingActiveTrack = false,
     this.leadingActions,
+    this.trailingExtra,
   });
 
   @override
@@ -193,8 +195,7 @@ class TrackTile extends HookConsumerWidget {
                       : SizedBox(
                           width: 50,
                           child: Padding(
-                            padding:
-                                const EdgeInsets.symmetric(horizontal: 6),
+                            padding: const EdgeInsets.symmetric(horizontal: 6),
                             child: Text(
                               '${(index ?? 0) + 1}',
                               maxLines: 1,
@@ -324,6 +325,10 @@ class TrackTile extends HookConsumerWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 const SizedBox(width: 8),
+                if (trailingExtra != null) ...[
+                  trailingExtra!,
+                  const SizedBox(width: 8),
+                ],
                 Text(
                   durationString,
                   maxLines: 1,
@@ -365,8 +370,7 @@ class _TrackTileArtOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final imagePath =
-        (track.album.images).smallest(ImagePlaceholder.albumArt);
+    final imagePath = (track.album.images).smallest(ImagePlaceholder.albumArt);
 
     return Stack(
       children: [

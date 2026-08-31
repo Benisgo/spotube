@@ -139,6 +139,12 @@ class AppLocalizationsPl extends AppLocalizations {
   String get sort_album => 'Sortuj po Albumie';
 
   @override
+  String get sort_largest => 'Sort by largest size';
+
+  @override
+  String get sort_smallest => 'Sort by smallest size';
+
+  @override
   String get sort_duration => 'Sortuj według Czasu Trwania';
 
   @override

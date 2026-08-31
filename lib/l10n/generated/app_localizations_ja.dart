@@ -139,6 +139,12 @@ class AppLocalizationsJa extends AppLocalizations {
   String get sort_album => 'アルバム順に並び替え';
 
   @override
+  String get sort_largest => 'Sort by largest size';
+
+  @override
+  String get sort_smallest => 'Sort by smallest size';
+
+  @override
   String get sort_duration => '長さ順に並べ替え';
 
   @override

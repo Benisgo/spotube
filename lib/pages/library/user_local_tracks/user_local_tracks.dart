@@ -23,6 +23,8 @@ enum SortBy {
   duration,
   artist,
   album,
+  largest,
+  smallest,
 }
 
 @RoutePage()

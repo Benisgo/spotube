@@ -403,8 +403,88 @@ class SourcedTrack extends BasicSourcedTrack {
       throw MetadataPluginException.noDefaultAudioSourcePlugin();
     }
 
-    // Note: sourceMatchTable DB cache intentionally skipped —
-    // it stored stale results from previous scoring algorithms.
+    // Reuse a persisted, validated source match — written by swapWithSibling
+    // when a sibling upload proved more reliable (e.g. ACJQ0Kqhw6Y instead of
+    // the audio-only-locked Gs3Tr1HrI-E). Without this, every fresh launch
+    // re-runs the full search and re-resolves the known-locked primary,
+    // wasting ~7s of the ~13s cold start. Any failure deletes the stale entry
+    // and falls back to the search path below, so this can never break a
+    // previously-working track.
+    final persisted =
+        await _readPersistedSourceMatch(ref, query, audioSource.slug);
+    if (persisted != null) {
+      try {
+        // Fastest path: reuse the still-valid signed stream URL from the last
+        // good swap — no search, no manifest fetch, no client ladder. The
+        // shelf proxy's 403 → sibling-swap loop is the safety net if it has
+        // since expired / been revoked.
+        final stream = persisted.stream;
+        if (stream != null && !isUrlExpired(stream.url)) {
+          final cachedTrack = SourcedTrack(
+            ref: ref,
+            info: persisted.match,
+            query: query,
+            source: audioSource.slug,
+            siblings: const [],
+            sources: [stream],
+          );
+          PlaybackStartTrace.markTrack(
+            query.id,
+            'sourced_track.persisted_stream',
+            data: {'sourceId': persisted.match.id},
+          );
+          _rememberResolvedTrack(query.id, cachedTrack);
+          return cachedTrack;
+        }
+
+        // The stored stream expired — resolve the persisted match's streams
+        // (skips the search + locked-primary dance) and refresh the stored
+        // stream so the NEXT play is back on the fast path.
+        final manifest = await _fetchStreams(
+          ref: ref,
+          match: persisted.match,
+          sourceSlug: audioSource.slug,
+          trackId: query.id,
+        );
+        if (manifest.isNotEmpty) {
+          final resolved = await SourcedTrack(
+            ref: ref,
+            siblings: const [],
+            info: persisted.match,
+            source: audioSource.slug,
+            sources: manifest,
+            query: query,
+          ).resolvePlayableSource();
+          PlaybackStartTrace.markTrack(
+            query.id,
+            'sourced_track.persisted_match',
+            data: {'sourceId': persisted.match.id},
+          );
+          _rememberResolvedTrack(query.id, resolved);
+          _refreshPersistedStream(
+            ref,
+            query,
+            audioSource.slug,
+            persisted.match,
+            manifest,
+          );
+          return resolved;
+        }
+      } catch (_) {
+        // Stale/dead persisted match — ignore and fall through to search.
+      }
+      // Best-effort cleanup of the stale entry so we don't retry it forever.
+      try {
+        final database = ref.read(databaseProvider);
+        await (database.sourceMatchTable.delete()
+              ..where((table) =>
+                  table.trackId.equals(query.id) &
+                  table.sourceType.equals(audioSource.slug)))
+            .go();
+      } catch (_) {}
+    }
+
+    // No usable persisted match — fall back to the ranked search below.
     // In-memory caches (_resolvedFetches, _siblingFetches) handle
     // within-session deduplication efficiently.
     PlaybackStartTrace.markTrack(query.id, 'sourced_track.cache_miss');
@@ -738,6 +818,88 @@ class SourcedTrack extends BasicSourcedTrack {
     return "$sourceSlug::$trackId";
   }
 
+  /// Reads the persisted source match for [query] — written by swapWithSibling
+  /// when a better/working sibling upload was chosen (e.g. ACJQ0Kqhw6Y over
+  /// the audio-only-locked Gs3Tr1HrI-E) — plus its last resolved stream URL
+  /// when available. Returns null when nothing is stored.
+  static Future<
+      ({
+        SpotubeAudioSourceMatchObject match,
+        SpotubeAudioSourceStreamObject? stream
+      })?> _readPersistedSourceMatch(
+    Ref ref,
+    SpotubeFullTrackObject query,
+    String sourceSlug,
+  ) async {
+    try {
+      final database = ref.read(databaseProvider);
+      final cached = await (database.select(database.sourceMatchTable)
+            ..where((tbl) =>
+                tbl.trackId.equals(query.id) &
+                tbl.sourceType.equals(sourceSlug))
+            ..limit(1))
+          .getSingleOrNull();
+      if (cached == null) return null;
+      final decoded = jsonDecode(cached.sourceInfo);
+      if (decoded is! Map<String, dynamic>) return null;
+      final match = SpotubeAudioSourceMatchObject.fromJson(decoded);
+      SpotubeAudioSourceStreamObject? stream;
+      final rawStream = decoded['resolvedStream'];
+      if (rawStream is Map<String, dynamic>) {
+        try {
+          stream = SpotubeAudioSourceStreamObject.fromJson(rawStream);
+        } catch (_) {}
+      }
+      return (match: match, stream: stream);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Serializes [sibling] with its preferred resolved stream appended as a
+  /// `resolvedStream` key. Freezed's fromJson ignores unknown keys, so the
+  /// stored JSON stays parseable as a plain match while letting a later fetch
+  /// reuse the still-valid signed URL (no search, no manifest re-fetch).
+  static Map<String, dynamic> _withResolvedStream(
+    SpotubeAudioSourceMatchObject sibling,
+    List<SpotubeAudioSourceStreamObject> manifest,
+  ) {
+    final json = sibling.toJson();
+    for (final source in manifest) {
+      final url = source.url;
+      if (!url.startsWith('file://')) {
+        json['resolvedStream'] = source.toJson();
+        break;
+      }
+    }
+    return json;
+  }
+
+  /// Re-stores [match] with its freshly-resolved [manifest] stream so the next
+  /// fetch hits the fast (reuse-stream) path again after a signed URL expiry.
+  static Future<void> _refreshPersistedStream(
+    Ref ref,
+    SpotubeFullTrackObject query,
+    String sourceSlug,
+    SpotubeAudioSourceMatchObject match,
+    List<SpotubeAudioSourceStreamObject> manifest,
+  ) async {
+    try {
+      final database = ref.read(databaseProvider);
+      await (database.update(database.sourceMatchTable)
+            ..where((tbl) =>
+                tbl.trackId.equals(query.id) &
+                tbl.sourceType.equals(sourceSlug)))
+          .write(
+        SourceMatchTableCompanion(
+          sourceInfo: Value(
+            jsonEncode(_withResolvedStream(match, manifest)),
+          ),
+        ),
+      );
+    } catch (_) {}
+  }
+
   static String _streamCacheKey({
     required String sourceSlug,
     required SpotubeAudioSourceMatchObject match,
@@ -936,7 +1098,13 @@ class SourcedTrack extends BasicSourcedTrack {
     await database.into(database.sourceMatchTable).insert(
           SourceMatchTableCompanion.insert(
             trackId: query.id,
-            sourceInfo: Value(jsonEncode(sibling)),
+            // Persist the winning sibling AND its resolved stream so a later
+            // fetch (even after an app restart) can reuse the still-valid
+            // signed URL instead of re-searching + re-resolving the locked
+            // primary upload.
+            sourceInfo: Value(
+              jsonEncode(_withResolvedStream(sibling, manifest)),
+            ),
             sourceType: audioSource.slug,
             createdAt: Value(DateTime.now()),
           ),

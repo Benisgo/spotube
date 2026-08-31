@@ -150,17 +150,23 @@ class _YtMusicClient {
   }
 
   /// Custom clients not in youtube_explode_dart.
+  /// VISIONOS — yt-dlp's DEFAULT player client (`visionos,web`; `web` is
+  /// omitted when no JS runtime is available). Proven to mint playable
+  /// AUDIO-ONLY URLs on flagged IPs (gcr=eg) where IOS/ANDROID only serve the
+  /// 18MB mux: yt-dlp downloads ~4MB audio-only with this exact config +
+  /// anonymous visitorData, no poToken and no JS runtime. Values mirror
+  /// yt_dlp/extractor/youtube/_base.py (`clientVersion 1.02`, RealityDevice17,1).
   static const _visionOs = YoutubeApiClient({
     'context': {
       'client': {
         'clientName': 'VISIONOS',
-        'clientVersion': '0.1',
-        'userAgent':
-            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15',
-        'osName': 'visionOS',
-        'osVersion': '1.3.21O771',
+        'clientVersion': '1.02',
         'deviceMake': 'Apple',
-        'deviceModel': 'RealityDevice14,1',
+        'deviceModel': 'RealityDevice17,1',
+        'userAgent':
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15',
+        'osName': 'visionOS',
+        'osVersion': '26.5.23O471',
         'hl': 'en',
         'timeZone': 'UTC',
         'utcOffsetMinutes': 0,
@@ -394,7 +400,7 @@ class _YtMusicClient {
     "MWEB":
         "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.6367.83 Mobile Safari/537.36",
     "VISIONOS":
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15",
     "ANDROID_CREATOR":
         "com.google.android.apps.youtube.creator/25.03.101 (Linux; U; Android 15; en_US; Pixel 9 Pro Fold; Build/AP3A.241005.015.A2; Cronet/132.0.6779.0)",
     "WEB":
@@ -505,12 +511,25 @@ class _YtMusicClient {
     }
 
     // Attach session visitorData only to the WEB client (which also gets a
-    // BotGuard poToken). Earlier attempts to attach X-Goog-Visitor-Id to
-    // ANDROID_VR/ANDROID/IOS/MWEB/ANDROID_CREATOR caused those clients to flip
-    // from playable to LOGIN_REQUIRED on this user's IP, so non-WEB clients
-    // stay in their known-working anonymous wire format.
+    // BotGuard poToken) and VISIONOS (yt-dlp's default — it needs the anonymous
+    // visitorData to mint playable audio-only on flagged IPs). Earlier attempts
+    // to attach X-Goog-Visitor-Id to ANDROID_VR/ANDROID/IOS/MWEB/
+    // ANDROID_CREATOR caused those clients to flip from playable to
+    // LOGIN_REQUIRED on this user's IP, so those stay anonymous.
     if (clientName == "WEB") {
       await _enrichWithPoToken(payload, requestHeaders, clientCtx, videoId);
+    } else if (clientName == "VISIONOS") {
+      // yt-dlp sends visitorData for visionos too but NO poToken (it works
+      // without a JS runtime). Attach just the visitorData.
+      try {
+        final visitorData = await YouTubePoTokenProvider.getVisitorData();
+        if (visitorData != null) {
+          requestHeaders["X-Goog-Visitor-Id"] = visitorData;
+          clientCtx["visitorData"] = visitorData;
+        }
+      } catch (e) {
+        AppLogger.log.w("[yt_music] visionos visitorData failed: $e");
+      }
     }
 
     // Cap per-client latency. YouTube DELIBERATELY delays rejection responses
@@ -848,17 +867,20 @@ class YtMusicEngine implements YouTubeEngine {
       _YtMusicClient._iPados,
     ];
 
-    // Quiet-first: fire IOS ALONE before any ladder. On flagged IPs (gcr=eg)
-    // IOS is the only client that returns playable audio — the other first-
-    // wave clients (ANDROID_VR, MWEB, ANDROID_CREATOR) are guaranteed fails
-    // (bot-wall / "reload page" / "sign in"), and their concurrent burst is
-    // what bot-walls the IP. A bot-walled IP then bot-walls youtube_explode's
-    // mux fallback at play time, which is why first-try playback skipped.
-    // Resolving with a single IOS request keeps the IP quiet, so the mux
-    // fallback (when the audio-only URL 403s at the CDN) succeeds on the
-    // first try — and resolution is ~5s faster (IOS answers in ~1s, the
-    // ladder's guaranteed losers are slow-rolled to ~6s). Only widen to the
-    // ladder if IOS itself fails.
+    // Quiet-first: fire VISIONOS ALONE, then IOS, before any ladder. VISIONOS
+    // is yt-dlp's default client and the one that reliably mints playable
+    // AUDIO-ONLY URLs on flagged IPs (gcr=eg) — ~4MB instead of the 18MB mux
+    // that IOS/ANDROID fall back to. The other first-wave clients (ANDROID_VR,
+    // MWEB, ANDROID_CREATOR) are guaranteed fails (bot-wall / "reload page" /
+    // "sign in"), and their concurrent burst is what bot-walls the IP. 1-2
+    // single requests keep the IP quiet, resolve fast (~1s vs ~6s slow-roll),
+    // and only widen to the ladder if both fail.
+    final visionOsClient = clients.firstWhere(
+      (c) => c.payload["context"]["client"]["clientName"] == "VISIONOS",
+    );
+    final visionOsManifest = await _tryClient(visionOsClient);
+    if (visionOsManifest != null) return visionOsManifest;
+
     final iosClient = clients.firstWhere(
       (c) => c.payload["context"]["client"]["clientName"] == "IOS",
     );
@@ -866,7 +888,9 @@ class YtMusicEngine implements YouTubeEngine {
     if (iosManifest != null) return iosManifest;
 
     final rest = clients
-        .where((c) => c.payload["context"]["client"]["clientName"] != "IOS")
+        .where((c) =>
+            c.payload["context"]["client"]["clientName"] != "VISIONOS" &&
+            c.payload["context"]["client"]["clientName"] != "IOS")
         .toList();
     final firstWaveResults = await Future.wait(rest.take(4).map(_tryClient));
     for (final manifest in firstWaveResults) {

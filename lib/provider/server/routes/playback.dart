@@ -1009,42 +1009,18 @@ class ServerPlaybackRoutes {
             "status=${tempRes?.statusCode} regionLocked=$isRegionLocked → mux fallback");
         final fallbackYt = YoutubeExplode();
         try {
-          // youtube_explode's getManifest uses the ANDROID/TVHTML5 InnerTube
-          // clients, which YouTube bot-walls intermittently on flagged IPs
-          // (gcr=eg) right after the app's own 4-client ladder. The failure is
-          // a transient VideoUnavailableException, NOT a real unavailability
-          // (IOS serves the same video fine). Retry with a short backoff so
-          // the first-try playback survives the bot-wall instead of skipping
-          // the track; the IP cools during the wait because nothing else fires.
-          StreamManifest? manifest;
-          Object? lastError;
-          const retryDelays = [Duration(seconds: 2), Duration(seconds: 4)];
-          for (var attempt = 0; attempt <= retryDelays.length; attempt++) {
-            try {
-              manifest = await fallbackYt.videos.streamsClient
-                  .getManifest(activeTrack.info.id);
-              break;
-            } catch (e) {
-              lastError = e;
-              if (e is DioException && CancelToken.isCancel(e)) rethrow;
-              if (attempt < retryDelays.length) {
-                AppLogger.log.w(
-                    "[playback] mux getManifest attempt ${attempt + 1} failed "
-                    "for ${activeTrack.query.id} ($e) — retrying in "
-                    "${retryDelays[attempt].inSeconds}s (transient bot-wall)");
-                await Future.delayed(retryDelays[attempt]);
-              }
-            }
-          }
-          if (manifest == null) {
-            throw lastError ?? StateError("mux manifest failed");
-          }
-          // Prefer audio-only (small), but googlevideo 403s non-zero-offset
-          // ranges on audio-only without a logged-in session in some regions
-          // (gcr=eg). Include the muxed (video+audio) streams as a reliable
-          // fallback — they stream and seek fine regardless of login. When we
-          // already know audio-only is region-locked, try the mux FIRST so
-          // the user gets audio sooner instead of a futile 403 round-trip.
+          // The IP is kept quiet now (IOS-first resolve fires 1 request
+          // instead of the 4-client ladder, so youtube_explode's getManifest
+          // ANDROID/TVHTML5 clients are not bot-walled here and resolve on the
+          // first try). Prefer audio-only (small), but googlevideo 403s
+          // non-zero-offset ranges on audio-only without a logged-in session
+          // in some regions (gcr=eg). Include the muxed (video+audio) streams
+          // as a reliable fallback — they stream and seek fine regardless of
+          // login. When we already know audio-only is region-locked, try the
+          // mux FIRST so the user gets audio sooner instead of a futile 403
+          // round-trip.
+          final manifest = await fallbackYt.videos.streamsClient
+              .getManifest(activeTrack.info.id);
           final audioCandidates = manifest.audioOnly.toList()
             ..sort((a, b) =>
                 b.bitrate.bitsPerSecond.compareTo(a.bitrate.bitsPerSecond));

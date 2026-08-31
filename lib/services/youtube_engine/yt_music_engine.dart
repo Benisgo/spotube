@@ -848,21 +848,31 @@ class YtMusicEngine implements YouTubeEngine {
       _YtMusicClient._iPados,
     ];
 
-    // First wave: the 4 clients Flow itself uses (ANDROID_VR, MWEB, IOS,
-    // ANDROID_CREATOR) fired concurrently and are WAITED for (Future.wait),
-    // taking the first success in priority order. This matches master's
-    // proven behavior: racing (returning on the first success and abandoning
-    // the losers) let slow-rolled client requests keep hitting YouTube in the
-    // background, overlapping with the next resolve and the mux fallback —
-    // piling onto the IP's rate-limit and throttling youtube_explode's mux
-    // fallback, which failed where master's succeeds. If all four fail,
-    // continue the rest sequentially rather than firing all 11 requests at
-    // YouTube at once.
-    final firstWaveResults = await Future.wait(clients.take(4).map(_tryClient));
+    // Quiet-first: fire IOS ALONE before any ladder. On flagged IPs (gcr=eg)
+    // IOS is the only client that returns playable audio — the other first-
+    // wave clients (ANDROID_VR, MWEB, ANDROID_CREATOR) are guaranteed fails
+    // (bot-wall / "reload page" / "sign in"), and their concurrent burst is
+    // what bot-walls the IP. A bot-walled IP then bot-walls youtube_explode's
+    // mux fallback at play time, which is why first-try playback skipped.
+    // Resolving with a single IOS request keeps the IP quiet, so the mux
+    // fallback (when the audio-only URL 403s at the CDN) succeeds on the
+    // first try — and resolution is ~5s faster (IOS answers in ~1s, the
+    // ladder's guaranteed losers are slow-rolled to ~6s). Only widen to the
+    // ladder if IOS itself fails.
+    final iosClient = clients.firstWhere(
+      (c) => c.payload["context"]["client"]["clientName"] == "IOS",
+    );
+    final iosManifest = await _tryClient(iosClient);
+    if (iosManifest != null) return iosManifest;
+
+    final rest = clients
+        .where((c) => c.payload["context"]["client"]["clientName"] != "IOS")
+        .toList();
+    final firstWaveResults = await Future.wait(rest.take(4).map(_tryClient));
     for (final manifest in firstWaveResults) {
       if (manifest != null) return manifest;
     }
-    for (final client in clients.skip(4)) {
+    for (final client in rest.skip(4)) {
       final manifest = await _tryClient(client);
       if (manifest != null) return manifest;
     }

@@ -68,7 +68,18 @@ class DownloadTask {
 class DownloadManagerNotifier extends Notifier<List<DownloadTask>> {
   final Dio dio;
   DownloadManagerNotifier()
-      : dio = Dio(),
+      : dio = Dio(
+          BaseOptions(
+            // Region-locked googlevideo URLs can ACCEPT the connection and
+            // then stall forever — without these timeouts a download hangs
+            // indefinitely (spinner never resolves). 15s connect/send and a
+            // 45s idle-receive cap bound the wait; a 4MB audio file downloads
+            // in seconds, so the idle cap never trips on healthy links.
+            connectTimeout: const Duration(seconds: 15),
+            sendTimeout: const Duration(seconds: 15),
+            receiveTimeout: const Duration(seconds: 45),
+          ),
+        ),
         super();
 
   @override
@@ -204,6 +215,24 @@ class DownloadManagerNotifier extends Notifier<List<DownloadTask>> {
     }
   }
 
+  /// The on-disk streaming cache file for `track` — the SAME path the
+  /// playback server writes when cacheMusic is enabled. Reusing it for a
+  /// download makes downloading a song you already streamed cost ZERO
+  /// network. Kept in sync with ServerPlaybackRoutes._getTrackCacheFilePath.
+  Future<File?> _getStreamCacheFile(SourcedTrack track) async {
+    try {
+      final cacheDir = await UserPreferencesNotifier.getMusicCacheDir();
+      final baseName = ServiceUtils.sanitizeFilename(
+        '${track.query.name} - ${track.query.artists.map((d) => d.name).join(",")}',
+      );
+      final ext = track.qualityPreset?.getFileExtension() ?? "m4a";
+      return File(join(cacheDir, '$baseName [${track.info.id}].$ext'));
+    } catch (e) {
+      AppLogger.log.w("[download] could not compute stream cache path: $e");
+      return null;
+    }
+  }
+
   Future<void> _downloadTrack(DownloadTask task) async {
     try {
       _setStatus(task.track, DownloadStatus.downloading);
@@ -262,6 +291,33 @@ class DownloadManagerNotifier extends Notifier<List<DownloadTask>> {
         if (!await _shouldReplaceFileOnExist(task)) {
           _setStatus(track.query, DownloadStatus.completed);
           return;
+        }
+      }
+
+      // Reuse the streaming cache instead of re-downloading when the cached
+      // stream matches the requested container's format — zero network, zero
+      // data usage. This makes downloading a streamed song as cheap as
+      // streaming it.
+      final cachedStream = await _getStreamCacheFile(track);
+      if (cachedStream != null &&
+          await cachedStream.exists() &&
+          !cachedStream.path.endsWith('.part')) {
+        final cachedExt = extension(cachedStream.path);
+        if (cachedExt == '.${container.getFileExtension()}') {
+          try {
+            await cachedStream.copy(savePath);
+            AppLogger.log
+                .i("[download] reused stream cache for ${track.query.id} → "
+                    "$savePath (no network)");
+            await _tagDownloadFile(task, track, savePath);
+            _setStatus(track.query, DownloadStatus.completed);
+            ref.invalidate(localTracksProvider);
+            return;
+          } catch (e) {
+            AppLogger.log
+                .w("[download] cache reuse failed for ${track.query.id}: $e — "
+                    "falling back to network");
+          }
         }
       }
 
@@ -345,6 +401,39 @@ class DownloadManagerNotifier extends Notifier<List<DownloadTask>> {
     }
   }
 
+  /// Best-effort metadata + cover-art tagging, shared by network downloads
+  /// and the cache-reuse path so both produce tagged files.
+  Future<void> _tagDownloadFile(
+    DownloadTask task,
+    SourcedTrack track,
+    String savePath,
+  ) async {
+    try {
+      final savePathFile = File(savePath);
+      final imageBytes = await ServiceUtils.downloadImage(
+        (task.track.album.images).asUrlString(
+          placeholder: ImagePlaceholder.albumArt,
+          index: 1,
+        ),
+      );
+      // Metadata tagging is best-effort (may fail on some platforms)
+      try {
+        await MetadataGod.writeMetadata(
+          file: savePath,
+          metadata: task.track.toMetadata(
+            fileLength: await savePathFile.length(),
+            imageBytes: imageBytes,
+          ),
+        );
+      } catch (_) {
+        AppLogger.log
+            .w("[download] metadata tagging failed (file saved without tags)");
+      }
+    } catch (e) {
+      AppLogger.log.w("[download] cover art download failed: $e");
+    }
+  }
+
   /// Download `url` to `savePath` with progress + metadata tagging.
   /// Returns false on any HTTP failure (e.g. region-blocked audio-only).
   Future<bool> _downloadToFile(
@@ -383,26 +472,7 @@ class DownloadManagerNotifier extends Notifier<List<DownloadTask>> {
 
       if (metadataContainer.getFileExtension() == "weba") return true;
 
-      final savePathFile = File(savePath);
-      final imageBytes = await ServiceUtils.downloadImage(
-        (task.track.album.images).asUrlString(
-          placeholder: ImagePlaceholder.albumArt,
-          index: 1,
-        ),
-      );
-      // Metadata tagging is best-effort (may fail on some platforms)
-      try {
-        await MetadataGod.writeMetadata(
-          file: savePath,
-          metadata: task.track.toMetadata(
-            fileLength: await savePathFile.length(),
-            imageBytes: imageBytes,
-          ),
-        );
-      } catch (_) {
-        AppLogger.log
-            .w("[download] metadata tagging failed (file saved without tags)");
-      }
+      await _tagDownloadFile(task, track, savePath);
       return true;
     } catch (e) {
       if (e is DioException && e.type == DioExceptionType.cancel) rethrow;

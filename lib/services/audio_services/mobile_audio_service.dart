@@ -14,11 +14,12 @@ import 'package:spotube/utils/platform.dart';
 class MobileAudioService extends BaseAudioHandler {
   AudioSession? session;
   final AudioPlayerNotifier audioPlayerNotifier;
+  final SpotubeAudioPlayer audioPlayer;
 
   // ignore: invalid_use_of_protected_member, invalid_use_of_visible_for_testing_member
   AudioPlayerState get playlist => audioPlayerNotifier.state;
 
-  MobileAudioService(this.audioPlayerNotifier) {
+  MobileAudioService(this.audioPlayerNotifier, this.audioPlayer) {
     AudioSession.instance.then((s) {
       session = s;
       session?.configure(const AudioSessionConfiguration.music());

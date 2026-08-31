@@ -19,9 +19,9 @@ import 'package:spotube/modules/player/use_progress.dart';
 import 'package:spotube/pages/lyrics/plain_lyrics.dart';
 import 'package:spotube/pages/lyrics/synced_lyrics.dart';
 import 'package:spotube/provider/audio_player/audio_player.dart';
+import 'package:spotube/provider/audio_player/audio_player_service_provider.dart';
 import 'package:spotube/provider/audio_player/querying_track_info.dart';
 import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
-import 'package:spotube/services/audio_player/audio_player.dart';
 import 'package:spotube/utils/platform.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -39,6 +39,7 @@ class MiniLyricsPage extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, ref) {
+    final audioPlayer = ref.read(audioPlayerServiceProvider);
     final theme = Theme.of(context);
     final update = useForceUpdate();
     final wasMaximized = useRef<bool>(false);
@@ -429,6 +430,7 @@ class _MiniPlayerBody extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, ref) {
+    final audioPlayer = ref.read(audioPlayerServiceProvider);
     final progressValue = useState(progress.progressStatic);
 
     useEffect(() {

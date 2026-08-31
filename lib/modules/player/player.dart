@@ -26,8 +26,8 @@ import 'package:spotube/extensions/constrains.dart';
 import 'package:spotube/extensions/context.dart';
 import 'package:spotube/modules/root/spotube_navigation_bar.dart';
 import 'package:spotube/provider/audio_player/audio_player.dart';
+import 'package:spotube/provider/audio_player/audio_player_service_provider.dart';
 import 'package:spotube/provider/metadata_plugin/audio_source/quality_label.dart';
-import 'package:spotube/services/audio_player/audio_player.dart';
 import 'package:spotube/provider/server/active_track_sources.dart';
 import 'package:spotube/provider/volume_provider.dart';
 
@@ -42,6 +42,7 @@ class PlayerView extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, ref) {
+    final audioPlayer = ref.read(audioPlayerServiceProvider);
     final theme = Theme.of(context);
     final sourcedCurrentTrack = ref.watch(activeTrackSourcesProvider);
     final currentActiveTrack =

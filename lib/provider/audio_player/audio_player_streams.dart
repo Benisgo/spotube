@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/provider/audio_player/audio_player.dart';
+import 'package:spotube/provider/audio_player/audio_player_service_provider.dart';
 import 'package:spotube/provider/audio_player/state.dart';
 import 'package:spotube/provider/discord_provider.dart';
 import 'package:spotube/provider/history/history.dart';
@@ -23,6 +24,9 @@ import 'package:spotube/services/youtube_engine/yt_dlp_worker.dart';
 
 class AudioPlayerStreamListeners {
   final Ref ref;
+  /// Resolves the shared audio engine through Riverpod so it can be
+  /// overridden in tests / with alternate backends.
+  SpotubeAudioPlayer get audioPlayer => ref.read(audioPlayerServiceProvider);
   AudioServices? notificationService;
   String? _fadeOutTrackId;
   Future<SourcedSegments?>? _segmentsFuture;

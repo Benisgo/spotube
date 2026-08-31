@@ -7,8 +7,8 @@ import 'package:http/http.dart';
 import 'package:logger/logger.dart';
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/provider/audio_player/audio_player.dart';
+import 'package:spotube/provider/audio_player/audio_player_service_provider.dart';
 import 'package:spotube/provider/server/server.dart';
-import 'package:spotube/services/audio_player/audio_player.dart';
 import 'package:spotube/services/logger/logger.dart';
 import 'package:spotube/utils/platform.dart';
 
@@ -106,6 +106,7 @@ Future<void> _sendActiveTrack(SpotubeTrackObject? track) async {
 }
 
 final glanceProvider = Provider((ref) {
+  final audioPlayer = ref.read(audioPlayerServiceProvider);
   final server = ref.read(serverProvider);
   final activeTrack = ref.read(audioPlayerProvider).activeTrack;
 

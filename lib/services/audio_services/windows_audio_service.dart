@@ -5,6 +5,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:smtc_windows/smtc_windows.dart';
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/provider/audio_player/audio_player.dart';
+import 'package:spotube/provider/audio_player/audio_player_service_provider.dart';
 import 'package:spotube/services/audio_player/audio_player.dart';
 import 'package:spotube/services/audio_player/playback_state.dart';
 import 'package:spotube/services/logger/logger.dart';
@@ -12,6 +13,8 @@ import 'package:spotube/services/logger/logger.dart';
 class WindowsAudioService {
   static const _minSmtcPositionPushInterval = Duration(seconds: 5);
 
+  /// Resolves the shared audio engine through Riverpod.
+  SpotubeAudioPlayer get audioPlayer => ref.read(audioPlayerServiceProvider);
   final SMTCWindows smtc;
   final Ref ref;
   final AudioPlayerNotifier audioPlayerNotifier;

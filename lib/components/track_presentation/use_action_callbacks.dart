@@ -10,9 +10,9 @@ import 'package:spotube/components/track_presentation/presentation_props.dart';
 import 'package:spotube/models/connect/connect.dart';
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/provider/audio_player/audio_player.dart';
+import 'package:spotube/provider/audio_player/audio_player_service_provider.dart';
 import 'package:spotube/provider/connect/connect.dart';
 import 'package:spotube/provider/history/history.dart';
-import 'package:spotube/services/audio_player/audio_player.dart';
 import 'package:spotube/services/logger/logger.dart';
 
 typedef UseActionCallbacks = ({
@@ -24,6 +24,7 @@ typedef UseActionCallbacks = ({
 });
 
 UseActionCallbacks useActionCallbacks(WidgetRef ref) {
+  final audioPlayer = ref.read(audioPlayerServiceProvider);
   final isLoading = useState(false);
   final context = useContext();
   final options = TrackPresentationOptions.of(context);

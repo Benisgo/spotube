@@ -9,6 +9,7 @@ import 'package:media_kit/media_kit.dart' hide Track;
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/models/multi_session/multi_session.dart';
 import 'package:spotube/provider/audio_player/audio_player.dart';
+import 'package:spotube/provider/audio_player/audio_player_service_provider.dart';
 import 'package:spotube/provider/metadata_plugin/core/user.dart';
 import 'package:spotube/provider/server/sourced_track_provider.dart';
 import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
@@ -20,6 +21,8 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/status.dart' as status;
 
 class MultiSessionNotifier extends Notifier<MultiSessionState> {
+  /// Resolves the shared audio engine through Riverpod.
+  SpotubeAudioPlayer get audioPlayer => ref.read(audioPlayerServiceProvider);
   static const _legacyRelayUrl = "https://spotube-multi-session.workers.dev";
   static const _remoteSeekThresholdMs = 4000;
   static const _stringListEquality = ListEquality<String>();

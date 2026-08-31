@@ -1,15 +1,17 @@
 import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 import 'package:spotube/collections/spotube_icons.dart';
+import 'package:spotube/provider/audio_player/audio_player_service_provider.dart';
 import 'package:spotube/components/ui/button_tile.dart';
 import 'package:spotube/extensions/context.dart';
-import 'package:spotube/services/audio_player/audio_player.dart';
 
-class ConnectPageLocalDevices extends HookWidget {
+class ConnectPageLocalDevices extends HookConsumerWidget {
   const ConnectPageLocalDevices({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final audioPlayer = ref.read(audioPlayerServiceProvider);
     final ThemeData(:typography) = Theme.of(context);
     final devicesFuture = useFuture(audioPlayer.devices);
     final devicesStream = useStream(audioPlayer.devicesStream);

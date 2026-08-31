@@ -11,17 +11,18 @@ import 'package:spotube/extensions/list.dart';
 import 'package:spotube/models/connect/connect.dart';
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/provider/audio_player/audio_player.dart';
+import 'package:spotube/provider/audio_player/audio_player_service_provider.dart';
 import 'package:spotube/provider/connect/connect.dart';
 import 'package:spotube/provider/history/history.dart';
 import 'package:spotube/services/logger/logger.dart';
 import 'package:spotube/services/logger/playback_start_trace.dart';
-import 'package:spotube/services/audio_player/audio_player.dart';
 import 'package:spotube/services/youtube_engine/yt_dlp_worker.dart';
 
 Future<void> Function(SpotubeTrackObject track, int index)
     useTrackTilePlayCallback(
   WidgetRef ref,
 ) {
+  final audioPlayer = ref.read(audioPlayerServiceProvider);
   final context = useContext();
   final options = TrackPresentationOptions.of(context);
   final collections =

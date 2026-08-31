@@ -1,6 +1,6 @@
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:spotube/services/audio_player/audio_player.dart';
+import 'package:spotube/provider/audio_player/audio_player_service_provider.dart';
 
 ({
   double progressStatic,
@@ -8,6 +8,7 @@ import 'package:spotube/services/audio_player/audio_player.dart';
   Duration duration,
   double bufferProgress
 }) useProgress(WidgetRef ref) {
+  final audioPlayer = ref.read(audioPlayerServiceProvider);
   final bufferProgress =
       useStream(audioPlayer.bufferedPositionStream).data?.inSeconds ?? 0;
 

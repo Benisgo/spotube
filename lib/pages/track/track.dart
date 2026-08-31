@@ -16,8 +16,8 @@ import 'package:spotube/extensions/context.dart';
 import 'package:spotube/extensions/list.dart';
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/provider/audio_player/audio_player.dart';
+import 'package:spotube/provider/audio_player/audio_player_service_provider.dart';
 import 'package:spotube/provider/metadata_plugin/tracks/track.dart';
-import 'package:spotube/services/audio_player/audio_player.dart';
 
 import 'package:spotube/extensions/constrains.dart';
 import 'package:auto_route/auto_route.dart';
@@ -34,6 +34,7 @@ class TrackPage extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, ref) {
+    final audioPlayer = ref.read(audioPlayerServiceProvider);
     final ThemeData(:typography, :colorScheme) = Theme.of(context);
     final mediaQuery = MediaQuery.of(context);
 

@@ -10,6 +10,7 @@ import 'package:spotube/models/database/database.dart';
 import 'package:spotube/models/metadata/market.dart';
 import 'package:spotube/modules/settings/color_scheme_picker_dialog.dart';
 import 'package:spotube/provider/database/database.dart';
+import 'package:spotube/provider/audio_player/audio_player_service_provider.dart';
 import 'package:spotube/services/audio_player/audio_player.dart';
 import 'package:spotube/services/logger/logger.dart';
 import 'package:spotube/utils/platform.dart';
@@ -19,6 +20,8 @@ import 'package:open_file/open_file.dart';
 typedef UserPreferences = PreferencesTableData;
 
 class UserPreferencesNotifier extends Notifier<PreferencesTableData> {
+  /// Resolves the shared audio engine through Riverpod.
+  SpotubeAudioPlayer get audioPlayer => ref.read(audioPlayerServiceProvider);
   @override
   build() {
     final db = ref.watch(databaseProvider);

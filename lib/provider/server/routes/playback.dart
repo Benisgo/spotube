@@ -13,6 +13,7 @@ import 'package:shelf/shelf.dart';
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/models/parser/range_headers.dart';
 import 'package:spotube/provider/audio_player/audio_player.dart';
+import 'package:spotube/provider/audio_player/audio_player_service_provider.dart';
 import 'package:spotube/provider/audio_player/state.dart';
 
 import 'package:spotube/provider/data_usage/data_usage_provider.dart';
@@ -30,6 +31,8 @@ import 'package:spotube/utils/service_utils.dart';
 class ServerPlaybackRoutes {
   static const _streamFailureCooldown = Duration(seconds: 8);
   final Ref ref;
+  /// Resolves the shared audio engine through Riverpod.
+  SpotubeAudioPlayer get audioPlayer => ref.read(audioPlayerServiceProvider);
   UserPreferences get userPreferences => ref.read(userPreferencesProvider);
   AudioPlayerState get playlist => ref.read(audioPlayerProvider);
   final Dio dio;

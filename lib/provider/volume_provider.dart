@@ -1,10 +1,14 @@
 import 'dart:async';
 
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:spotube/provider/audio_player/audio_player_service_provider.dart';
 import 'package:spotube/services/audio_player/audio_player.dart';
 import 'package:spotube/services/kv_store/kv_store.dart';
 
 class VolumeProvider extends Notifier<double> {
+  /// Resolves the shared audio engine through Riverpod.
+  SpotubeAudioPlayer get audioPlayer => ref.read(audioPlayerServiceProvider);
+
   VolumeProvider();
 
   @override

@@ -4,7 +4,6 @@ import 'package:flutter/gestures.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
-import 'package:spotube/services/audio_player/audio_player.dart';
 
 import 'package:spotube/collections/assets.gen.dart';
 import 'package:spotube/collections/routes.gr.dart';
@@ -15,6 +14,7 @@ import 'package:spotube/components/track_tile/track_options_button.dart';
 import 'package:spotube/extensions/constrains.dart';
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/provider/audio_player/audio_player.dart';
+import 'package:spotube/provider/audio_player/audio_player_service_provider.dart';
 
 final _playerDetailsOverlay = ValueNotifier<OverlayCompleter<dynamic>?>(null);
 
@@ -25,6 +25,7 @@ class PlayerTrackDetails extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, ref) {
+    final audioPlayer = ref.read(audioPlayerServiceProvider);
     final theme = Theme.of(context);
     final mediaQuery = MediaQuery.of(context);
     final activeTrack = ref.watch(

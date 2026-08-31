@@ -9,6 +9,7 @@ import 'package:spotube/collections/routes.gr.dart';
 import 'package:spotube/models/multi_session/multi_session.dart';
 import 'package:spotube/modules/player/player_controls.dart';
 import 'package:spotube/provider/audio_player/audio_player.dart';
+import 'package:spotube/provider/audio_player/audio_player_service_provider.dart';
 import 'package:spotube/provider/audio_player/querying_track_info.dart';
 import 'package:spotube/provider/multi_session/multi_session.dart';
 import 'package:spotube/services/audio_player/audio_player.dart';
@@ -35,6 +36,7 @@ class PlayPauseAction extends Action<PlayPauseIntent> {
       return null;
     }
 
+    final audioPlayer = intent.ref.read(audioPlayerServiceProvider);
     if (!audioPlayer.isPlaying) {
       await audioPlayer.resume();
     } else {
@@ -64,6 +66,7 @@ class PlayAction extends Action<PlayIntent> {
       }
       return null;
     }
+    final audioPlayer = intent.ref.read(audioPlayerServiceProvider);
     await audioPlayer.resume();
     return null;
   }
@@ -90,30 +93,34 @@ class PauseAction extends Action<PauseIntent> {
       }
       return null;
     }
+    final audioPlayer = intent.ref.read(audioPlayerServiceProvider);
     await audioPlayer.pause();
     return null;
   }
 }
 
 class NextTrackIntent extends Intent {
-  const NextTrackIntent();
+  final WidgetRef ref;
+  const NextTrackIntent(this.ref);
 }
 
 class NextTrackAction extends Action<NextTrackIntent> {
   @override
   invoke(intent) async {
-    await audioPlayer.skipToNext();
+    await intent.ref.read(audioPlayerServiceProvider).skipToNext();
     return null;
   }
 }
 
 class PreviousTrackIntent extends Intent {
-  const PreviousTrackIntent();
+  final WidgetRef ref;
+  const PreviousTrackIntent(this.ref);
 }
 
 class PreviousTrackAction extends Action<PreviousTrackIntent> {
   @override
   invoke(intent) async {
+    final audioPlayer = intent.ref.read(audioPlayerServiceProvider);
     final position = audioPlayer.position;
     if (position.inSeconds > 10) {
       await audioPlayer.seek(Duration.zero);

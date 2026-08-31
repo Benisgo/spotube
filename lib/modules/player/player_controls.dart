@@ -15,9 +15,9 @@ import 'package:spotube/extensions/duration.dart';
 import 'package:spotube/models/multi_session/multi_session.dart';
 import 'package:spotube/modules/player/use_progress.dart';
 import 'package:spotube/provider/audio_player/audio_player.dart';
+import 'package:spotube/provider/audio_player/audio_player_service_provider.dart';
 import 'package:spotube/provider/audio_player/querying_track_info.dart';
 import 'package:spotube/provider/multi_session/multi_session.dart';
-import 'package:spotube/services/audio_player/audio_player.dart';
 import 'package:spotube/utils/platform.dart';
 
 class PlayerControls extends HookConsumerWidget {
@@ -34,6 +34,7 @@ class PlayerControls extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, ref) {
+    final audioPlayer = ref.read(audioPlayerServiceProvider);
     final shortcuts = useMemoized(
         () => {
               const SingleActivator(LogicalKeyboardKey.arrowRight):

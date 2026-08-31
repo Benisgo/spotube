@@ -13,6 +13,7 @@ import 'package:spotube/models/metadata/metadata.dart';
 
 import 'package:spotube/provider/history/history.dart';
 import 'package:spotube/provider/audio_player/audio_player.dart';
+import 'package:spotube/provider/audio_player/audio_player_service_provider.dart';
 import 'package:spotube/provider/volume_provider.dart';
 import 'package:spotube/services/audio_player/audio_player.dart';
 import 'package:spotube/services/logger/logger.dart';
@@ -26,6 +27,8 @@ extension _WebsocketSinkExts on WebSocketSink {
 
 class ServerConnectRoutes {
   final Ref ref;
+  /// Resolves the shared audio engine through Riverpod.
+  SpotubeAudioPlayer get audioPlayer => ref.read(audioPlayerServiceProvider);
   final StreamController<String> _connectClientStreamController;
   final List<StreamSubscription> subscriptions;
   ServerConnectRoutes(this.ref)

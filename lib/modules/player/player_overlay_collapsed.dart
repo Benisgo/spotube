@@ -8,9 +8,9 @@ import 'package:spotube/models/multi_session/multi_session.dart';
 import 'package:spotube/modules/player/player_track_details.dart';
 import 'package:spotube/modules/root/spotube_navigation_bar.dart';
 import 'package:spotube/provider/audio_player/audio_player.dart';
+import 'package:spotube/provider/audio_player/audio_player_service_provider.dart';
 import 'package:spotube/provider/audio_player/querying_track_info.dart';
 import 'package:spotube/provider/multi_session/multi_session.dart';
-import 'package:spotube/services/audio_player/audio_player.dart';
 
 class PlayerOverlayCollapsedSection extends HookConsumerWidget {
   final PanelController panelController;
@@ -21,6 +21,7 @@ class PlayerOverlayCollapsedSection extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, ref) {
+    final audioPlayer = ref.read(audioPlayerServiceProvider);
     final activeTrack = ref.watch(
       audioPlayerProvider.select((s) => s.activeTrack),
     );

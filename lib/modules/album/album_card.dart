@@ -13,8 +13,8 @@ import 'package:spotube/provider/audio_player/querying_track_info.dart';
 import 'package:spotube/provider/connect/connect.dart';
 import 'package:spotube/provider/history/history.dart';
 import 'package:spotube/provider/audio_player/audio_player.dart';
+import 'package:spotube/provider/audio_player/audio_player_service_provider.dart';
 import 'package:spotube/provider/metadata_plugin/tracks/album.dart';
-import 'package:spotube/services/audio_player/audio_player.dart';
 
 extension FormattedAlbumType on SpotubeAlbumType {
   String get formatted => name.replaceFirst(name[0], name[0].toUpperCase());
@@ -35,6 +35,7 @@ class AlbumCard extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, ref) {
+    final audioPlayer = ref.read(audioPlayerServiceProvider);
     final isPlaylistPlaying = ref.watch(
       audioPlayerProvider.select(
         (state) => state.containsCollection(album.id),

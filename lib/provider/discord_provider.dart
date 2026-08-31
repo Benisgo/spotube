@@ -4,6 +4,7 @@ import 'package:flutter_discord_rpc/flutter_discord_rpc.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/provider/audio_player/audio_player.dart';
+import 'package:spotube/provider/audio_player/audio_player_service_provider.dart';
 import 'package:spotube/provider/multi_session/multi_session.dart';
 import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
 import 'package:spotube/services/audio_player/audio_player.dart';
@@ -11,6 +12,8 @@ import 'package:spotube/services/logger/logger.dart';
 import 'package:spotube/utils/platform.dart';
 
 class DiscordNotifier extends AsyncNotifier<void> {
+  /// Resolves the shared audio engine through Riverpod.
+  SpotubeAudioPlayer get audioPlayer => ref.read(audioPlayerServiceProvider);
   Timer? _presenceDebounceTimer;
 
   void _schedulePresenceUpdate(SpotubeTrackObject track) {

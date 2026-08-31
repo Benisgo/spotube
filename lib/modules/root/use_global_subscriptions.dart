@@ -11,11 +11,11 @@ import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/models/multi_session/multi_session.dart';
 import 'package:spotube/modules/metadata_plugins/plugin_update_available_dialog.dart';
 import 'package:spotube/provider/audio_player/audio_player.dart';
+import 'package:spotube/provider/audio_player/audio_player_service_provider.dart';
 import 'package:spotube/provider/metadata_plugin/metadata_plugin_provider.dart';
 import 'package:spotube/provider/metadata_plugin/updater/update_checker.dart';
 import 'package:spotube/provider/multi_session/multi_session.dart';
 import 'package:spotube/provider/server/routes/connect.dart';
-import 'package:spotube/services/audio_player/audio_player.dart';
 import 'package:spotube/services/connectivity_adapter.dart';
 import 'package:spotube/services/logger/logger.dart';
 import 'package:spotube/utils/service_utils.dart';
@@ -27,6 +27,7 @@ const _globalToastWindow = Duration(seconds: 8);
 final Queue<DateTime> _globalToastTimestamps = Queue<DateTime>();
 
 void useGlobalSubscriptions(WidgetRef ref) {
+  final audioPlayer = ref.read(audioPlayerServiceProvider);
   final context = useContext();
   final theme = Theme.of(context);
   final connectRoutes = ref.watch(serverConnectRoutesProvider);

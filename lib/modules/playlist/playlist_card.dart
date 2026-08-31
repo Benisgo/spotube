@@ -13,10 +13,10 @@ import 'package:spotube/provider/audio_player/querying_track_info.dart';
 import 'package:spotube/provider/connect/connect.dart';
 import 'package:spotube/provider/history/history.dart';
 import 'package:spotube/provider/audio_player/audio_player.dart';
+import 'package:spotube/provider/audio_player/audio_player_service_provider.dart';
 import 'package:spotube/provider/metadata_plugin/library/tracks.dart';
 import 'package:spotube/provider/metadata_plugin/tracks/playlist.dart';
 import 'package:spotube/provider/metadata_plugin/core/user.dart';
-import 'package:spotube/services/audio_player/audio_player.dart';
 import 'package:spotube/provider/user_preferences/pinned_playlists_provider.dart';
 
 class PlaylistCard extends HookConsumerWidget {
@@ -35,6 +35,7 @@ class PlaylistCard extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, ref) {
+    final audioPlayer = ref.read(audioPlayerServiceProvider);
     final isPlaylistPlaying = ref.watch(
       audioPlayerProvider.select(
         (state) => state.containsCollection(playlist.id),

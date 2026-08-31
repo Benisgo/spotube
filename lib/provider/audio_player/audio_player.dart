@@ -7,6 +7,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:spotube/models/database/database.dart';
 import 'package:spotube/models/metadata/metadata.dart';
+import 'package:spotube/provider/audio_player/audio_player_service_provider.dart';
 import 'package:spotube/provider/audio_player/state.dart';
 import 'package:spotube/provider/blacklist_provider.dart';
 import 'package:spotube/provider/database/database.dart';
@@ -29,6 +30,9 @@ final pendingPlaybackTrackIdProvider = StateProvider<String?>((ref) => null);
 int _trackTapGeneration = 0;
 
 class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
+  /// Resolves the shared audio engine through Riverpod so it can be
+  /// overridden in tests / with alternate backends.
+  SpotubeAudioPlayer get audioPlayer => ref.read(audioPlayerServiceProvider);
   BlackListNotifier get _blacklist => ref.read(blacklistProvider.notifier);
   int? _lastPersistedPlaylistLength;
   int? _lastPersistedIndex;

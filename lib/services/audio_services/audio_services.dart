@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:spotube/collections/env.dart';
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/provider/audio_player/audio_player.dart';
+import 'package:spotube/provider/audio_player/audio_player_service_provider.dart';
 import 'package:spotube/services/audio_player/audio_player.dart';
 import 'package:spotube/services/audio_services/mobile_audio_service.dart';
 import 'package:spotube/services/audio_services/windows_audio_service.dart';
@@ -23,7 +24,8 @@ class AudioServices with WidgetsBindingObserver {
   ) async {
     final mobile = kIsMobile || kIsMacOS || kIsLinux
         ? await AudioService.init(
-            builder: () => MobileAudioService(playback),
+            builder: () => MobileAudioService(
+                playback, ref.read(audioPlayerServiceProvider)),
             config: AudioServiceConfig(
               androidNotificationChannelId: switch ((
                 kIsLinux,

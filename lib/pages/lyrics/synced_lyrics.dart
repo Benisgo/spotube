@@ -17,9 +17,9 @@ import 'package:spotube/modules/lyrics/zoom_controls.dart';
 import 'package:spotube/modules/lyrics/use_synced_lyrics.dart';
 import 'package:scroll_to_index/scroll_to_index.dart';
 import 'package:spotube/provider/audio_player/audio_player.dart';
+import 'package:spotube/provider/audio_player/audio_player_service_provider.dart';
 import 'package:spotube/provider/lyrics/synced.dart';
 import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
-import 'package:spotube/services/audio_player/audio_player.dart';
 import 'package:spotube/services/logger/logger.dart';
 
 class SyncedLyrics extends HookConsumerWidget {
@@ -38,6 +38,7 @@ class SyncedLyrics extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, ref) {
+    final audioPlayer = ref.read(audioPlayerServiceProvider);
     final mediaQuery = MediaQuery.sizeOf(context);
     final theme = Theme.of(context);
 

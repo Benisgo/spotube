@@ -402,9 +402,9 @@ class Spotube extends HookConsumerWidget {
         LogicalKeySet(LogicalKeyboardKey.mediaPause): PauseIntent(ref),
         LogicalKeySet(LogicalKeyboardKey.mediaPlayPause): PlayPauseIntent(ref),
         LogicalKeySet(LogicalKeyboardKey.mediaTrackNext):
-            const NextTrackIntent(),
+            NextTrackIntent(ref),
         LogicalKeySet(LogicalKeyboardKey.mediaTrackPrevious):
-            const PreviousTrackIntent(),
+            PreviousTrackIntent(ref),
         LogicalKeySet(LogicalKeyboardKey.mediaStop): StopIntent(ref),
         LogicalKeySet(LogicalKeyboardKey.space): PlayPauseIntent(ref),
         LogicalKeySet(LogicalKeyboardKey.comma, LogicalKeyboardKey.control):

@@ -3,23 +3,28 @@ import 'dart:io';
 
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:spotube/provider/audio_player/audio_player.dart';
+import 'package:spotube/provider/audio_player/audio_player_service_provider.dart';
 import 'package:spotube/services/audio_player/audio_player.dart';
 import 'package:media_kit/media_kit.dart' hide Track;
 import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
 
 final audioPlayerLoopMode = StreamProvider<PlaylistMode>((ref) {
+  final audioPlayer = ref.read(audioPlayerServiceProvider);
   return audioPlayer.loopModeStream;
 });
 
 final audioPlayerShuffleMode = StreamProvider<bool>((ref) {
+  final audioPlayer = ref.read(audioPlayerServiceProvider);
   return audioPlayer.shuffledStream;
 });
 final audioPlayerPlaying = StreamProvider<bool>((ref) {
+  final audioPlayer = ref.read(audioPlayerServiceProvider);
   return audioPlayer.playingStream;
 });
 
 final trayMenuProvider = Provider((ref) {
+  final audioPlayer = ref.read(audioPlayerServiceProvider);
   final playlistNotifier = ref.watch(audioPlayerProvider.notifier);
   final isPlaybackPlaying =
       ref.watch(audioPlayerProvider.select((s) => s.activeTrack != null));

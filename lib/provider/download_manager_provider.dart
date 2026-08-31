@@ -182,11 +182,16 @@ class DownloadManagerNotifier extends Notifier<List<DownloadTask>> {
   // NOTE: YoutubeApiClient.* are `static final` (not const), so this list
   // cannot be `const` — it must be `final`.
   static final List<List<YoutubeApiClient>> _downloadClients = [
-    [YoutubeApiClient.androidVr],
-    [YoutubeApiClient.mweb],
+    // IOS leads: it's the client that reliably returns playable streams on
+    // flagged IPs (gcr=eg) WITHOUT triggering the bot-wall, so try it first.
+    // ANDROID_VR is last: its getManifest request bot-walls the IP ("Sign in
+    // to confirm you're not a bot"), poisoning every subsequent fallback —
+    // firing it first was self-defeating.
     [YoutubeApiClient.ios],
+    [YoutubeApiClient.mweb],
     [YoutubeApiClient.android],
     [YoutubeApiClient.tv],
+    [YoutubeApiClient.androidVr],
   ];
 
   static String _clientName(List<YoutubeApiClient> clients) {
@@ -311,20 +316,25 @@ class DownloadManagerNotifier extends Notifier<List<DownloadTask>> {
         }
       }
 
-      // Reuse the streaming cache instead of re-downloading when the cached
-      // stream matches the requested container's format — zero network, zero
-      // data usage. This makes downloading a streamed song as cheap as
-      // streaming it.
+      // Reuse the streaming cache instead of re-downloading — zero network,
+      // zero data usage. Save with the CACHE's real extension (mux=mp4,
+      // audio-only=m4a), not the requested container's: in region-locked
+      // setups the cache's format is the only one actually obtainable
+      // (audio-only 403s; only the mux plays/downloads), so honoring the
+      // requested container would force a futile re-download.
       final cachedStream = await _getStreamCacheFile(track);
       if (cachedStream != null) {
         final cachedExt = extension(cachedStream.path);
-        if (cachedExt == '.${container.getFileExtension()}') {
+        final reuseSavePath = join(downloadLocation, '$baseName$cachedExt');
+        final reuseFile = File(reuseSavePath);
+        if (!await reuseFile.exists() ||
+            await _shouldReplaceFileOnExist(task)) {
           try {
-            await cachedStream.copy(savePath);
+            await cachedStream.copy(reuseSavePath);
             AppLogger.log
                 .i("[download] reused stream cache for ${track.query.id} → "
-                    "$savePath (no network)");
-            await _tagDownloadFile(task, track, savePath);
+                    "$reuseSavePath (no network)");
+            await _tagDownloadFile(task, track, reuseSavePath);
             _setStatus(track.query, DownloadStatus.completed);
             ref.invalidate(localTracksProvider);
             return;

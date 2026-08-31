@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:isolate';
+import 'dart:math';
 
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:http/http.dart' as http;
@@ -116,6 +118,37 @@ class _NsigDecoder {
     });
     return uri.replace(queryParameters: newQuery).toString();
   }
+}
+
+/// Races [resolve] across [clients] and completes with the first non-null
+/// result (first-success-wins). Abandoned clients are NOT awaited — their
+/// HTTP calls finish in the background and are ignored, so we never pay the
+/// "wait for the slowest client" tail. Returns null only if every client
+/// resolves to null (all failed).
+Future<StreamManifest?> _raceFirstSuccess(
+  List<YoutubeApiClient> clients,
+  Future<StreamManifest?> Function(YoutubeApiClient client) resolve,
+) async {
+  final completer = Completer<StreamManifest?>();
+  var pending = clients.length;
+  for (final client in clients) {
+    unawaited(() async {
+      try {
+        final result = await resolve(client);
+        if (result != null && !completer.isCompleted) {
+          completer.complete(result);
+        }
+      } catch (_) {
+        // resolve() swallows its own errors; be defensive.
+      } finally {
+        pending--;
+        if (pending == 0 && !completer.isCompleted) {
+          completer.complete(null);
+        }
+      }
+    }());
+  }
+  return completer.future;
 }
 
 /// Uses youtube_explode_dart's IOS InnerTube client + PipePipe nsig decode.
@@ -252,6 +285,24 @@ class _YtMusicClient {
 
   /// Last client's UA string, used by headersForStreamUrl to match the CDN.
   static String _lastUA = "";
+
+  /// Name of the most recent client that returned playable audio streams.
+  /// getStreamManifest reorders its first wave so this client leads, reusing
+  /// the proven path on steady-state track changes (client-context reuse).
+  static String? _preferredClientName;
+
+  /// Random 16-char client playback nonce (base64-url charset) — same shape
+  /// YouTube's own apps send. Flow attaches a cpn to every player request so
+  /// the request looks like a real playback session instead of a scraper.
+  static String _generateCpn() {
+    const charset =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    final random = Random.secure();
+    return List.generate(
+      16,
+      (_) => charset[random.nextInt(charset.length)],
+    ).join();
+  }
 
   /// Gate for verbose per-format debug logging (debug_fmt/debug_url/probe).
   /// Default OFF — these logs build huge strings on the main isolate and
@@ -419,6 +470,9 @@ class _YtMusicClient {
     payload["videoId"] = videoId;
     payload["contentCheckOk"] = true;
     payload["racyCheckOk"] = true;
+    // Flow parity: attach a per-request client playback nonce (cpn) so the
+    // request carries a real playback-session signature, not a scraper's.
+    payload["cpn"] = _generateCpn();
     final sts = _NsigDecoder.signatureTimestamp;
     // Flow sends signatureTimestamp to ALL clients — not just ANDROID/WEB
     if (sts != null) {
@@ -486,7 +540,11 @@ class _YtMusicClient {
       }
     }
 
-    // PoToken + visitorData enrichment for WEB client only (requires requestHeaders)
+    // Attach session visitorData only to the WEB client (which also gets a
+    // BotGuard poToken). Earlier attempts to attach X-Goog-Visitor-Id to
+    // ANDROID_VR/ANDROID/IOS/MWEB/ANDROID_CREATOR caused those clients to flip
+    // from playable to LOGIN_REQUIRED on this user's IP, so non-WEB clients
+    // stay in their known-working anonymous wire format.
     if (clientName == "WEB") {
       await _enrichWithPoToken(payload, requestHeaders, clientCtx, videoId);
     }
@@ -798,6 +856,7 @@ class YtMusicEngine implements YouTubeEngine {
         final data = await _YtMusicClient.player(videoId, client: client);
         final streams = await _toAudioOnlyStreams(data, videoId);
         if (streams.isNotEmpty) {
+          _YtMusicClient._preferredClientName = name;
           AppLogger.log.i(
               "[yt_music] client_ok videoId=$videoId client=$name audio=${streams.length}");
           return StreamManifest(streams);
@@ -827,29 +886,41 @@ class YtMusicEngine implements YouTubeEngine {
     ];
 
     // First wave: the 4 clients Flow itself uses (ANDROID_VR, MWEB, IOS,
-    // ANDROID_CREATOR) raced concurrently; take the first success in priority
-    // order (Future.wait preserves result order). ANDROID_CREATOR is proven to
-    // work in Flow, but it was previously LAST in the sequential loop — on a
-    // slow mobile network the phone never reached it before mpv's timeout.
-    // Racing it up front means a working client is found in ~18s instead of
-    // ~70s+. If all four fail, continue the rest sequentially rather than
-    // firing all 11 requests at YouTube at once.
-    final firstWaveResults = await Future.wait(clients.take(4).map(_tryClient));
-    for (final manifest in firstWaveResults) {
-      if (manifest != null) return manifest;
+    // ANDROID_CREATOR) fired concurrently, RACED first-success-wins. Racing
+    // returns on the FIRST client that yields audio instead of waiting for
+    // the slowest of the 4 (YouTube slow-rolls rejected clients, so the
+    // slowest is usually a loser). If a previous resolve succeeded, that
+    // client leads the wave so steady-state track changes reuse the proven
+    // path (client-context reuse). Losers are abandoned, not awaited. If all
+    // four fail, continue the rest sequentially rather than firing all 11
+    // requests at YouTube at once.
+    final wave = clients.take(4).toList();
+    final preferred = _YtMusicClient._preferredClientName;
+    if (preferred != null) {
+      final preferredIndex = wave.indexWhere(
+        (client) =>
+            client.payload["context"]["client"]["clientName"] == preferred,
+      );
+      if (preferredIndex > 0) {
+        final knownGood = wave.removeAt(preferredIndex);
+        wave.insert(0, knownGood);
+      }
     }
+    final firstWaveManifest = await _raceFirstSuccess(wave, _tryClient);
+    if (firstWaveManifest != null) return firstWaveManifest;
     for (final client in clients.skip(4)) {
       final manifest = await _tryClient(client);
       if (manifest != null) return manifest;
     }
-    AppLogger.log
-        .i("[yt_music] fallback_streams videoId=$videoId to YoutubeExplode");
-    final yt = YoutubeExplode();
-    try {
-      return await yt.videos.streamsClient.getManifest(videoId);
-    } finally {
-      yt.close();
-    }
+    // Every InnerTube client failed — typically a bot wall (LOGIN_REQUIRED /
+    // UNPLAYABLE) on a flagged IP. THROW instead of silently falling back to
+    // YoutubeExplode: FallbackYouTubeEngine catches this and advances to the
+    // next engine (yt-dlp, NewPipe), whereas a YoutubeExplode manifest here
+    // just ships region-locked URLs that 403 at the CDN (then mux → MPV fail).
+    throw Exception(
+      "[yt_music] all InnerTube clients failed for videoId=$videoId "
+      "(bot wall / no playable audio)",
+    );
   }
 
   @override
@@ -884,16 +955,12 @@ class YtMusicEngine implements YouTubeEngine {
       }
     }
     if (data == null) {
-      AppLogger.log.i(
-          "[yt_music] fallback_all videoId=$videoId all_clients_failed to YoutubeExplode");
-      final yt = YoutubeExplode();
-      try {
-        final video = await yt.videos.get(videoId);
-        final manifest = await yt.videos.streamsClient.getManifest(videoId);
-        return (video, manifest);
-      } finally {
-        yt.close();
-      }
+      // All InnerTube clients failed (bot wall). Throw so the engine chain
+      // advances instead of falling back to YoutubeExplode.
+      throw Exception(
+        "[yt_music] getVideoWithStreamInfo: all InnerTube clients failed "
+        "for videoId=$videoId (bot wall)",
+      );
     }
     Video video;
     final vd = data["videoDetails"] as Map<String, dynamic>?;
@@ -915,15 +982,13 @@ class YtMusicEngine implements YouTubeEngine {
           "[yt_music] gvsi_client_ok videoId=$videoId client=$usedClientName audio=${streams.length}");
       return (video, StreamManifest(streams));
     }
-    AppLogger.log.i(
-        "[yt_music] fallback_all_streams videoId=$videoId client=$usedClientName no_audio to YoutubeExplode");
-    final yt = YoutubeExplode();
-    try {
-      final manifest = await yt.videos.streamsClient.getManifest(videoId);
-      return (video, manifest);
-    } finally {
-      yt.close();
-    }
+    // Client responded but returned no playable audio. Throw so the engine
+    // chain advances to the next engine instead of swallowing into
+    // YoutubeExplode (which yields region-locked URLs on this setup).
+    throw Exception(
+      "[yt_music] getVideoWithStreamInfo: client=$usedClientName returned "
+      "no audio for videoId=$videoId",
+    );
   }
 
   @override

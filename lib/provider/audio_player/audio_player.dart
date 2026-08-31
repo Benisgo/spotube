@@ -1,7 +1,6 @@
 import 'dart:math';
 import 'dart:async';
 
-import 'package:collection/collection.dart';
 import 'package:drift/drift.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:media_kit/media_kit.dart';

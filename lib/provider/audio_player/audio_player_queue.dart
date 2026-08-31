@@ -538,6 +538,14 @@ mixin AudioPlayerQueueOps on AudioPlayerPersistence {
       collections: [],
     );
     _prefetchAdjacentSources();
+    // Resolve the target track's source BEFORE opening the playlist in
+    // media_kit. Opening a playlist of proxy URLs while the active source is
+    // still resolving makes mpv block on an unresolved stream, and on
+    // slow-rolled networks (where source resolution takes ~10s) that stalls
+    // open() and the queued play() command times out ("active.play" 4s
+    // TimeoutException). primeTrackPlayback catches its own errors, so a
+    // failure here still lets the playlist open and the proxy report it.
+    await primeTrackPlayback(selectedTrack);
     PlaybackStartTrace.markTrack(
       selectedTrack.id,
       'audio_player.open_playlist.start',

@@ -2,6 +2,7 @@ import "module:std" as std
 
 var Stream = std.Stream
 var StreamController = std.StreamController
+var Duration = std.Duration
 
 // ── External class declarations (inlined from spotube_plugin module) ──
 external class Cookie {
@@ -113,7 +114,7 @@ class YoutubeAuth {
     // onUrlRequestStream fires at REQUEST time, before the server
     // responds with Set-Cookie headers. A small delay gives the
     // browser time to process response cookies (Bug A3).
-    std.Future.delayed(Duration(seconds: 2)).then(fun(_) {
+    std.FutureUtils.delayed(Duration(seconds: 2), fun(_) {
       _collectCookies(wv)
     })
   }
@@ -174,7 +175,7 @@ class YoutubeAuth {
       // the user is never stuck on the login page.
       _cookieAttempts = _cookieAttempts + 1
       if (_cookieAttempts < 8) {
-        std.Future.delayed(Duration(seconds: 5)).then(fun(_) {
+        std.FutureUtils.delayed(Duration(seconds: 5), fun(_) {
           _collectCookies(wv)
         })
       } else {

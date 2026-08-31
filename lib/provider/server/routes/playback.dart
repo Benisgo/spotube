@@ -975,23 +975,34 @@ class ServerPlaybackRoutes {
       SourcedTrack.invalidate(activeTrack.query.id);
 
       bool fallbackSuccess = false;
-      try {
-        final freshTrack = await SourcedTrack.fetchFromTrack(
-          query: activeTrack.query,
-          ref: ref,
-          forceRefresh: true,
-        );
-        if (freshTrack.url != null) {
-          url = freshTrack.url!;
-          tempRes = await fetchStream(url);
-          if (tempRes.statusCode == 200 || tempRes.statusCode == 206) {
-            _clearStreamFailure(activeTrack);
-            fallbackSuccess = true;
+      // A 403 from googlevideo is a REGION content-lock on audio-only URLs
+      // (gcr=eg), not a stale/expired URL. forceRefresh only re-fetches the
+      // same locked audio-only stream (fast cache hit → same 403), so skip it
+      // and jump straight to the mux fallback, which streams regardless of
+      // login.
+      final isRegionLocked = tempRes?.statusCode == 403;
+      if (!isRegionLocked) {
+        try {
+          final freshTrack = await SourcedTrack.fetchFromTrack(
+            query: activeTrack.query,
+            ref: ref,
+            forceRefresh: true,
+          );
+          if (freshTrack.url != null) {
+            url = freshTrack.url!;
+            tempRes = await fetchStream(url);
+            if (tempRes.statusCode == 200 || tempRes.statusCode == 206) {
+              _clearStreamFailure(activeTrack);
+              fallbackSuccess = true;
+            }
           }
-        }
-      } catch (_) {}
+        } catch (_) {}
+      }
 
       if (!fallbackSuccess) {
+        AppLogger.log.w(
+            "[playback] upstream_fail uri=$requestedUri track=${activeTrack.query.id} "
+            "status=${tempRes?.statusCode} regionLocked=$isRegionLocked → mux fallback");
         final fallbackYt = YoutubeExplode();
         try {
           final manifest = await fallbackYt.videos.streamsClient
@@ -999,14 +1010,19 @@ class ServerPlaybackRoutes {
           // Prefer audio-only (small), but googlevideo 403s non-zero-offset
           // ranges on audio-only without a logged-in session in some regions
           // (gcr=eg). Include the muxed (video+audio) streams as a reliable
-          // fallback — they stream and seek fine regardless of login.
+          // fallback — they stream and seek fine regardless of login. When we
+          // already know audio-only is region-locked, try the mux FIRST so
+          // the user gets audio sooner instead of a futile 403 round-trip.
           final audioCandidates = manifest.audioOnly.toList()
             ..sort((a, b) =>
                 b.bitrate.bitsPerSecond.compareTo(a.bitrate.bitsPerSecond));
           final muxCandidates = manifest.muxed.toList()
             ..sort((a, b) =>
                 b.bitrate.bitsPerSecond.compareTo(a.bitrate.bitsPerSecond));
-          for (final candidate in [...audioCandidates, ...muxCandidates]) {
+          final candidates = isRegionLocked
+              ? [...muxCandidates, ...audioCandidates]
+              : [...audioCandidates, ...muxCandidates];
+          for (final candidate in candidates) {
             url = candidate.url.toString();
             tempRes = await fetchStream(url);
             if (tempRes.statusCode == 200 || tempRes.statusCode == 206) {
@@ -1034,6 +1050,13 @@ class ServerPlaybackRoutes {
       if (!fallbackSuccess) {
         // Only mark a recent failure when EVERYTHING failed (including the
         // mux fallback) — that's a truly dead stream worth cooling down.
+        // This terminal log tells us definitively whether the audio-only 403
+        // is a hard region/IP lock (all mux candidates rejected too) vs a
+        // resolvable case (fallback ok was logged).
+        AppLogger.log.w(
+            "[playback] fallback_failed uri=$requestedUri track=${activeTrack.query.id} "
+            "lastStatus=${tempRes?.statusCode} — all audio + mux candidates rejected "
+            "(hard region/IP content lock, no playable stream)");
         _markStreamFailure(activeTrack);
         throw StateError(
             "Stream ${activeTrack.query.id} returned ${tempRes?.statusCode} after retrying all siblings");

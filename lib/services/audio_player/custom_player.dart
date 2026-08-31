@@ -22,7 +22,14 @@ class CustomPlayer extends Player {
   CustomPlayer({super.configuration})
       : _playerStateStream = StreamController.broadcast() {
     if (kIsAndroid) {
-      nativePlayer.setProperty("network-timeout", "3");
+      // Must be generous: the shelf proxy resolves the upstream YouTube URL
+      // on-demand (the InnerTube player request can take 10-20s+ on slow
+      // mobile networks, and rejected clients are deliberately slow-rolled
+      // ~18s). A 3s timeout made mpv give up ("Failed to open") before
+      // resolution ever finished — so NO track played on Android and it
+      // cascaded through the whole queue. Windows needed 30s; Android needs
+      // even more headroom because its resolution is slower.
+      nativePlayer.setProperty("network-timeout", "60");
       nativePlayer.setProperty(
         "demuxer-max-bytes",
         (10 * 1024 * 1024).toString(), // 10MB — cache entire song
@@ -72,7 +79,6 @@ class CustomPlayer extends Player {
       nativePlayer.setProperty("audio-buffer", "0.050"); // small audio buffer
       nativePlayer.setProperty("keep-open", "no"); // no post-EOF idle state
     } else {
-
       nativePlayer.setProperty("network-timeout", "120");
       nativePlayer.setProperty(
         "demuxer-max-bytes",

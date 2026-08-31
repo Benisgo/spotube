@@ -18,6 +18,7 @@ import 'package:spotube/services/audio_player/audio_player.dart';
 import 'package:spotube/services/logger/logger.dart';
 import 'package:spotube/services/logger/playback_start_trace.dart';
 import 'package:spotube/services/youtube_engine/yt_dlp_worker.dart';
+import 'package:spotube/utils/platform.dart';
 
 final pendingPlaybackTrackIdProvider = StateProvider<String?>((ref) => null);
 
@@ -73,10 +74,14 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
     if (!audioPlayer.isPlaying) return;
 
     final centerIndex = state.currentIndex < 0 ? 0 : state.currentIndex;
+    // On mobile (slow CPU, debug builds) prefetching 3 tracks at once
+    // saturates the device with concurrent stream resolutions, stalling the
+    // actively-playing track. Only prefetch the immediate next track so the
+    // current + previous don't fight the player for CPU and network.
     final indexes = <int>{
-      centerIndex - 1,
-      centerIndex,
-      centerIndex + 1,
+      if (kIsMobile)
+        centerIndex + 1
+      else ...[centerIndex - 1, centerIndex, centerIndex + 1],
     }.where((index) => index >= 0 && index < state.tracks.length);
 
     for (final index in indexes) {

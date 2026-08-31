@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:isolate';
 
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:http/http.dart' as http;
@@ -252,6 +253,12 @@ class _YtMusicClient {
   /// Last client's UA string, used by headersForStreamUrl to match the CDN.
   static String _lastUA = "";
 
+  /// Gate for verbose per-format debug logging (debug_fmt/debug_url/probe).
+  /// Default OFF — these logs build huge strings on the main isolate and
+  /// caused major jank on mobile (debug builds). Flip to true to diagnose
+  /// format-level resolution issues.
+  static bool _verbose = false;
+
   /// SharedPreferences key for persisted YouTube auth cookies
   /// (set by the YouTube audio plugin's Hetu auth).
   static const _ytCookiePrefsKey =
@@ -484,11 +491,19 @@ class _YtMusicClient {
       await _enrichWithPoToken(payload, requestHeaders, clientCtx, videoId);
     }
 
-    final response = await _http.post(
-      Uri.parse(ytClient.apiUrl),
-      headers: requestHeaders,
-      body: jsonEncode(payload),
-    );
+    // Cap per-client latency. YouTube DELIBERATELY delays rejection responses
+    // (LOGIN_REQUIRED/UNPLAYABLE) by ~18s to discourage scraping; a working
+    // client returns streamingData promptly (<10s even on slow links). Timing
+    // out here mainly kills slow denials and moves the client loop forward —
+    // it is NOT a blacklist (a client that would work still responds fast).
+    // The TimeoutException is caught by the caller's client loop.
+    final response = await _http
+        .post(
+          Uri.parse(ytClient.apiUrl),
+          headers: requestHeaders,
+          body: jsonEncode(payload),
+        )
+        .timeout(const Duration(seconds: 10));
 
     // Store cookies (name=value only, strip attributes) + UA for proxy.
     // Handle multiple Set-Cookie headers (joined by newlines in Dart http).
@@ -516,7 +531,13 @@ class _YtMusicClient {
           "YouTube Music player request failed: ${response.statusCode}");
     }
 
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    // Decode the (potentially multi-MB) player response off the main isolate.
+    // On mobile this JSON parse is one of the biggest frame-loop blockers
+    // (Skipped 300+ frames while resolving). bodyBytes is sendable, so the
+    // parse runs on a fresh isolate and only the decoded map comes back.
+    final data = await Isolate.run(
+      () => jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>,
+    );
     final sd = data["streamingData"] as Map<String, dynamic>?;
     final ps = data["playabilityStatus"] as Map<String, dynamic>?;
     final psStatus = ps?["status"]?.toString() ?? "missing";
@@ -765,19 +786,13 @@ class YtMusicEngine implements YouTubeEngine {
     // then MOBILE, IOS, ANDROID_CREATOR. ANDROID_VR-minted URLs serve audio
     // content freely in regions where ANDROID-minted URLs are content-locked
     // (403), so ANDROID_VR must come first for both playback and downloads.
-    for (final client in [
-      YoutubeApiClient.androidVr, // Flow's primary fast client
-      YoutubeApiClient.mweb, // MOBILE
-      YoutubeApiClient.ios, // IOS
-      YoutubeApiClient.android, // ANDROID_CREATOR-ish
-      YoutubeApiClient.safari, // WEB
-      _YtMusicClient._visionOs,
-      YoutubeApiClient.tv,
-      _YtMusicClient._tvSimply,
-      _YtMusicClient._webEmbedded,
-      _YtMusicClient._androidCreator,
-      _YtMusicClient._iPados,
-    ]) {
+    //
+    // Resolution latency matters: on slow mobile networks each InnerTube
+    // player request takes 8-18s, and rejected clients (LOGIN_REQUIRED /
+    // UNPLAYABLE) are deliberately slow-rolled. Racing the first 3 clients
+    // reaches a working client in ~18s instead of ~32s sequentially, so mpv
+    // (network-timeout=60) waits on a warm resolve instead of a long cold one.
+    Future<StreamManifest?> _tryClient(YoutubeApiClient client) async {
       final name = client.payload["context"]["client"]["clientName"];
       try {
         final data = await _YtMusicClient.player(videoId, client: client);
@@ -792,8 +807,40 @@ class YtMusicEngine implements YouTubeEngine {
       } catch (e) {
         AppLogger.log
             .i("[yt_music] client_fail videoId=$videoId client=$name error=$e");
-        continue;
       }
+      return null;
+    }
+
+    final clients = [
+      YoutubeApiClient.androidVr, // Flow's primary fast client
+      YoutubeApiClient.mweb, // MOBILE
+      YoutubeApiClient.ios, // IOS
+      _YtMusicClient
+          ._androidCreator, // YouTube Studio app — proven to work in Flow
+      YoutubeApiClient.android, // ANDROID_CREATOR-ish
+      YoutubeApiClient.safari, // WEB
+      _YtMusicClient._visionOs,
+      YoutubeApiClient.tv,
+      _YtMusicClient._tvSimply,
+      _YtMusicClient._webEmbedded,
+      _YtMusicClient._iPados,
+    ];
+
+    // First wave: the 4 clients Flow itself uses (ANDROID_VR, MWEB, IOS,
+    // ANDROID_CREATOR) raced concurrently; take the first success in priority
+    // order (Future.wait preserves result order). ANDROID_CREATOR is proven to
+    // work in Flow, but it was previously LAST in the sequential loop — on a
+    // slow mobile network the phone never reached it before mpv's timeout.
+    // Racing it up front means a working client is found in ~18s instead of
+    // ~70s+. If all four fail, continue the rest sequentially rather than
+    // firing all 11 requests at YouTube at once.
+    final firstWaveResults = await Future.wait(clients.take(4).map(_tryClient));
+    for (final manifest in firstWaveResults) {
+      if (manifest != null) return manifest;
+    }
+    for (final client in clients.skip(4)) {
+      final manifest = await _tryClient(client);
+      if (manifest != null) return manifest;
     }
     AppLogger.log
         .i("[yt_music] fallback_streams videoId=$videoId to YoutubeExplode");
@@ -904,13 +951,28 @@ class YtMusicEngine implements YouTubeEngine {
     AppLogger.log.i(
         "[yt_music] format_counts videoId=$videoId adaptive=${adaptiveFormats.length} formats=${formats.length}");
 
+    // Pass 1 collects strictly audio-only streams (mimeType starts with
+    // "audio/"). Video muxes (video/ + audio codec) are NOT treated as
+    // audio — they are only used as a last resort in pass 2 below. This
+    // mirrors Flow: audio-only file instead of a 25MB video mux.
+    //
+    // Resolution is split into two phases so the expensive network steps
+    // (n-sig decode + CDN probe) run IN PARALLEL for every candidate. The old
+    // code probed each itag sequentially (up to 4s each) → a track took N×4s
+    // to resolve. On mobile (slow CPU, debug build) that made mpv give up
+    // ("Failed to open") and cascade through the queue. Parallel probing cuts
+    // total resolve time down to roughly one probe round-trip.
+    final candidates = <({
+      Map<String, dynamic> f,
+      String mime,
+      String url,
+    })>[];
     for (final list in [adaptiveFormats, formats]) {
       for (int i = 0; i < list.length; i++) {
         final f = list[i] as Map<String, dynamic>;
         final mimeType = f["mimeType"]?.toString() ?? "";
 
-        // Log first 10 formats details regardless of video/audio type
-        if (i < 20) {
+        if (_YtMusicClient._verbose && i < 20) {
           final u = f["url"]?.toString();
           AppLogger.log.i(
               "[yt_music] debug_fmt[$i] videoId=$videoId list=${list == adaptiveFormats ? "adaptive" : "formats"} "
@@ -922,10 +984,6 @@ class YtMusicEngine implements YouTubeEngine {
               "url=${u != null ? "${u.substring(0, u.length.clamp(0, 60))}..." : "null"}");
         }
 
-        // Pass 1 collects strictly audio-only streams (mimeType starts with
-        // "audio/"). Video muxes (video/ + audio codec) are NOT treated as
-        // audio — they are only used as a last resort in pass 2 below. This
-        // mirrors Flow: audio-only file instead of a 25MB video mux.
         if (!mimeType.startsWith("audio/")) continue;
         var url = f["url"]?.toString();
 
@@ -950,14 +1008,14 @@ class YtMusicEngine implements YouTubeEngine {
                 // Try PipePipe sig decode; skip format if decoding fails
                 final decodedSig = await _NsigDecoder.decodeSignature(s);
                 if (decodedSig == null) {
-                  if (i < 20) {
+                  if (_YtMusicClient._verbose && i < 20) {
                     AppLogger.log.i("[yt_music] sig_skip[$i] videoId=$videoId "
                         "rawLen=${s.length} (PipePipe decoder unavailable)");
                   }
                   continue; // skip this format — sig undecodable
                 }
                 allParams[sp] = decodedSig;
-                if (i < 20) {
+                if (_YtMusicClient._verbose && i < 20) {
                   AppLogger.log
                       .i("[yt_music] sig_decode[$i] videoId=$videoId sp=$sp "
                           "rawLen=${s.length} decodedLen=${decodedSig.length}");
@@ -970,22 +1028,38 @@ class YtMusicEngine implements YouTubeEngine {
             }
           }
         }
-        if (url == null && i < 20) {
-          AppLogger.log.i(
-              "[yt_music] debug_skip[$i] videoId=$videoId no_url_after_cipher list=${list == adaptiveFormats ? "adaptive" : "formats"}");
+        if (url == null) {
+          if (_YtMusicClient._verbose && i < 20) {
+            AppLogger.log.i(
+                "[yt_music] debug_skip[$i] videoId=$videoId no_url_after_cipher list=${list == adaptiveFormats ? "adaptive" : "formats"}");
+          }
+          continue;
         }
-        if (url == null) continue;
 
-        if (i < 20) {
+        if (_YtMusicClient._verbose && i < 20) {
           AppLogger.log.i("[yt_music] debug_url[$i] videoId=$videoId "
               "url=${url.length > 120 ? "${url.substring(0, 120)}..." : url} "
               "hasNSig=${url.contains("&n=") || url.contains("?n=")} "
               "hasSig=${url.contains("&sig=") || url.contains("?sig=")}");
         }
 
-        url = await _NsigDecoder.applyToUrl(url);
+        candidates.add((f: f, mime: mimeType, url: url));
+      }
+    }
 
-        // Store cookies + browser headers for the proxy to use.
+    // Verify all candidates with a ranged GET using the same headers the
+    // shelf proxy will send, fired IN PARALLEL. HEAD is UNRELIABLE for
+    // googlevideo: youtube_explode's client sends a desktop Chrome UA, which
+    // 403s ANDROID-signed URLs even when the URL is perfectly fine on a real
+    // GET. So probe the actual GET path instead: an explicit 403 → drop this
+    // stream so pass 2 can fall back to a working video mux; timeout/network
+    // error → keep it, the proxy will retry and fall back itself.
+    if (candidates.isNotEmpty) {
+      final resolved = await Future.wait(candidates.map((c) async {
+        final url = await _NsigDecoder.applyToUrl(c.url);
+
+        // Store cookies + browser headers for the proxy to use, keyed to the
+        // FINAL (n-sig decoded) URL that the proxy will actually fetch.
         final h = _YtMusicClient.headersForStreamUrl(url);
         if (h != null) {
           // Store under both the raw url and Uri.toString() so the proxy's
@@ -996,44 +1070,49 @@ class YtMusicEngine implements YouTubeEngine {
           AndroidYtDlpEngine.setHeadersForUrl(Uri.parse(url).toString(), h);
         }
 
-        // Verify with a ranged GET using the same headers the shelf proxy
-        // will send. HEAD is UNRELIABLE for googlevideo: youtube_explode's
-        // client sends a desktop Chrome UA, which 403s ANDROID-signed URLs
-        // even when the URL is perfectly fine on a real GET. So probe the
-        // actual GET path instead: an explicit 403 → drop this stream so
-        // pass 2 can fall back to a working video mux; timeout/network
-        // flutter → keep it, the proxy will retry and fall back itself.
+        var status = 0;
         try {
           final probe = await _YtMusicClient._http.get(
             Uri.parse(url),
             headers: {...?h, 'Range': 'bytes=0-0'},
-          ).timeout(const Duration(seconds: 4));
-          AppLogger.log.i(
-              "[yt_music] probe[$i] videoId=$videoId itag=${f["itag"]} status=${probe.statusCode} hasCookie=${(h?.containsKey("cookie") ?? false)} rawUrl=$url");
-          if (probe.statusCode == 403) {
-            AppLogger.log.i(
-                "[yt_music] verify_403_drop[$i] videoId=$videoId itag=${f["itag"]} (GET 403; audio URL rejected — falling back to mux)");
-            continue;
+          ).timeout(const Duration(seconds: 3));
+          status = probe.statusCode;
+          if (_YtMusicClient._verbose) {
+            AppLogger.log
+                .i("[yt_music] probe itag=${c.f["itag"]} status=$status");
+            if (status == 403) {
+              AppLogger.log.i(
+                  "[yt_music] verify_403_drop itag=${c.f["itag"]} (GET 403; audio URL rejected — falling back to mux)");
+            }
           }
         } catch (e) {
-          AppLogger.log.i(
-              "[yt_music] probe_fail[$i] videoId=$videoId itag=${f["itag"]} error=$e rawUrl=$url");
+          if (_YtMusicClient._verbose) {
+            AppLogger.log
+                .i("[yt_music] probe_fail itag=${c.f["itag"]} error=$e");
+          }
           // Timeout/network — keep the stream; the shelf proxy will retry.
         }
+        return (c: c, url: url, status: status);
+      }));
 
+      // Add non-403 streams, preserving the original adaptive-then-formats
+      // ordering (callers sort by preference later).
+      for (final r in resolved) {
+        if (r.status == 403) continue;
+        final c = r.c;
         result.add(AudioOnlyStreamInfo(
           VideoId(videoId),
-          f["itag"] as int? ?? 0,
-          Uri.parse(url),
-          _parseContainer(mimeType),
-          f["contentLength"] != null
-              ? FileSize(int.tryParse(f["contentLength"].toString()) ?? 0)
+          c.f["itag"] as int? ?? 0,
+          Uri.parse(r.url),
+          _parseContainer(c.mime),
+          c.f["contentLength"] != null
+              ? FileSize(int.tryParse(c.f["contentLength"].toString()) ?? 0)
               : FileSize.unknown,
-          Bitrate(f["bitrate"] as int? ?? 0),
-          _parseCodec(mimeType),
-          f["qualityLabel"]?.toString() ?? "",
+          Bitrate(c.f["bitrate"] as int? ?? 0),
+          _parseCodec(c.mime),
+          c.f["qualityLabel"]?.toString() ?? "",
           [],
-          _parseMediaType(mimeType),
+          _parseMediaType(c.mime),
           null,
         ));
       }

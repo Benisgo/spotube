@@ -10,7 +10,6 @@ import 'package:spotube/collections/spotube_icons.dart';
 import 'package:spotube/modules/library/local_folder/local_folder_item.dart';
 import 'package:spotube/extensions/constrains.dart';
 import 'package:spotube/extensions/context.dart';
-import 'package:spotube/provider/local_tracks/local_tracks_provider.dart';
 import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
 import 'package:spotube/utils/platform.dart';
 
@@ -35,37 +34,36 @@ class UserLocalLibraryPage extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, ref) {
     final cacheDir = useFuture(UserPreferencesNotifier.getMusicCacheDir());
-    final preferencesNotifier = ref.watch(userPreferencesProvider.notifier);
-    final preferences = ref.watch(userPreferencesProvider);
+    final preferencesNotifier = ref.read(userPreferencesProvider.notifier);
+    final downloadLocation =
+        ref.watch(userPreferencesProvider.select((s) => s.downloadLocation));
+    final localLibraryLocation = ref
+        .watch(userPreferencesProvider.select((s) => s.localLibraryLocation));
 
     final addLocalLibraryLocation = useCallback(() async {
       if (kIsMobile || kIsMacOS) {
         final dirStr = await FilePicker.platform.getDirectoryPath(
-          initialDirectory: preferences.downloadLocation,
+          initialDirectory: downloadLocation,
         );
         if (dirStr == null) return;
-        if (preferences.localLibraryLocation.contains(dirStr)) return;
-        preferencesNotifier.setLocalLibraryLocation(
-            [...preferences.localLibraryLocation, dirStr]);
+        if (localLibraryLocation.contains(dirStr)) return;
+        preferencesNotifier
+            .setLocalLibraryLocation([...localLibraryLocation, dirStr]);
       } else {
         String? dirStr = await getDirectoryPath(
-          initialDirectory: preferences.downloadLocation,
+          initialDirectory: downloadLocation,
         );
         if (dirStr == null) return;
-        if (preferences.localLibraryLocation.contains(dirStr)) return;
-        preferencesNotifier.setLocalLibraryLocation(
-            [...preferences.localLibraryLocation, dirStr]);
+        if (localLibraryLocation.contains(dirStr)) return;
+        preferencesNotifier
+            .setLocalLibraryLocation([...localLibraryLocation, dirStr]);
       }
-    }, [preferences.localLibraryLocation]);
-
-    // This is just to pre-load the tracks.
-    // For now, this gets all of them.
-    ref.watch(localTracksProvider);
+    }, [downloadLocation, localLibraryLocation, preferencesNotifier]);
 
     final locations = [
-      preferences.downloadLocation,
+      downloadLocation,
       if (cacheDir.hasData) cacheDir.data!,
-      ...preferences.localLibraryLocation,
+      ...localLibraryLocation,
     ];
 
     return LayoutBuilder(

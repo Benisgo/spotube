@@ -18,7 +18,7 @@ class StatsPageTopSection extends HookConsumerWidget {
     final selectedIndex = useState(0);
     final historyDuration = ref.watch(playbackHistoryTopDurationProvider);
     final historyDurationNotifier =
-        ref.watch(playbackHistoryTopDurationProvider.notifier);
+        ref.read(playbackHistoryTopDurationProvider.notifier);
 
     final translations = <HistoryDuration, String>{
       HistoryDuration.days7: context.l10n.this_week,

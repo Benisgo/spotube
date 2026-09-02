@@ -3,8 +3,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:spotube/collections/routes.gr.dart';
-import 'package:spotube/pages/debug/engine_test_page.dart';
-import 'package:spotube/pages/debug/scoring_test_page.dart';
 import 'package:spotube/provider/metadata_plugin/core/auth.dart';
 import 'package:spotube/services/kv_store/kv_store.dart';
 

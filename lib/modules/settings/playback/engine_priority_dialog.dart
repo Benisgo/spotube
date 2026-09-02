@@ -15,11 +15,12 @@ class EnginePriorityDialog extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final preferences = ref.watch(userPreferencesProvider);
-    final preferencesNotifier = ref.watch(userPreferencesProvider.notifier);
+    final youtubeClientEngines = ref
+        .watch(userPreferencesProvider.select((s) => s.youtubeClientEngines));
+    final preferencesNotifier = ref.read(userPreferencesProvider.notifier);
 
     final enginesState = useState<List<YoutubeClientEngine>>(
-      preferences.youtubeClientEngines.toList(),
+      youtubeClientEngines.toList(),
     );
 
     final availableEngines = YoutubeClientEngine.values

@@ -21,7 +21,7 @@ class TopTracks extends HookConsumerWidget {
       historyTopTracksProvider(historyDuration),
     );
     final topTracksNotifier =
-        ref.watch(historyTopTracksProvider(historyDuration).notifier);
+        ref.read(historyTopTracksProvider(historyDuration).notifier);
 
     final tracksData = topTracks.asData?.value.items ?? [];
 

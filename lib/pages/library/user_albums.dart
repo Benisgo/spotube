@@ -31,7 +31,7 @@ class UserAlbumsPage extends HookConsumerWidget {
     final authenticated = ref.watch(metadataPluginAuthenticatedProvider);
     final albumsQuery = ref.watch(metadataPluginSavedAlbumsProvider);
     final albumsQueryNotifier =
-        ref.watch(metadataPluginSavedAlbumsProvider.notifier);
+        ref.read(metadataPluginSavedAlbumsProvider.notifier);
 
     final controller = useScrollController();
 

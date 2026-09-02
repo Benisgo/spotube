@@ -28,7 +28,7 @@ class SettingsLanguageRegionSection extends HookConsumerWidget {
   Widget build(BuildContext context, ref) {
     final preferences = ref.watch(userPreferencesProvider);
     final preferencesNotifier = ref.watch(userPreferencesProvider.notifier);
-    final mediaQuery = MediaQuery.of(context);
+    final mediaQuery = MediaQuery.sizeOf(context);
 
     return SectionCardWithHeading(
       heading: context.l10n.language_region,

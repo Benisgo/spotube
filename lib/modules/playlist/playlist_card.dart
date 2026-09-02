@@ -41,15 +41,19 @@ class PlaylistCard extends HookConsumerWidget {
         (state) => state.containsCollection(playlist.id),
       ),
     );
-    final isFetchingActiveTrack = ref.watch(queryingTrackInfoProvider);
+    final isFetchingActiveTrack =
+        isPlaylistPlaying ? ref.watch(queryingTrackInfoProvider) : false;
     final historyNotifier = ref.read(playbackHistoryActionsProvider);
     final playlistNotifier = ref.read(audioPlayerProvider.notifier);
 
-    final playing =
-        useStream(audioPlayer.playingStream).data ?? audioPlayer.isPlaying;
-
     final updating = useState(false);
-    final me = ref.watch(metadataPluginUserProvider);
+    final isOwner = ref.watch(
+      metadataPluginUserProvider.select(
+        (me) =>
+            me.asData?.value?.id != null &&
+            me.asData?.value?.id == playlist.owner.id,
+      ),
+    );
 
     final isPinned = ref.watch(
       pinnedPlaylistsProvider.select(
@@ -89,9 +93,9 @@ class PlaylistCard extends HookConsumerWidget {
     final onPlaybuttonPressed = useCallback(() async {
       try {
         updating.value = true;
-        if (isPlaylistPlaying && playing) {
+        if (isPlaylistPlaying && audioPlayer.isPlaying) {
           return audioPlayer.pause();
-        } else if (isPlaylistPlaying && !playing) {
+        } else if (isPlaylistPlaying && !audioPlayer.isPlaying) {
           return audioPlayer.resume();
         }
 
@@ -128,7 +132,7 @@ class PlaylistCard extends HookConsumerWidget {
       }
     }, [
       isPlaylistPlaying,
-      playing,
+      audioPlayer,
       fetchInitialTracks,
       context,
       showSelectDeviceDialog,
@@ -199,8 +203,6 @@ class PlaylistCard extends HookConsumerWidget {
 
     final isLoading =
         (isPlaylistPlaying && isFetchingActiveTrack) || updating.value;
-    final isOwner = playlist.owner.id == me.asData?.value?.id &&
-        me.asData?.value?.id != null;
 
     if (_isTile) {
       return PlaybuttonTile(

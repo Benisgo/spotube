@@ -23,13 +23,15 @@ class ArtistPageTopTracks extends HookConsumerWidget {
     final theme = Theme.of(context);
     final isLoading = useState(false);
 
-    final playlist = ref.watch(audioPlayerProvider);
-    final playlistNotifier = ref.watch(audioPlayerProvider.notifier);
     final topTracksQuery =
         ref.watch(metadataPluginArtistTopTracksProvider(artistId));
 
-    final isPlaylistPlaying = playlist.containsTracks(
-      topTracksQuery.asData?.value.items ?? <SpotubeTrackObject>[],
+    final isPlaylistPlaying = ref.watch(
+      audioPlayerProvider.select(
+        (s) => s.containsTracks(
+          topTracksQuery.asData?.value.items ?? <SpotubeTrackObject>[],
+        ),
+      ),
     );
 
     if (topTracksQuery.hasError) {
@@ -59,9 +61,9 @@ class ArtistPageTopTracks extends HookConsumerWidget {
           final remotePlayback = ref.read(connectProvider.notifier);
           final remotePlaylist = ref.read(queueProvider);
 
-          final isPlaylistPlaying = remotePlaylist.containsTracks(tracks);
+          final isPlayingOnRemote = remotePlaylist.containsTracks(tracks);
 
-          if (!isPlaylistPlaying) {
+          if (!isPlayingOnRemote) {
             await remotePlayback.load(
               WebSocketLoadEventData.playlist(
                 tracks: tracks,
@@ -70,21 +72,24 @@ class ArtistPageTopTracks extends HookConsumerWidget {
                     tracks.indexWhere((s) => s.id == currentTrack?.id),
               ),
             );
-          } else if (isPlaylistPlaying &&
+          } else if (isPlayingOnRemote &&
               currentTrack.id != remotePlaylist.activeTrack?.id) {
-            final index = playlist.tracks
+            final index = remotePlaylist.tracks
                 .toList()
                 .indexWhere((s) => s.id == currentTrack!.id);
             await remotePlayback.jumpTo(index);
           }
         } else {
-          if (!isPlaylistPlaying) {
+          final playlist = ref.read(audioPlayerProvider);
+          final playlistNotifier = ref.read(audioPlayerProvider.notifier);
+          final isPlayingLocal = playlist.containsTracks(tracks);
+          if (!isPlayingLocal) {
             playlistNotifier.load(
               tracks,
               initialIndex: tracks.indexWhere((s) => s.id == currentTrack?.id),
               autoPlay: true,
             );
-          } else if (isPlaylistPlaying &&
+          } else if (isPlayingLocal &&
               currentTrack.id != playlist.activeTrack?.id) {
             await playlistNotifier.jumpToTrack(currentTrack);
           }
@@ -112,7 +117,9 @@ class ArtistPageTopTracks extends HookConsumerWidget {
                     SpotubeIcons.queueAdd,
                   ),
                   onPressed: () {
-                    playlistNotifier.addTracks(topTracks.toList());
+                    ref
+                        .read(audioPlayerProvider.notifier)
+                        .addTracks(topTracks.toList());
                     showToast(
                       context: context,
                       location: ToastLocation.topRight,

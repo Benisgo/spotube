@@ -225,6 +225,7 @@ class SettingsPlaybackSection extends HookConsumerWidget {
                 : size.bytes >= 1048576
                     ? "${(size.bytes / 1048576).toStringAsFixed(1)} MB"
                     : "${(size.bytes / 1024).toStringAsFixed(0)} KB";
+            if (!context.mounted) return;
             final confirmed = await showDialog<bool>(
               context: context,
               builder: (ctx) => AlertDialog(

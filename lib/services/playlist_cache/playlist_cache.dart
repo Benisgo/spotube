@@ -23,7 +23,8 @@ class PlaylistCacheService {
     try {
       final dirPath = await _getCacheDirectoryPath();
       final file = File(join(dirPath, "user_playlists.json"));
-      await file.writeAsString(jsonEncode(data.toJson((item) => item.toJson())));
+      await file
+          .writeAsString(jsonEncode(data.toJson((item) => item.toJson())));
     } catch (e, stack) {
       AppLogger.reportError(e, stack);
     }
@@ -38,7 +39,8 @@ class PlaylistCacheService {
       if (await file.exists()) {
         final content = await file.readAsString();
         final json = jsonDecode(content) as Map<String, dynamic>;
-        return SpotubePaginationResponseObject<SpotubeSimplePlaylistObject>.fromJson(
+        return SpotubePaginationResponseObject<
+            SpotubeSimplePlaylistObject>.fromJson(
           json,
           (itemJson) => SpotubeSimplePlaylistObject.fromJson(itemJson),
         );
@@ -63,7 +65,8 @@ class PlaylistCacheService {
         try {
           final content = await file.readAsString();
           final json = jsonDecode(content) as Map<String, dynamic>;
-          existing = SpotubePaginationResponseObject<SpotubeFullTrackObject>.fromJson(
+          existing =
+              SpotubePaginationResponseObject<SpotubeFullTrackObject>.fromJson(
             json,
             (itemJson) => SpotubeFullTrackObject.fromJson(itemJson),
           );
@@ -89,7 +92,8 @@ class PlaylistCacheService {
         items: mergedList,
       );
 
-      await file.writeAsString(jsonEncode(fullData.toJson((item) => item.toJson())));
+      await file
+          .writeAsString(jsonEncode(fullData.toJson((item) => item.toJson())));
     } catch (e, stack) {
       AppLogger.reportError(e, stack);
     }

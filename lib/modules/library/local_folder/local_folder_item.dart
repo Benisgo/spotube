@@ -23,7 +23,7 @@ class LocalFolderItem extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, ref) {
     final ThemeData(:colorScheme) = Theme.of(context);
-    final mediaQuery = MediaQuery.of(context);
+    final mediaQuery = MediaQuery.sizeOf(context);
 
     final downloadFolder =
         ref.watch(userPreferencesProvider.select((s) => s.downloadLocation));

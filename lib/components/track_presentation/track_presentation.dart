@@ -58,9 +58,8 @@ class TrackPresentation extends HookConsumerWidget {
               controller: scrollController,
               child: CustomScrollView(
                 controller: scrollController,
-                // Keep ~15 rows alive beyond each edge so back-and-forth
-                // scrolling doesn't rebuild the same TrackTiles repeatedly.
-                cacheExtent: 1000,
+                // Standard cache extent for smooth scrolling without memory/layout bloat.
+                cacheExtent: 200,
                 physics: const BouncingScrollPhysics(
                   parent: AlwaysScrollableScrollPhysics(),
                 ),

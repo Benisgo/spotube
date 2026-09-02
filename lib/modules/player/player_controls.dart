@@ -53,10 +53,18 @@ class PlayerControls extends HookConsumerWidget {
     final playing =
         useStream(audioPlayer.playingStream).data ?? audioPlayer.isPlaying;
 
-    final multiSession = ref.watch(multiSessionProvider);
-    final isListener = multiSession.connected &&
-        !multiSession.can(MultiSessionPermission.controlPlayback);
-    final displayPlaying = playing && !multiSession.locallyMuted;
+    final isMultiSessionConnected = ref.watch(
+      multiSessionProvider.select((s) => s.connected),
+    );
+    final isListener = ref.watch(
+      multiSessionProvider.select(
+        (s) => s.connected && !s.can(MultiSessionPermission.controlPlayback),
+      ),
+    );
+    final locallyMuted = ref.watch(
+      multiSessionProvider.select((s) => s.locallyMuted),
+    );
+    final displayPlaying = playing && !locallyMuted;
     final theme = Theme.of(context);
 
     void showNoPreviousTrackToast() {
@@ -197,40 +205,41 @@ class PlayerControls extends HookConsumerWidget {
                 children: [
                   // Hide shuffle button entirely when in a multi-session
                   // room — shuffle is synced from the host (Bug B1).
-                  if (!multiSession.connected)
+                  if (!isMultiSessionConnected)
                     Consumer(builder: (context, ref, _) {
-                      final shuffled = ref
-                          .watch(audioPlayerProvider.select((s) => s.shuffled));
-                      return Tooltip(
-                        tooltip: TooltipContainer(
-                          child: Text(
-                            shuffled
-                                ? context.l10n.unshuffle_playlist
-                                : context.l10n.shuffle_playlist,
+                        final shuffled = ref.watch(
+                            audioPlayerProvider.select((s) => s.shuffled));
+                        return Tooltip(
+                          tooltip: TooltipContainer(
+                            child: Text(
+                              shuffled
+                                  ? context.l10n.unshuffle_playlist
+                                  : context.l10n.shuffle_playlist,
+                            ),
+                          ).call,
+                          child: IconButton(
+                            size: buttonSize,
+                            icon: Icon(
+                              SpotubeIcons.shuffle,
+                              color:
+                                  shuffled ? theme.colorScheme.primary : null,
+                              size: 22,
+                            ),
+                            variance: shuffled
+                                ? ButtonVariance.secondary
+                                : ButtonVariance.ghost,
+                            onPressed: isFetchingActiveTrack
+                                ? null
+                                : () {
+                                    if (shuffled) {
+                                      audioPlayer.setShuffle(false);
+                                    } else {
+                                      audioPlayer.setShuffle(true);
+                                    }
+                                  },
                           ),
-                        ).call,
-                        child: IconButton(
-                          size: buttonSize,
-                          icon: Icon(
-                            SpotubeIcons.shuffle,
-                            color: shuffled ? theme.colorScheme.primary : null,
-                            size: 22,
-                          ),
-                          variance: shuffled
-                              ? ButtonVariance.secondary
-                              : ButtonVariance.ghost,
-                          onPressed: isFetchingActiveTrack
-                              ? null
-                              : () {
-                                  if (shuffled) {
-                                    audioPlayer.setShuffle(false);
-                                  } else {
-                                    audioPlayer.setShuffle(true);
-                                  }
-                                },
-                        ),
-                      );
-                    }),
+                        );
+                      }),
                   if (!isListener)
                     Tooltip(
                       tooltip: TooltipContainer(

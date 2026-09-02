@@ -35,7 +35,7 @@ class UserArtistsPage extends HookConsumerWidget {
 
     final artistQuery = ref.watch(metadataPluginSavedArtistsProvider);
     final artistQueryNotifier =
-        ref.watch(metadataPluginSavedArtistsProvider.notifier);
+        ref.read(metadataPluginSavedArtistsProvider.notifier);
 
     final searchText = useState('');
 

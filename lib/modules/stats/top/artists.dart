@@ -22,7 +22,7 @@ class TopArtists extends HookConsumerWidget {
       historyTopTracksProvider(historyDuration),
     );
     final topTracksNotifier =
-        ref.watch(historyTopTracksProvider(historyDuration).notifier);
+        ref.read(historyTopTracksProvider(historyDuration).notifier);
 
     final artistsData =
         useMemoized(() => topTracksNotifier.artists, [topTracks.asData?.value]);

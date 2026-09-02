@@ -25,12 +25,18 @@ class TrackPresentationTopSection extends HookConsumerWidget {
     final scale = context.theme.scaling;
     final isUserPlaylist = useIsUserPlaylist(ref, options.collectionId);
 
-    final decorationImage = DecorationImage(
-      image: UniversalImage.imageProvider(options.image),
-      fit: BoxFit.cover,
-    );
+    // lib/components/track_presentation/presentation_top.dart around line 28
 
     final imageDimension = mediaQuery.mdAndUp ? 200 : 120;
+
+    final decorationImage = DecorationImage(
+      image: UniversalImage.imageProvider(
+        options.image,
+        height: imageDimension * scale,
+        width: imageDimension * scale,
+      ),
+      fit: BoxFit.cover,
+    );
 
     final (:isLoading, :isActive, :onPlay, :onShuffle, :onAddToQueue) =
         useActionCallbacks(ref);

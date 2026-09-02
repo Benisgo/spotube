@@ -79,7 +79,8 @@ class PlayerOverlayCollapsedSection extends HookConsumerWidget {
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 250),
       child: canShow && shouldShow.value
-          ? Padding(
+          ? RepaintBoundary(
+              child: Padding(
               padding: const EdgeInsets.all(5),
               child: SurfaceCard(
                 surfaceBlur: theme.surfaceBlur,
@@ -89,6 +90,7 @@ class PlayerOverlayCollapsedSection extends HookConsumerWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    // ... (rest unchanged)
                     Expanded(
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -173,7 +175,7 @@ class PlayerOverlayCollapsedSection extends HookConsumerWidget {
                   ],
                 ),
               ),
-            )
+            ))
           : const SizedBox.shrink(),
     );
   }

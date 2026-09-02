@@ -30,8 +30,7 @@ void useGlobalSubscriptions(WidgetRef ref) {
   final audioPlayer = ref.read(audioPlayerServiceProvider);
   final context = useContext();
   final theme = Theme.of(context);
-  final connectRoutes = ref.watch(serverConnectRoutesProvider);
-  final multiSessionState = ref.watch(multiSessionProvider);
+  final connectRoutes = ref.read(serverConnectRoutesProvider);
 
   MultiSessionMember? memberById(
     MultiSessionRoomSnapshot? snapshot,
@@ -111,24 +110,26 @@ void useGlobalSubscriptions(WidgetRef ref) {
     });
   }
 
-  final previousSnapshot = usePrevious(multiSessionState.snapshot);
   final lastRoomToast = useRef<String?>(null);
 
-  useEffect(() {
-    final notice = multiSessionState.notice;
-    if (notice == null) return null;
-
-    if (notice.destructive) {
-      showDestructiveToast(notice.message);
-    } else {
-      showInformationalToast(notice.message);
+  ref.listen(multiSessionProvider, (previous, next) {
+    final notice = next.notice;
+    if (notice != null && notice.id != previous?.notice?.id) {
+      if (notice.destructive) {
+        showDestructiveToast(notice.message);
+      } else {
+        showInformationalToast(notice.message);
+      }
     }
-    return null;
-  }, [multiSessionState.notice?.id]);
 
-  useEffect(() {
-    final snapshot = multiSessionState.snapshot;
-    if (snapshot == null || previousSnapshot == null) return null;
+    final snapshot = next.snapshot;
+    final previousSnapshot = previous?.snapshot;
+
+    if (snapshot == null ||
+        previousSnapshot == null ||
+        snapshot.sequence == previousSnapshot.sequence) {
+      return;
+    }
 
     final previousMemberIds = previousSnapshot.members.map((m) => m.id).toSet();
     final currentMemberIds = snapshot.members.map((m) => m.id).toSet();
@@ -167,9 +168,7 @@ void useGlobalSubscriptions(WidgetRef ref) {
         showInformationalToast(message);
       }
     }
-
-    return null;
-  }, [multiSessionState.snapshot?.sequence]);
+  });
 
   useEffect(() {
     WidgetsBinding.instance.addPostFrameCallback((_) async {

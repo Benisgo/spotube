@@ -5,8 +5,6 @@ import 'package:shadcn_flutter/shadcn_flutter.dart';
 import 'package:spotube/collections/routes.gr.dart';
 import 'package:spotube/collections/spotube_icons.dart';
 import 'package:spotube/l10n/l10n.dart';
-import 'package:spotube/pages/debug/engine_test_page.dart';
-import 'package:spotube/pages/debug/scoring_test_page.dart';
 
 class SideBarTiles {
   final IconData icon;

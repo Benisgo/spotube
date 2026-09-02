@@ -442,6 +442,13 @@ mixin AudioPlayerQueueOps on AudioPlayerPersistence {
 
   Future<void> removeTracks(Iterable<String> trackIds) async {
     final trackIdSet = trackIds.toSet();
+    // Remove from the player's playlist highest index first: each removal
+    // shifts the remaining indexes, so removing in ascending order would hit
+    // the wrong (or out-of-range) track after the first removal. The indexes
+    // are the ORIGINAL positions in state.tracks (not positions in a filtered
+    // copy), so they stay valid against the player's parallel playlist.
+    final trackIndexes = descendingTrackIndexes(state.tracks, trackIdSet);
+
     final tracks = state.tracks
         .where((element) => !trackIdSet.contains(element.id))
         .toList();
@@ -450,12 +457,6 @@ mixin AudioPlayerQueueOps on AudioPlayerPersistence {
       tracks: tracks,
     );
 
-    // Remove from the player's playlist highest index first: each removal
-    // shifts the remaining indexes, so removing in ascending order would hit
-    // the wrong (or out-of-range) track after the first removal. The indexes
-    // are the ORIGINAL positions in state.tracks (not positions in a filtered
-    // copy), so they stay valid against the player's parallel playlist.
-    final trackIndexes = descendingTrackIndexes(state.tracks, trackIdSet);
     for (final index in trackIndexes) {
       await audioPlayer.removeTrack(index);
     }
@@ -547,29 +548,9 @@ mixin AudioPlayerQueueOps on AudioPlayerPersistence {
     // TimeoutException). primeTrackPlayback catches its own errors, so a
     // failure here still lets the playlist open and the proxy report it.
     //
-    // Skip ahead past unplayable (geo-blocked / dead) tracks: prime each
-    // candidate and open at the first playable one, so a dead video advances
-    // cleanly to the next song instead of hanging or error-storming. Local
-    // tracks are always playable. The scan is capped to bound the worst case
-    // (a whole run of dead tracks falls back to the original index and the
-    // player's cascade handles it).
-    const maxUnplayableSkip = 8;
-    final scanEnd =
-        (safeInitialIndex + maxUnplayableSkip).clamp(0, medias.length).toInt();
-    for (var i = safeInitialIndex; i < scanEnd; i++) {
-      final candidate = medias[i].track;
-      if (await primeTrackPlayback(candidate)) {
-        openIndex = i;
-        selectedTrack = candidate;
-        break;
-      }
-      AppLogger.log.w(
-        "[playback] track ${candidate.id} (index $i) unplayable — skipping ahead",
-      );
-    }
-    if (openIndex != safeInitialIndex) {
-      state = state.copyWith(currentIndex: openIndex);
-    }
+    // Prime the track asynchronously in the background so openPlaylist starts immediately
+    // without blocking the main Dart UI isolate.
+    unawaited(primeTrackPlayback(selectedTrack));
     PlaybackStartTrace.markTrack(
       selectedTrack.id,
       'audio_player.open_playlist.start',

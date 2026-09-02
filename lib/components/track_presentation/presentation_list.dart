@@ -184,17 +184,9 @@ class PresentationListSection extends HookConsumerWidget {
         );
       }
 
-      // Populate the cache in batches of 5 with micro-delays so the
-      // frame budget isn't overwhelmed by N simultaneous tile builds.
-      var newCache = Map<int, SpotubeFullTrackObject>.from(cache.value);
+      final newCache = Map<int, SpotubeFullTrackObject>.from(cache.value);
       for (int i = 0; i < result.items.length; i++) {
         final idx = offset + i;
-        if (newCache.containsKey(idx)) continue;
-        if (i > 0 && i % 5 == 0) {
-          cache.value = newCache;
-          newCache = Map<int, SpotubeFullTrackObject>.from(cache.value);
-          await Future<void>.delayed(const Duration(milliseconds: 1));
-        }
         newCache[idx] = result.items[i];
       }
       cache.value = newCache;

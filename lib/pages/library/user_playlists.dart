@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart' as material;
 import 'package:flutter_hooks/flutter_hooks.dart';
-import 'package:fuzzywuzzy/fuzzywuzzy.dart';
 import 'package:collection/collection.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart' hide Image;
@@ -38,7 +37,7 @@ class UserPlaylistsPage extends HookConsumerWidget {
     final me = ref.watch(metadataPluginUserProvider);
     final playlistsQuery = ref.watch(metadataPluginSavedPlaylistsProvider);
     final playlistsQueryNotifier =
-        ref.watch(metadataPluginSavedPlaylistsProvider.notifier);
+        ref.read(metadataPluginSavedPlaylistsProvider.notifier);
 
     final likedTracksPlaylist = useMemoized(
       () => me.asData?.value == null
@@ -76,15 +75,11 @@ class UserPlaylistsPage extends HookConsumerWidget {
             }),
           ];
         }
+        final query = searchText.value.toLowerCase().trim();
         return [
           if (likedTracksPlaylist != null) likedTracksPlaylist,
           ...queryItems,
-        ]
-            .map((e) => (weightedRatio(e.name, searchText.value), e))
-            .sorted((a, b) => b.$1.compareTo(a.$1))
-            .where((e) => e.$1 > 50)
-            .map((e) => e.$2)
-            .toList();
+        ].where((e) => e.name.toLowerCase().contains(query)).toList();
       },
       [playlistsQuery, searchText.value, pinnedPlaylists, likedTracksPlaylist],
     );

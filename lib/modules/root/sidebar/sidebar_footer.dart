@@ -25,13 +25,16 @@ class SidebarFooter extends HookConsumerWidget {
   Widget build(BuildContext context, ref) {
     final theme = Theme.of(context);
     final router = AutoRouter.of(context, watch: true);
-    final mediaQuery = MediaQuery.of(context);
-    final downloadCount = ref
-        .watch(downloadManagerProvider)
-        .where((e) =>
-            e.status == DownloadStatus.downloading ||
-            e.status == DownloadStatus.queued)
-        .length;
+    final mediaQuery = MediaQuery.sizeOf(context);
+    final downloadCount = ref.watch(
+      downloadManagerProvider.select(
+        (list) => list
+            .where((e) =>
+                e.status == DownloadStatus.downloading ||
+                e.status == DownloadStatus.queued)
+            .length,
+      ),
+    );
     final userSnapshot = ref.watch(metadataPluginUserProvider);
     final data = userSnapshot.asData?.value;
 

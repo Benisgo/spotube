@@ -22,8 +22,6 @@ class SearchTracksSection extends HookConsumerWidget {
     final searchTerm = ref.watch(searchTermStateProvider);
     final search = ref.watch(metadataPluginSearchAllProvider(searchTerm));
     final tracks = search.asData?.value.tracks ?? [];
-    final playlistNotifier = ref.watch(audioPlayerProvider.notifier);
-    final playlist = ref.watch(audioPlayerProvider);
     final theme = Theme.of(context);
 
     return Column(
@@ -42,67 +40,75 @@ class SearchTracksSection extends HookConsumerWidget {
           const CircularProgressIndicator()
         else
           ...tracks.mapIndexed((i, track) {
-            return TrackTile(
-              index: i,
-              track: track,
-              onTap: () async {
-                final isRemoteDevice =
-                    await showSelectDeviceDialog(context, ref);
+            return RepaintBoundary(
+              key: ValueKey(track.id),
+              child: TrackTile(
+                index: i,
+                track: track,
+                onTap: () async {
+                  final isRemoteDevice =
+                      await showSelectDeviceDialog(context, ref);
 
-                if (isRemoteDevice == null) return;
+                  if (isRemoteDevice == null) return;
 
-                if (isRemoteDevice) {
-                  final remotePlayback = ref.read(connectProvider.notifier);
-                  final remotePlaylist = ref.read(queueProvider);
+                  if (isRemoteDevice) {
+                    final remotePlayback = ref.read(connectProvider.notifier);
+                    final remotePlaylist = ref.read(queueProvider);
 
-                  final isTrackPlaying =
-                      remotePlaylist.activeTrack?.id == track.id;
+                    final isTrackPlaying =
+                        remotePlaylist.activeTrack?.id == track.id;
 
-                  if (!isTrackPlaying && context.mounted) {
-                    final shouldPlay = (playlist.tracks.length) > 20
-                        ? await showPromptDialog(
-                            context: context,
-                            title: context.l10n.playing_track(
-                              track.name,
-                            ),
-                            message: context.l10n.queue_clear_alert(
-                              playlist.tracks.length,
-                            ),
-                          )
-                        : true;
+                    if (!isTrackPlaying && context.mounted) {
+                      final currentQueueLen =
+                          ref.read(audioPlayerProvider).tracks.length;
+                      final shouldPlay = currentQueueLen > 20
+                          ? await showPromptDialog(
+                              context: context,
+                              title: context.l10n.playing_track(
+                                track.name,
+                              ),
+                              message: context.l10n.queue_clear_alert(
+                                currentQueueLen,
+                              ),
+                            )
+                          : true;
 
-                    if (shouldPlay) {
-                      await remotePlayback.load(
-                        WebSocketLoadEventData.playlist(
-                          tracks: [track],
-                        ),
-                      );
+                      if (shouldPlay) {
+                        await remotePlayback.load(
+                          WebSocketLoadEventData.playlist(
+                            tracks: [track],
+                          ),
+                        );
+                      }
+                    }
+                  } else {
+                    final playlist = ref.read(audioPlayerProvider);
+                    final playlistNotifier =
+                        ref.read(audioPlayerProvider.notifier);
+                    final isTrackPlaying = playlist.activeTrack?.id == track.id;
+                    if (!isTrackPlaying && context.mounted) {
+                      final shouldPlay = (playlist.tracks.length) > 20
+                          ? await showPromptDialog(
+                              context: context,
+                              title: context.l10n.playing_track(
+                                track.name,
+                              ),
+                              message: context.l10n.queue_clear_alert(
+                                playlist.tracks.length,
+                              ),
+                            )
+                          : true;
+
+                      if (shouldPlay) {
+                        await playlistNotifier.load(
+                          [track],
+                          autoPlay: true,
+                        );
+                      }
                     }
                   }
-                } else {
-                  final isTrackPlaying = playlist.activeTrack?.id == track.id;
-                  if (!isTrackPlaying && context.mounted) {
-                    final shouldPlay = (playlist.tracks.length) > 20
-                        ? await showPromptDialog(
-                            context: context,
-                            title: context.l10n.playing_track(
-                              track.name,
-                            ),
-                            message: context.l10n.queue_clear_alert(
-                              playlist.tracks.length,
-                            ),
-                          )
-                        : true;
-
-                    if (shouldPlay) {
-                      await playlistNotifier.load(
-                        [track],
-                        autoPlay: true,
-                      );
-                    }
-                  }
-                }
-              },
+                },
+              ),
             );
           }),
       ],

@@ -59,11 +59,10 @@ class ColorSchemePickerDialog extends HookConsumerWidget {
   const ColorSchemePickerDialog({super.key});
 
   @override
-  Widget build(BuildContext context, ref) {
-    final preferences = ref.watch(userPreferencesProvider);
-    final preferencesNotifier = ref.watch(userPreferencesProvider.notifier);
-
-    final scheme = preferences.accentColorScheme;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scheme =
+        ref.watch(userPreferencesProvider.select((s) => s.accentColorScheme));
+    final preferencesNotifier = ref.read(userPreferencesProvider.notifier);
     final active = useState<String?>(
       colorsMap.firstWhereOrNull(
         (element) {

@@ -40,12 +40,10 @@ class AppLogger {
     debugTelemetryEnabled = verbose;
     log = Logger(
       level: verbose ? Level.all : Level.info,
-      printer: kDebugMode
-          ? SimplePrinter(
-              printTime: true,
-              colors: false,
-            )
-          : PrettyPrinter(),
+      printer: SimplePrinter(
+        printTime: true,
+        colors: false,
+      ),
     );
   }
 

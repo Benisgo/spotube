@@ -113,12 +113,18 @@ class HorizontalPlaybuttonCardView<T> extends HookWidget {
                             final item = items[index];
 
                             return switch (item) {
-                              SpotubeSimplePlaylistObject() => PlaylistCard(
-                                  item as SpotubeSimplePlaylistObject),
-                              SpotubeSimpleAlbumObject() =>
-                                AlbumCard(item as SpotubeSimpleAlbumObject),
-                              SpotubeFullArtistObject() =>
-                                ArtistCard(item as SpotubeFullArtistObject),
+                              SpotubeSimplePlaylistObject() => RepaintBoundary(
+                                  child: PlaylistCard(
+                                      item as SpotubeSimplePlaylistObject),
+                                ),
+                              SpotubeSimpleAlbumObject() => RepaintBoundary(
+                                  child: AlbumCard(
+                                      item as SpotubeSimpleAlbumObject),
+                                ),
+                              SpotubeFullArtistObject() => RepaintBoundary(
+                                  child: ArtistCard(
+                                      item as SpotubeFullArtistObject),
+                                ),
                               _ => const SizedBox.shrink(),
                             };
                           }),

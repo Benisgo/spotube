@@ -42,7 +42,7 @@ class HomeBrowseSectionItemsPage extends HookConsumerWidget {
     final sectionItems =
         ref.watch(metadataPluginBrowseSectionItemsProvider(sectionId));
     final sectionItemsNotifier =
-        ref.watch(metadataPluginBrowseSectionItemsProvider(sectionId).notifier);
+        ref.read(metadataPluginBrowseSectionItemsProvider(sectionId).notifier);
     final items = sectionItems.asData?.value.items ?? [];
     final controller = useScrollController();
 

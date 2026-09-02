@@ -16,14 +16,15 @@ class PlayerLyricsPage extends HookConsumerWidget {
   const PlayerLyricsPage({super.key});
 
   @override
-  Widget build(BuildContext context, ref) {
-    final playlist = ref.watch(audioPlayerProvider);
+  Widget build(BuildContext context, WidgetRef ref) {
+    final activeTrack =
+        ref.watch(audioPlayerProvider.select((s) => s.activeTrack));
     String albumArt = useMemoized(
-      () => (playlist.activeTrack?.album.images).asUrlString(
-        index: (playlist.activeTrack?.album.images.length ?? 1) - 1,
+      () => (activeTrack?.album.images).asUrlString(
+        index: (activeTrack?.album.images.length ?? 1) - 1,
         placeholder: ImagePlaceholder.albumArt,
       ),
-      [playlist.activeTrack?.album.images],
+      [activeTrack?.album.images],
     );
     final selectedIndex = useState(0);
     final palette = usePaletteColor(albumArt, ref);

@@ -22,7 +22,7 @@ T useBreakpointValue<T>({
     'You must provide a value for all breakpoints or a default value for others',
   );
   final context = useContext();
-  final mediaQuery = MediaQuery.of(context);
+  final mediaQuery = MediaQuery.sizeOf(context);
 
   if (isSomeNull) {
     if (mediaQuery.isXs) {

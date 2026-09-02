@@ -45,10 +45,12 @@ class SearchPagePlaylistsTab extends HookConsumerWidget {
               hasMore: searchPlaylistsSnapshot.asData?.value.hasMore == true,
               isLoading: searchPlaylistsSnapshot.isLoading,
               onRequestMore: searchPlaylistsNotifier.fetchMore,
-              gridItemBuilder: (context, index) =>
-                  PlaylistCard(searchPlaylists[index]),
-              listItemBuilder: (context, index) =>
-                  PlaylistCard.tile(searchPlaylists[index]),
+              gridItemBuilder: (context, index) => RepaintBoundary(
+                child: PlaylistCard(searchPlaylists[index]),
+              ),
+              listItemBuilder: (context, index) => RepaintBoundary(
+                child: PlaylistCard.tile(searchPlaylists[index]),
+              ),
             ),
           ],
         ),

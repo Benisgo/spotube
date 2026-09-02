@@ -34,11 +34,11 @@ class SettingsMetadataProviderPage extends HookConsumerWidget {
     final formKey = useMemoized(() => GlobalKey<FormBuilderState>(), []);
 
     final plugins = ref.watch(metadataPluginsProvider);
-    final pluginsNotifier = ref.watch(metadataPluginsProvider.notifier);
+    final pluginsNotifier = ref.read(metadataPluginsProvider.notifier);
 
     final pluginReposSnapshot = ref.watch(metadataPluginRepositoriesProvider);
     final pluginReposNotifier =
-        ref.watch(metadataPluginRepositoriesProvider.notifier);
+        ref.read(metadataPluginRepositoriesProvider.notifier);
 
     final pluginRepos = useMemoized(
       () {

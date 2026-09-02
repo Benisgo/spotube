@@ -31,15 +31,28 @@ class PlainLyrics extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, ref) {
-    final playlist = ref.watch(audioPlayerProvider);
+    final activeTrack =
+        ref.watch(audioPlayerProvider.select((s) => s.activeTrack));
     final lyricsCharacterEdge = ref.watch(
       userPreferencesProvider.select((value) => value.lyricsCharacterEdge),
     );
-    final lyricsQuery = ref.watch(syncedLyricsProvider(playlist.activeTrack));
-    final mediaQuery = MediaQuery.of(context);
+    final lyricsQuery = ref.watch(syncedLyricsProvider(activeTrack));
+    final mediaQuery = MediaQuery.sizeOf(context);
     final typography = Theme.of(context).typography;
 
     final textZoomLevel = useState<int>(defaultTextZoom);
+    final lyricsList = lyricsQuery.asData?.value.lyrics;
+    final lyrics = useMemoized(() {
+      if (lyricsList == null) return null;
+      return lyricsList.mapIndexed((i, e) {
+        final next = lyricsList.elementAtOrNull(i + 1);
+        if (next != null &&
+            e.time - next.time > const Duration(milliseconds: 700)) {
+          return "${e.text}\n";
+        }
+        return e.text;
+      }).join("\n");
+    }, [lyricsList]);
 
     return Stack(
       children: [
@@ -49,7 +62,7 @@ class PlainLyrics extends HookConsumerWidget {
             if (isModal != true) ...[
               Center(
                 child: Text(
-                  playlist.activeTrack?.name ?? "",
+                  activeTrack?.name ?? "",
                   style: mediaQuery.mdAndUp
                       ? typography.h3
                       : typography.h4.copyWith(
@@ -59,7 +72,7 @@ class PlainLyrics extends HookConsumerWidget {
               ),
               Center(
                 child: Text(
-                  playlist.activeTrack?.artists.asString() ?? "",
+                  activeTrack?.artists.asString() ?? "",
                   style: (mediaQuery.mdAndUp ? typography.h4 : typography.large)
                       .copyWith(
                     color: palette.bodyTextColor,
@@ -97,19 +110,6 @@ class PlainLyrics extends HookConsumerWidget {
                           );
                         }
 
-                        final lyrics =
-                            lyricsQuery.asData?.value.lyrics.mapIndexed((i, e) {
-                          final next = lyricsQuery.asData?.value.lyrics
-                              .elementAtOrNull(i + 1);
-                          if (next != null &&
-                              e.time - next.time >
-                                  const Duration(milliseconds: 700)) {
-                            return "${e.text}\n";
-                          }
-
-                          return e.text;
-                        }).join("\n");
-
                         return AnimatedDefaultTextStyle(
                           duration: const Duration(milliseconds: 200),
                           style: TextStyle(
@@ -124,7 +124,7 @@ class PlainLyrics extends HookConsumerWidget {
                                     : 2,
                           ).withLyricsCharacterEdge(lyricsCharacterEdge),
                           child: SelectableText(
-                            lyrics == null && playlist.activeTrack == null
+                            lyrics == null && activeTrack == null
                                 ? context.l10n.no_tracks_playing
                                 : lyrics ?? "",
                             textAlign: TextAlign.center,

@@ -27,7 +27,7 @@ class LikedPlaylistPage extends HookConsumerWidget {
   Widget build(BuildContext context, ref) {
     final likedTracks = ref.watch(metadataPluginSavedTracksProvider);
     final likedTracksNotifier =
-        ref.watch(metadataPluginSavedTracksProvider.notifier);
+        ref.read(metadataPluginSavedTracksProvider.notifier);
     final tracks = likedTracks.asData?.value.items ?? [];
 
     useEffect(() {

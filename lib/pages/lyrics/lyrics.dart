@@ -22,14 +22,15 @@ class LyricsPage extends HookConsumerWidget {
   const LyricsPage({super.key});
 
   @override
-  Widget build(BuildContext context, ref) {
-    final playlist = ref.watch(audioPlayerProvider);
+  Widget build(BuildContext context, WidgetRef ref) {
+    final activeTrack =
+        ref.watch(audioPlayerProvider.select((s) => s.activeTrack));
     String albumArt = useMemoized(
-      () => (playlist.activeTrack?.album.images).asUrlString(
-        index: (playlist.activeTrack?.album.images.length ?? 1) - 1,
+      () => (activeTrack?.album.images).asUrlString(
+        index: (activeTrack?.album.images.length ?? 1) - 1,
         placeholder: ImagePlaceholder.albumArt,
       ),
-      [playlist.activeTrack?.album.images],
+      [activeTrack?.album.images],
     );
     final palette = usePaletteColor(albumArt, ref);
     final selectedIndex = useState(0);
@@ -52,8 +53,9 @@ class LyricsPage extends HookConsumerWidget {
         const Spacer(),
         Consumer(
           builder: (context, ref, child) {
-            final playback = ref.watch(audioPlayerProvider);
-            final lyric = ref.watch(syncedLyricsProvider(playback.activeTrack));
+            final track =
+                ref.watch(audioPlayerProvider.select((s) => s.activeTrack));
+            final lyric = ref.watch(syncedLyricsProvider(track));
             final providerName = lyric.asData?.value.provider;
 
             if (providerName == null) {

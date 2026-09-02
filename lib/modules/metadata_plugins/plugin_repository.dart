@@ -25,7 +25,7 @@ class MetadataPluginRepositoryItem extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, ref) {
-    final pluginsNotifier = ref.watch(metadataPluginsProvider.notifier);
+    final pluginsNotifier = ref.read(metadataPluginsProvider.notifier);
     final host = useMemoized(
       () => Uri.parse(pluginRepo.repoUrl).host,
       [pluginRepo.repoUrl],

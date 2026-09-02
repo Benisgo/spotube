@@ -15,6 +15,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:local_notifier/local_notifier.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:metadata_god/metadata_god.dart';
+import 'package:skeletonizer/skeletonizer.dart';
 import 'package:smtc_windows/smtc_windows.dart';
 import 'package:spotube/collections/env.dart';
 import 'package:spotube/collections/http-override.dart';
@@ -114,7 +115,8 @@ ThemeData _buildAppTheme(
       customTheme,
     ),
     surfaceOpacity: customTheme.enabled ? customTheme.surfaceOpacity : .8,
-    surfaceBlur: customTheme.enabled ? customTheme.surfaceBlur : 10,
+    surfaceBlur:
+        kIsMobile ? 0 : (customTheme.enabled ? customTheme.surfaceBlur : 10),
   );
 }
 
@@ -181,6 +183,11 @@ Future<void> main(List<String> rawArgs) async {
   AppLogger.runZoned(() async {
     final widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
 
+    // Optimize image cache capacity to avoid eviction and re-decoding thrashing
+    PaintingBinding.instance.imageCache.maximumSize = 2000;
+    PaintingBinding.instance.imageCache.maximumSizeBytes =
+        256 * 1024 * 1024; // 256 MB
+
     HttpOverrides.global = BadCertificateAllowlistOverrides();
 
     await registerWindowsScheme("spotify");
@@ -218,7 +225,7 @@ Future<void> main(List<String> rawArgs) async {
         // ignore: avoid_classes_with_only_static_members
         AppLogger.metadataGodAvailable = true;
         AppLogger.log.i("[startup] MetadataGod initialized successfully");
-      } catch (e, s) {
+      } catch (e) {
         AppLogger.metadataGodAvailable = false;
         AppLogger.log.w(
             "[startup] MetadataGod init failed (downloads will lack tags): $e");
@@ -352,6 +359,15 @@ class Spotube extends HookConsumerWidget {
             child: child,
           );
         }
+
+        child = SkeletonizerConfig(
+          data: const SkeletonizerConfigData(
+            effect: PulseEffect(
+              duration: Duration(milliseconds: 1500),
+            ),
+          ),
+          child: child,
+        );
 
         return child;
       },

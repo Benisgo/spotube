@@ -42,25 +42,24 @@ class PlayerActions extends HookConsumerWidget {
     final activeTrack =
         ref.watch(audioPlayerProvider.select((s) => s.activeTrack));
     final isLocalTrack = activeTrack is SpotubeLocalTrackObject;
-    ref.watch(downloadManagerProvider);
-    final downloader = ref.watch(downloadManagerProvider.notifier);
-    final isInQueue = useMemoized(() {
-      if (activeTrack is! SpotubeFullTrackObject) return false;
-      final downloadTask =
-          downloader.getTaskByTrackId(activeTrack.id);
-      return const [
-        DownloadStatus.queued,
-        DownloadStatus.downloading,
-      ].contains(downloadTask?.status);
-    }, [
-      activeTrack,
-      downloader,
-    ]);
+    final downloader = ref.read(downloadManagerProvider.notifier);
+    final isInQueue = ref.watch(
+      downloadManagerProvider.select(
+        (list) =>
+            activeTrack is SpotubeFullTrackObject &&
+            list.any(
+              (t) =>
+                  t.track.id == activeTrack.id &&
+                  (t.status == DownloadStatus.queued ||
+                      t.status == DownloadStatus.downloading),
+            ),
+      ),
+    );
 
     final localTracks = ref.watch(localTracksProvider).value;
     final authenticated = ref.watch(metadataPluginAuthenticatedProvider);
     final sleepTimer = ref.watch(sleepTimerProvider);
-    final sleepTimerNotifier = ref.watch(sleepTimerProvider.notifier);
+    final sleepTimerNotifier = ref.read(sleepTimerProvider.notifier);
 
     final isDownloaded = useMemoized(() {
       return localTracks?.values.expand((e) => e).any(
@@ -181,8 +180,8 @@ class PlayerActions extends HookConsumerWidget {
                   isDownloaded ? SpotubeIcons.done : SpotubeIcons.download,
                 ),
                 onPressed: activeTrack != null
-                    ? () => downloader.addToQueue(
-                        activeTrack as SpotubeFullTrackObject)
+                    ? () => downloader
+                        .addToQueue(activeTrack as SpotubeFullTrackObject)
                     : null,
               ),
             ),

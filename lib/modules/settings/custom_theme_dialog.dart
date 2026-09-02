@@ -12,7 +12,7 @@ class CustomThemeDialog extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, ref) {
     final savedTheme = ref.watch(customThemeProvider);
-    final notifier = ref.watch(customThemeProvider.notifier);
+    final notifier = ref.read(customThemeProvider.notifier);
     final currentTheme = Theme.of(context);
     final currentScheme = currentTheme.colorScheme;
     final initialTheme = savedTheme.enabled
@@ -61,7 +61,7 @@ class CustomThemeDialog extends HookConsumerWidget {
       content: ConstrainedBox(
         constraints: BoxConstraints(
           maxWidth: 500,
-          maxHeight: MediaQuery.of(context).size.height * 0.65,
+          maxHeight: MediaQuery.sizeOf(context).height * 0.65,
         ),
         child: SingleChildScrollView(
           child: material.Column(

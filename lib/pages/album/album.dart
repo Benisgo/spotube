@@ -26,9 +26,9 @@ class AlbumPage extends HookConsumerWidget {
   Widget build(BuildContext context, ref) {
     final tracks = ref.watch(metadataPluginAlbumTracksProvider(album.id));
     final tracksNotifier =
-        ref.watch(metadataPluginAlbumTracksProvider(album.id).notifier);
+        ref.read(metadataPluginAlbumTracksProvider(album.id).notifier);
     final favoriteAlbumsNotifier =
-        ref.watch(metadataPluginSavedAlbumsProvider.notifier);
+        ref.read(metadataPluginSavedAlbumsProvider.notifier);
     final isSavedAlbum =
         ref.watch(metadataPluginIsSavedAlbumProvider(album.id));
 

@@ -47,19 +47,33 @@ class UniversalImage extends HookWidget {
     final double scale = 1,
   }) {
     if (path.startsWith("http")) {
+      final cacheH = height != null ? (height * 2).round() : 512;
+      final cacheW = width != null ? (width * 2).round() : 512;
       return CachedNetworkImageProvider(
         path,
-        maxHeight: height?.toInt(),
-        maxWidth: width?.toInt(),
+        maxHeight: cacheH,
+        maxWidth: cacheW,
         cacheKey: path,
         scale: scale,
       );
     } else if (path.startsWith("assets")) {
-      return AssetImage(path);
+      final cacheH = height != null ? (height * 2).round() : null;
+      final cacheW = width != null ? (width * 2).round() : null;
+      return ResizeImage.resizeIfNeeded(
+        cacheW,
+        cacheH,
+        AssetImage(path),
+      );
     } else if (_isFile(path)) {
       final filePath =
           path.startsWith("file://") ? path.replaceFirst("file://", "") : path;
-      return FileImage(File(filePath), scale: scale);
+      final cacheH = height != null ? (height * 2).round() : null;
+      final cacheW = width != null ? (width * 2).round() : null;
+      return ResizeImage.resizeIfNeeded(
+        cacheW,
+        cacheH,
+        FileImage(File(filePath), scale: scale),
+      );
     }
     try {
       return MemoryImage(base64Decode(path), scale: scale);
@@ -70,82 +84,50 @@ class UniversalImage extends HookWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cacheW = width != null ? (width! * 2).round() : 512;
+    final cacheH = height != null ? (height! * 2).round() : 512;
+
     if (path.startsWith("http")) {
-      if (!fadeIn) {
-        // Cheap path: no FadeInImage, no animation. Shows the placeholder
-        // until the first decoded frame is ready, then swaps it in instantly.
-        return Image(
-          image: CachedNetworkImageProvider(
-            path,
-            maxHeight: height?.toInt(),
-            maxWidth: width?.toInt(),
-            cacheKey: path,
-            scale: scale,
-          ),
+      return CachedNetworkImage(
+        imageUrl: path,
+        width: width,
+        height: height,
+        fit: fit,
+        memCacheWidth: cacheW,
+        memCacheHeight: cacheH,
+        maxWidthDiskCache: 1000,
+        maxHeightDiskCache: 1000,
+        filterQuality: FilterQuality.low,
+        fadeInDuration:
+            fadeIn ? const Duration(milliseconds: 150) : Duration.zero,
+        fadeOutDuration:
+            fadeIn ? const Duration(milliseconds: 150) : Duration.zero,
+        placeholder: (context, url) => Image.asset(
+          placeholder ?? Assets.images.placeholder.path,
           width: width,
           height: height,
+          cacheHeight: cacheH,
+          cacheWidth: cacheW,
           filterQuality: FilterQuality.low,
           fit: fit,
-          frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
-            if (wasSynchronouslyLoaded) return child;
-            if (frame == null) {
-              return Image.asset(
-                placeholder ?? Assets.images.placeholder.path,
-                width: width,
-                height: height,
-                cacheHeight: height?.toInt(),
-                cacheWidth: width?.toInt(),
-                filterQuality: FilterQuality.low,
-                scale: scale,
-              );
-            }
-            return child;
-          },
-          errorBuilder: (context, error, stackTrace) {
-            return Image.asset(
-              placeholder ?? Assets.images.placeholder.path,
-              width: width,
-              height: height,
-              cacheHeight: height?.toInt(),
-              cacheWidth: width?.toInt(),
-              filterQuality: FilterQuality.low,
-              scale: scale,
-            );
-          },
-        );
-      }
-      return FadeInImage(
-        image: CachedNetworkImageProvider(
-          path,
-          maxHeight: height?.toInt(),
-          maxWidth: width?.toInt(),
-          cacheKey: path,
-          scale: scale,
         ),
-        height: height,
-        width: width,
-        placeholder: AssetImage(placeholder ?? Assets.images.placeholder.path),
-        imageErrorBuilder: (context, error, stackTrace) {
-          return Image.asset(
-            placeholder ?? Assets.images.placeholder.path,
-            width: width,
-            height: height,
-            cacheHeight: height?.toInt(),
-            cacheWidth: width?.toInt(),
-            filterQuality: FilterQuality.low,
-            scale: scale,
-          );
-        },
-        filterQuality: FilterQuality.low,
-        fit: fit,
+        errorWidget: (context, url, error) => Image.asset(
+          placeholder ?? Assets.images.placeholder.path,
+          width: width,
+          height: height,
+          cacheHeight: cacheH,
+          cacheWidth: cacheW,
+          filterQuality: FilterQuality.low,
+          fit: fit,
+        ),
       );
     } else if (path.startsWith("assets")) {
       return Image.asset(
         path,
         width: width,
         height: height,
-        cacheHeight: height?.toInt(),
-        cacheWidth: width?.toInt(),
+        cacheHeight: cacheH,
+        cacheWidth: cacheW,
         filterQuality: FilterQuality.low,
         scale: scale,
         fit: fit,
@@ -154,8 +136,8 @@ class UniversalImage extends HookWidget {
             placeholder ?? Assets.images.placeholder.path,
             width: width,
             height: height,
-            cacheHeight: height?.toInt(),
-            cacheWidth: width?.toInt(),
+            cacheHeight: cacheH,
+            cacheWidth: cacheW,
             filterQuality: FilterQuality.low,
             scale: scale,
           );
@@ -168,8 +150,8 @@ class UniversalImage extends HookWidget {
         File(filePath),
         width: width,
         height: height,
-        cacheHeight: height?.toInt(),
-        cacheWidth: width?.toInt(),
+        cacheHeight: cacheH,
+        cacheWidth: cacheW,
         filterQuality: FilterQuality.low,
         scale: scale,
         fit: fit,
@@ -178,8 +160,8 @@ class UniversalImage extends HookWidget {
             placeholder ?? Assets.images.placeholder.path,
             width: width,
             height: height,
-            cacheHeight: height?.toInt(),
-            cacheWidth: width?.toInt(),
+            cacheHeight: cacheH,
+            cacheWidth: cacheW,
             filterQuality: FilterQuality.low,
             scale: scale,
           );
@@ -192,8 +174,8 @@ class UniversalImage extends HookWidget {
         base64Decode(path),
         width: width,
         height: height,
-        cacheHeight: height?.toInt(),
-        cacheWidth: width?.toInt(),
+        cacheHeight: cacheH,
+        cacheWidth: cacheW,
         filterQuality: FilterQuality.low,
         scale: scale,
         fit: fit,
@@ -202,8 +184,8 @@ class UniversalImage extends HookWidget {
             placeholder ?? Assets.images.placeholder.path,
             width: width,
             height: height,
-            cacheHeight: height?.toInt(),
-            cacheWidth: width?.toInt(),
+            cacheHeight: cacheH,
+            cacheWidth: cacheW,
             filterQuality: FilterQuality.low,
             scale: scale,
           );
@@ -214,8 +196,8 @@ class UniversalImage extends HookWidget {
         placeholder ?? Assets.images.placeholder.path,
         width: width,
         height: height,
-        cacheHeight: height?.toInt(),
-        cacheWidth: width?.toInt(),
+        cacheHeight: cacheH,
+        cacheWidth: cacheW,
         filterQuality: FilterQuality.low,
         scale: scale,
       );

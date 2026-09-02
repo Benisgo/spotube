@@ -26,7 +26,7 @@ class SettingsPage extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, ref) {
     final controller = useScrollController();
-    final preferencesNotifier = ref.watch(userPreferencesProvider.notifier);
+    final preferencesNotifier = ref.read(userPreferencesProvider.notifier);
 
     return SafeArea(
       bottom: false,
@@ -48,14 +48,18 @@ class SettingsPage extends HookConsumerWidget {
                   child: ListView(
                     controller: controller,
                     children: [
-                      const SettingsAccountSection(),
-                      const SettingsLanguageRegionSection(),
-                      const SettingsAppearanceSection(),
-                      const SettingsPlaybackSection(),
-                      const SettingsDownloadsSection(),
-                      if (kIsDesktop) const SettingsDesktopSection(),
-                      if (!kIsWeb) const SettingsDevelopersSection(),
-                      const SettingsAboutSection(),
+                      const RepaintBoundary(child: SettingsAccountSection()),
+                      const RepaintBoundary(
+                          child: SettingsLanguageRegionSection()),
+                      const RepaintBoundary(child: SettingsAppearanceSection()),
+                      const RepaintBoundary(child: SettingsPlaybackSection()),
+                      const RepaintBoundary(child: SettingsDownloadsSection()),
+                      if (kIsDesktop)
+                        const RepaintBoundary(child: SettingsDesktopSection()),
+                      if (!kIsWeb)
+                        const RepaintBoundary(
+                            child: SettingsDevelopersSection()),
+                      const RepaintBoundary(child: SettingsAboutSection()),
                       Center(
                         child: Button.destructive(
                           onPressed: preferencesNotifier.reset,

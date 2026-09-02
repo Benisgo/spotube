@@ -23,7 +23,7 @@ class AdaptiveListTile extends HookWidget {
 
   @override
   Widget build(BuildContext context) {
-    final mediaQuery = MediaQuery.of(context);
+    final mediaQuery = MediaQuery.sizeOf(context);
 
     return ButtonTile(
       title: title,

@@ -89,10 +89,12 @@ class SearchPageArtistsTab extends HookConsumerWidget {
                 );
               }
 
-              return Skeletonizer(
-                enabled: searchArtistsSnapshot.isLoading,
-                child: ArtistCard(
-                  searchArtists.elementAtOrNull(index) ?? FakeData.artist,
+              return RepaintBoundary(
+                child: Skeletonizer(
+                  enabled: searchArtistsSnapshot.isLoading,
+                  child: ArtistCard(
+                    searchArtists.elementAtOrNull(index) ?? FakeData.artist,
+                  ),
                 ),
               );
             },

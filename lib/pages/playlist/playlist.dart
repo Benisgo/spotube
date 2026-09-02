@@ -42,12 +42,12 @@ class PlaylistPage extends HookConsumerWidget {
 
     final tracks = ref.watch(metadataPluginPlaylistTracksProvider(playlist.id));
     final tracksNotifier =
-        ref.watch(metadataPluginPlaylistTracksProvider(playlist.id).notifier);
+        ref.read(metadataPluginPlaylistTracksProvider(playlist.id).notifier);
     final isFavoritePlaylist =
         ref.watch(metadataPluginIsSavedPlaylistProvider(playlist.id));
 
     final favoritePlaylistsNotifier =
-        ref.watch(metadataPluginSavedPlaylistsProvider.notifier);
+        ref.read(metadataPluginSavedPlaylistsProvider.notifier);
 
     final isUserPlaylist = useIsUserPlaylist(ref, playlist.id);
 

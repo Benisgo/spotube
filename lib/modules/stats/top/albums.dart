@@ -19,7 +19,7 @@ class TopAlbums extends HookConsumerWidget {
     final historyDuration = ref.watch(playbackHistoryTopDurationProvider);
     final topAlbums = ref.watch(historyTopAlbumsProvider(historyDuration));
     final topAlbumsNotifier =
-        ref.watch(historyTopAlbumsProvider(historyDuration).notifier);
+        ref.read(historyTopAlbumsProvider(historyDuration).notifier);
 
     final albumsData = topAlbums.asData?.value.items ?? [];
 

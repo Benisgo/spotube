@@ -35,7 +35,8 @@ class MultiSessionPage extends HookConsumerWidget {
     final members = snapshot?.members ?? const <MultiSessionMember>[];
     final invite = session.pendingInvite;
     final inviteDialogKey = useRef<String?>(null);
-    final preferences = ref.watch(userPreferencesProvider);
+    final discordPresence =
+        ref.watch(userPreferencesProvider.select((s) => s.discordPresence));
 
     Future<void> joinFromInput() async {
       final value = codeController.text.trim();
@@ -258,7 +259,7 @@ class MultiSessionPage extends HookConsumerWidget {
                           ),
                         if (isConnectedRoom &&
                             session.can(MultiSessionPermission.editQueue) &&
-                            preferences.discordPresence)
+                            discordPresence)
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
@@ -441,15 +442,25 @@ class _MemberTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final session = ref.watch(multiSessionProvider);
     final notifier = ref.read(multiSessionProvider.notifier);
-    final canManage = session.can(MultiSessionPermission.manageMembers) &&
+    final canManage = ref.watch(
+          multiSessionProvider.select(
+            (s) => s.can(MultiSessionPermission.manageMembers),
+          ),
+        ) &&
         member.role != "host";
-    final currentUser = ref.watch(metadataPluginUserProvider).valueOrNull;
+    final isCurrentSessionMember = ref.watch(
+      multiSessionProvider.select((s) => s.memberId == member.id),
+    );
+    final currentUserImages = isCurrentSessionMember
+        ? ref.watch(
+            metadataPluginUserProvider.select((u) => u.valueOrNull?.images),
+          )
+        : null;
     final displayImages = member.images.isNotEmpty
         ? member.images
-        : member.id == session.memberId
-            ? currentUser?.images ?? const <SpotubeImageObject>[]
+        : isCurrentSessionMember
+            ? currentUserImages ?? const <SpotubeImageObject>[]
             : const <SpotubeImageObject>[];
 
     return ListTile(

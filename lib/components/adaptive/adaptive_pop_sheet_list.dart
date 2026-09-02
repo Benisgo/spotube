@@ -57,7 +57,7 @@ class AdaptivePopSheetList<T> extends StatelessWidget {
         );
 
   Future<void> showDropdownMenu(BuildContext context, Offset position) async {
-    final mediaQuery = MediaQuery.of(context);
+    final mediaQuery = MediaQuery.sizeOf(context);
     List<MenuButton> childrenModified(BuildContext context) =>
         items(context).map((s) {
           if (s.onPressed == null) {
@@ -140,7 +140,7 @@ class AdaptivePopSheetList<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final mediaQuery = MediaQuery.of(context);
+    final mediaQuery = MediaQuery.sizeOf(context);
 
     if (mediaQuery.mdAndUp) {
       return Tooltip(
@@ -159,7 +159,7 @@ class AdaptivePopSheetList<T> extends StatelessWidget {
                 renderBox.localToGlobal(renderBox.size.bottomRight(Offset.zero),
                     ancestor: context.findRenderObject()),
               ),
-              Offset.zero & mediaQuery.size,
+              Offset.zero & mediaQuery,
             );
             final offset = Offset(position.left, position.top);
             showDropdownMenu(context, offset);

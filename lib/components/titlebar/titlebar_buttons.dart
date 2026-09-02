@@ -21,7 +21,9 @@ class WindowTitleBarButtons extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, ref) {
-    final preferences = ref.watch(userPreferencesProvider);
+    final systemTitleBar = ref.watch(
+      userPreferencesProvider.select((s) => s.systemTitleBar),
+    );
     final isMaximized = useState<bool?>(null);
     const type = ThemeType.auto;
 
@@ -47,7 +49,7 @@ class WindowTitleBarButtons extends HookConsumerWidget {
       return null;
     }, []);
 
-    if (!kTitlebarVisible || preferences.systemTitleBar) {
+    if (!kTitlebarVisible || systemTitleBar) {
       return const SizedBox.shrink();
     }
 

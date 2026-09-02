@@ -112,15 +112,15 @@ class LocalLibraryPage extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, ref) {
     final scale = context.theme.scaling;
-
     final sortBy = useState<SortBy>(SortBy.none);
-    final playlist = ref.watch(audioPlayerProvider);
+
     final trackSnapshot = ref.watch(localTracksProvider);
-    final isPlaylistPlaying = useMemoized(
-      () => playlist.containsTracks(
-        trackSnapshot.asData?.value[location] ?? [],
+    final isPlaylistPlaying = ref.watch(
+      audioPlayerProvider.select(
+        (s) => s.containsTracks(
+          trackSnapshot.asData?.value[location] ?? [],
+        ),
       ),
-      [playlist, trackSnapshot, location],
     );
 
     final searchController = useShadcnTextEditingController();

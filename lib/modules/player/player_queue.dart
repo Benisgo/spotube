@@ -1,12 +1,9 @@
 import 'package:auto_route/auto_route.dart';
 import 'package:auto_size_text/auto_size_text.dart';
-import 'package:collection/collection.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
-import 'package:fuzzywuzzy/fuzzywuzzy.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-import 'package:scroll_to_index/scroll_to_index.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 import 'package:spotube/collections/spotube_icons.dart';
 import 'package:spotube/components/button/back_button.dart';
@@ -17,7 +14,6 @@ import 'package:spotube/components/track_tile/track_tile.dart';
 import 'package:spotube/components/ui/button_tile.dart';
 import 'package:spotube/extensions/constrains.dart';
 import 'package:spotube/extensions/context.dart';
-import 'package:spotube/hooks/controllers/use_auto_scroll_controller.dart';
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/models/multi_session/multi_session.dart';
 import 'package:spotube/modules/player/player_queue_actions.dart';
@@ -27,6 +23,8 @@ import 'package:spotube/provider/audio_player/state.dart';
 import 'package:spotube/provider/multi_session/multi_session.dart';
 
 class PlayerQueue extends HookConsumerWidget {
+  static const _compactTileExtent = 72.0;
+
   final bool floating;
   final AudioPlayerState playlist;
 
@@ -59,7 +57,7 @@ class PlayerQueue extends HookConsumerWidget {
   Widget build(BuildContext context, ref) {
     final mediaQuery = MediaQuery.sizeOf(context);
 
-    final controller = useAutoScrollController();
+    final controller = useScrollController();
     final searchText = useState('');
     final selectionMode = useState(false);
     final selectedTrackIds = useState(<String>{});
@@ -77,18 +75,13 @@ class PlayerQueue extends HookConsumerWidget {
         if (searchText.value.isEmpty) {
           return tracks;
         }
-        return tracks
-            .map((e) => (
-                  weightedRatio(
-                    '${e.name} - ${e.artists.asString()}',
-                    searchText.value,
-                  ),
-                  e,
-                ))
-            .sorted((a, b) => b.$1.compareTo(a.$1))
-            .where((e) => e.$1 > 50)
-            .map((e) => e.$2)
-            .toList();
+        final query = searchText.value.toLowerCase();
+        return tracks.where((track) {
+          return track.name.toLowerCase().contains(query) ||
+              track.artists.any(
+                (artist) => artist.name.toLowerCase().contains(query),
+              );
+        }).toList();
       },
       [tracks, searchText.value],
     );
@@ -325,50 +318,45 @@ class PlayerQueue extends HookConsumerWidget {
                                   searchText.value.isEmpty &&
                                   !selectionMode.value;
 
+                              Widget child = RepaintBoundary(
+                                child: TrackTile(
+                                  index: i,
+                                  track: track,
+                                  compact: true,
+                                  isFetchingActiveTrack: isFetchingActiveTrack,
+                                  selectionMode: selectionMode.value,
+                                  selected:
+                                      selectedTrackIds.value.contains(track.id),
+                                  onChanged: selectionMode.value
+                                      ? (_) => toggleSelection(track.id)
+                                      : null,
+                                  onTap: () async {
+                                    if (selectionMode.value) {
+                                      toggleSelection(track.id);
+                                      return;
+                                    }
+                                    if (playlist.activeTrack?.id == track.id) {
+                                      return;
+                                    }
+                                    await onJump(track);
+                                  },
+                                  onLongPress: () {
+                                    if (!canEditQueue) return;
+                                    if (!selectionMode.value) {
+                                      selectionMode.value = true;
+                                      selectedTrackIds.value = {track.id};
+                                    } else {
+                                      toggleSelection(track.id);
+                                    }
+                                  },
+                                ),
+                              );
+
                               return ReorderableDragStartListener(
                                 key: ValueKey<int>(i),
                                 index: i,
                                 enabled: canDrag,
-                                child: AutoScrollTag(
-                                  key: ValueKey('scroll_$i'),
-                                  controller: controller,
-                                  index: i,
-                                  child: RepaintBoundary(
-                                    child: TrackTile(
-                                      index: i,
-                                      track: track,
-                                      compact: true,
-                                      isFetchingActiveTrack:
-                                          isFetchingActiveTrack,
-                                      selectionMode: selectionMode.value,
-                                      selected: selectedTrackIds.value
-                                          .contains(track.id),
-                                      onChanged: selectionMode.value
-                                          ? (_) => toggleSelection(track.id)
-                                          : null,
-                                      onTap: () async {
-                                        if (selectionMode.value) {
-                                          toggleSelection(track.id);
-                                          return;
-                                        }
-                                        if (playlist.activeTrack?.id ==
-                                            track.id) {
-                                          return;
-                                        }
-                                        await onJump(track);
-                                      },
-                                      onLongPress: () {
-                                        if (!canEditQueue) return;
-                                        if (!selectionMode.value) {
-                                          selectionMode.value = true;
-                                          selectedTrackIds.value = {track.id};
-                                        } else {
-                                          toggleSelection(track.id);
-                                        }
-                                      },
-                                    ),
-                                  ),
-                                ),
+                                child: child,
                               );
                             },
                           ),
@@ -388,9 +376,18 @@ class PlayerQueue extends HookConsumerWidget {
           child: IconButton.secondary(
             icon: const Icon(SpotubeIcons.angleDown),
             onPressed: () {
-              controller.scrollToIndex(
-                playlist.currentIndex,
-                preferPosition: AutoScrollPosition.middle,
+              if (!controller.hasClients) return;
+              final viewportHeight = controller.position.viewportDimension;
+              final targetOffset = (playlist.currentIndex * _compactTileExtent) -
+                  (viewportHeight / 2) +
+                  (_compactTileExtent / 2);
+              controller.animateTo(
+                targetOffset.clamp(
+                  controller.position.minScrollExtent,
+                  controller.position.maxScrollExtent,
+                ),
+                duration: const Duration(milliseconds: 250),
+                curve: Curves.easeOutCubic,
               );
             },
           ),

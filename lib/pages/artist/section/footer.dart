@@ -15,7 +15,7 @@ class ArtistPageFooter extends ConsumerWidget {
   @override
   Widget build(BuildContext context, ref) {
     final ThemeData(:typography) = Theme.of(context);
-    final mediaQuery = MediaQuery.of(context);
+    final mediaQuery = MediaQuery.sizeOf(context);
 
     final artistImage = artist.images.asUrlString(
       placeholder: ImagePlaceholder.artist,

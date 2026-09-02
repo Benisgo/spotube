@@ -13,7 +13,6 @@ import 'package:spotube/components/links/link_text.dart';
 import 'package:spotube/components/titlebar/titlebar.dart';
 import 'package:spotube/components/track_tile/track_options_button.dart';
 import 'package:spotube/extensions/context.dart';
-import 'package:spotube/extensions/list.dart';
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/provider/audio_player/audio_player.dart';
 import 'package:spotube/provider/audio_player/audio_player_service_provider.dart';
@@ -36,12 +35,15 @@ class TrackPage extends HookConsumerWidget {
   Widget build(BuildContext context, ref) {
     final audioPlayer = ref.read(audioPlayerServiceProvider);
     final ThemeData(:typography, :colorScheme) = Theme.of(context);
-    final mediaQuery = MediaQuery.of(context);
+    final mediaQuery = MediaQuery.sizeOf(context);
 
-    final playlist = ref.watch(audioPlayerProvider);
-    final playlistNotifier = ref.watch(audioPlayerProvider.notifier);
-
-    final isActive = playlist.activeTrack?.id == trackId;
+    final isActive = ref.watch(
+      audioPlayerProvider.select((s) => s.activeTrack?.id == trackId),
+    );
+    final isInQueue = ref.watch(
+      audioPlayerProvider.select((s) => s.tracks.any((t) => t.id == trackId)),
+    );
+    final playlistNotifier = ref.read(audioPlayerProvider.notifier);
 
     final trackQuery = ref.watch(metadataPluginTrackProvider(trackId));
 
@@ -179,9 +181,7 @@ class TrackPage extends HookConsumerWidget {
                                         : MainAxisSize.min,
                                     children: [
                                       const Gap(5),
-                                      if (!isActive &&
-                                          !playlist.tracks
-                                              .containsBy(track, (t) => t.id))
+                                      if (!isActive && !isInQueue)
                                         Button.outline(
                                           leading:
                                               const Icon(SpotubeIcons.queueAdd),
@@ -191,9 +191,7 @@ class TrackPage extends HookConsumerWidget {
                                           },
                                         ),
                                       const Gap(5),
-                                      if (!isActive &&
-                                          !playlist.tracks
-                                              .containsBy(track, (t) => t.id))
+                                      if (!isActive && !isInQueue)
                                         Tooltip(
                                           tooltip: TooltipContainer(
                                             child: Text(context.l10n.play_next),

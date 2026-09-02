@@ -29,9 +29,14 @@ class ArtistPageHeader extends HookConsumerWidget {
     final ThemeData(:typography) = theme;
 
     final authenticated = ref.watch(metadataPluginAuthenticatedProvider);
-    ref.watch(blacklistProvider);
-    final blacklistNotifier = ref.watch(blacklistProvider.notifier);
-    final isBlackListed = blacklistNotifier.containsArtist(artist.id);
+    final isBlackListed = ref.watch(
+      blacklistProvider.select(
+        (blacklist) =>
+            blacklist.asData?.value
+                .any((element) => element.elementId == artist.id) ??
+            false,
+      ),
+    );
 
     final image = artist.images.asUrlString(
       placeholder: ImagePlaceholder.artist,
@@ -48,7 +53,7 @@ class ArtistPageHeader extends HookConsumerWidget {
                   metadataPluginIsSavedArtistProvider(artist.id),
                 );
                 final followingArtistNotifier =
-                    ref.watch(metadataPluginSavedArtistsProvider.notifier);
+                    ref.read(metadataPluginSavedArtistsProvider.notifier);
 
                 return switch (isFollowingQuery) {
                   AsyncData(value: final following) => Builder(

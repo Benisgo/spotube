@@ -9,9 +9,7 @@ import 'package:spotube/provider/audio_player/audio_player_service_provider.dart
   double bufferProgress
 }) useProgress(WidgetRef ref) {
   final audioPlayer = ref.read(audioPlayerServiceProvider);
-  final bufferProgress =
-      useStream(audioPlayer.bufferedPositionStream).data?.inSeconds ?? 0;
-
+  final bufferedSeconds = useState(0);
   final duration = useState(Duration.zero);
   final position = useState(Duration.zero);
 
@@ -40,9 +38,18 @@ import 'package:spotube/provider/audio_player/audio_player_service_provider.dart
       position.value = event;
     });
 
+    bufferedSeconds.value = audioPlayer.bufferedPosition.inSeconds;
+    final bufferSubscription =
+        audioPlayer.bufferedPositionStream.listen((event) {
+      if (event.inSeconds != bufferedSeconds.value) {
+        bufferedSeconds.value = event.inSeconds;
+      }
+    });
+
     return () {
       positionSubscription.cancel();
       durationSubscription.cancel();
+      bufferSubscription.cancel();
     };
   }, []);
 
@@ -51,8 +58,8 @@ import 'package:spotube/provider/audio_player/audio_player_service_provider.dart
         sliderMax == 0 || sliderValue > sliderMax ? 0 : sliderValue / sliderMax,
     position: position.value,
     duration: duration.value,
-    bufferProgress: sliderMax == 0 || bufferProgress > sliderMax
+    bufferProgress: sliderMax == 0 || bufferedSeconds.value > sliderMax
         ? 0
-        : bufferProgress / sliderMax,
+        : bufferedSeconds.value / sliderMax,
   );
 }

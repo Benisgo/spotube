@@ -24,13 +24,16 @@ class LibraryPage extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, ref) {
-    final downloadingCount = ref
-        .watch(downloadManagerProvider)
-        .where((e) =>
-            e.status == DownloadStatus.downloading ||
-            e.status == DownloadStatus.queued)
-        .length;
-    final router = context.watchRouter;
+    final downloadingCount = ref.watch(
+      downloadManagerProvider.select(
+        (tasks) => tasks
+            .where((e) =>
+                e.status == DownloadStatus.downloading ||
+                e.status == DownloadStatus.queued)
+            .length,
+      ),
+    );
+    final router = context.router;
     final sidebarLibraryTileList = useMemoized(
       () => [
         ...getSidebarLibraryTileList(context.l10n),

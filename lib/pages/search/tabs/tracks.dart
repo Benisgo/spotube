@@ -29,9 +29,6 @@ class SearchPageTracksTab extends HookConsumerWidget {
     final searchTracks =
         searchTracksSnapshot.asData?.value.items ?? [FakeData.track];
 
-    final playlist = ref.watch(audioPlayerProvider);
-    final playlistNotifier = ref.watch(audioPlayerProvider.notifier);
-
     if (searchTracksSnapshot.hasError) {
       return ErrorBox(
         error: searchTracksSnapshot.error!,
@@ -81,14 +78,16 @@ class SearchPageTracksTab extends HookConsumerWidget {
                       remotePlaylist.activeTrack?.id == track.id;
 
                   if (!isTrackPlaying && context.mounted) {
-                    final shouldPlay = (playlist.tracks.length) > 20
+                    final currentQueueLen =
+                        ref.read(audioPlayerProvider).tracks.length;
+                    final shouldPlay = currentQueueLen > 20
                         ? await showPromptDialog(
                             context: context,
                             title: context.l10n.playing_track(
                               track.name,
                             ),
                             message: context.l10n.queue_clear_alert(
-                              playlist.tracks.length,
+                              currentQueueLen,
                             ),
                           )
                         : true;
@@ -102,6 +101,9 @@ class SearchPageTracksTab extends HookConsumerWidget {
                     }
                   }
                 } else {
+                  final playlist = ref.read(audioPlayerProvider);
+                  final playlistNotifier =
+                      ref.read(audioPlayerProvider.notifier);
                   final isTrackPlaying = playlist.activeTrack?.id == track.id;
                   if (!isTrackPlaying && context.mounted) {
                     final shouldPlay = (playlist.tracks.length) > 20

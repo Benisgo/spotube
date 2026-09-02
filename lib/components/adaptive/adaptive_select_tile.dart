@@ -48,36 +48,37 @@ class AdaptiveSelectTile<T> extends HookWidget {
     final theme = Theme.of(context);
     final mediaQuery = MediaQuery.sizeOf(context);
 
-    Widget? control = Select<T>(
-      itemBuilder: (context, item) {
-        return options.firstWhere((element) => element.value == item).child;
-      },
-      value: value,
-      onChanged: onChanged,
-      popupConstraints: popupConstraints ?? const BoxConstraints(maxWidth: 200),
-      popupWidthConstraint: popupWidthConstraint ?? PopoverConstraint.flexible,
-      autoClosePopover: true,
-      popup: (context) {
-        return SelectPopup(
-          autoClose: true,
-          items: SelectItemBuilder(
-            childCount: options.length,
-            builder: (context, index) {
-              return options[index];
-            },
-          ),
-        );
-      },
-    );
-
+    Widget? control;
     if (mediaQuery.smAndDown) {
       if (showValueWhenUnfolded) {
         control = OutlineBadge(
           child: options.firstWhere((element) => element.value == value).child,
         );
-      } else {
-        control = null;
       }
+    } else {
+      control = Select<T>(
+        itemBuilder: (context, item) {
+          return options.firstWhere((element) => element.value == item).child;
+        },
+        value: value,
+        onChanged: onChanged,
+        popupConstraints:
+            popupConstraints ?? const BoxConstraints(maxWidth: 200),
+        popupWidthConstraint:
+            popupWidthConstraint ?? PopoverConstraint.flexible,
+        autoClosePopover: true,
+        popup: (context) {
+          return SelectPopup(
+            autoClose: true,
+            items: SelectItemBuilder(
+              childCount: options.length,
+              builder: (context, index) {
+                return options[index];
+              },
+            ),
+          );
+        },
+      );
     }
 
     return ListTile(

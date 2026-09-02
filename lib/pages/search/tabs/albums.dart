@@ -45,10 +45,12 @@ class SearchPageAlbumsTab extends HookConsumerWidget {
               hasMore: searchAlbumsSnapshot.asData?.value.hasMore == true,
               isLoading: searchAlbumsSnapshot.isLoading,
               onRequestMore: searchAlbumsNotifier.fetchMore,
-              gridItemBuilder: (context, index) =>
-                  AlbumCard(searchAlbums[index]),
-              listItemBuilder: (context, index) =>
-                  AlbumCard.tile(searchAlbums[index]),
+              gridItemBuilder: (context, index) => RepaintBoundary(
+                child: AlbumCard(searchAlbums[index]),
+              ),
+              listItemBuilder: (context, index) => RepaintBoundary(
+                child: AlbumCard.tile(searchAlbums[index]),
+              ),
             ),
           ],
         ),

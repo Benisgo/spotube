@@ -46,6 +46,13 @@ class CustomPlayer extends Player {
       nativePlayer.setProperty("cache-pause-initial", "no");
       nativePlayer.setProperty(
           "cache-pause", "no"); // don't pause while filling
+      // Disable video output entirely — audio-only app
+      nativePlayer.setProperty("vo", "null");
+      nativePlayer.setProperty("video", "no");
+      nativePlayer.setProperty("hwdec", "no");
+      nativePlayer.setProperty("video-sync", "audio");
+      nativePlayer.setProperty("video-output", "no");
+      nativePlayer.setProperty("audio-buffer", "0.200");
     } else if (kIsWindows) {
       // 30s is enough for the shelf proxy to connect upstream (googlevideo)
       // and start streaming. The old value of 5s was too tight and caused

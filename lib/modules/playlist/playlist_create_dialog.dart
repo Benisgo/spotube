@@ -36,7 +36,7 @@ class PlaylistCreateDialog extends HookConsumerWidget {
     final playlist =
         ref.watch(metadataPluginPlaylistProvider(playlistId ?? ""));
     final playlistNotifier =
-        ref.watch(metadataPluginPlaylistProvider(playlistId ?? "").notifier);
+        ref.read(metadataPluginPlaylistProvider(playlistId ?? "").notifier);
 
     final isSubmitting = useState(false);
 
@@ -164,7 +164,7 @@ class PlaylistCreateDialog extends HookConsumerWidget {
         ),
       ],
       content: Container(
-        width: MediaQuery.of(context).size.width,
+        width: MediaQuery.sizeOf(context).width,
         constraints: const BoxConstraints(maxWidth: 500),
         child: FormBuilder(
           key: formKey,

@@ -26,7 +26,7 @@ class HomePage extends HookConsumerWidget {
   Widget build(BuildContext context, ref) {
     final theme = Theme.of(context);
     final controller = useScrollController();
-    final mediaQuery = MediaQuery.of(context);
+    final mediaQuery = MediaQuery.sizeOf(context);
     final layoutMode =
         ref.watch(userPreferencesProvider.select((s) => s.layoutMode));
 

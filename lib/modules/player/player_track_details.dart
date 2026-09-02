@@ -27,7 +27,7 @@ class PlayerTrackDetails extends HookConsumerWidget {
   Widget build(BuildContext context, ref) {
     final audioPlayer = ref.read(audioPlayerServiceProvider);
     final theme = Theme.of(context);
-    final mediaQuery = MediaQuery.of(context);
+    final mediaQuery = MediaQuery.sizeOf(context);
     final activeTrack = ref.watch(
       audioPlayerProvider.select((s) => s.activeTrack),
     );
@@ -70,7 +70,16 @@ class PlayerTrackDetails extends HookConsumerWidget {
             // artist, image) every frame — that was a major rebuild storm.
             AnimatedBuilder(
               animation: glowController,
-              builder: (context, _) {
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: UniversalImage(
+                  path: (track?.album.images).asUrlString(
+                    placeholder: ImagePlaceholder.albumArt,
+                  ),
+                  placeholder: Assets.images.albumPlaceholder.path,
+                ),
+              ),
+              builder: (context, child) {
                 final glow = glowController.value;
                 return Transform.scale(
                   scale: 1.0 + (0.05 * glow),
@@ -95,14 +104,7 @@ class PlayerTrackDetails extends HookConsumerWidget {
                       maxWidth: 80,
                       maxHeight: 80,
                     ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
-                      child: UniversalImage(
-                        path: (track?.album.images).asUrlString(
-                            placeholder: ImagePlaceholder.albumArt),
-                        placeholder: Assets.images.albumPlaceholder.path,
-                      ),
-                    ),
+                    child: child,
                   ),
                 );
               },

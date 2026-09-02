@@ -22,7 +22,7 @@ class StatsAlbumsPage extends HookConsumerWidget {
     final topAlbums =
         ref.watch(historyTopAlbumsProvider(HistoryDuration.allTime));
     final topAlbumsNotifier =
-        ref.watch(historyTopAlbumsProvider(HistoryDuration.allTime).notifier);
+        ref.read(historyTopAlbumsProvider(HistoryDuration.allTime).notifier);
 
     final albumsData = topAlbums.asData?.value.items ?? [];
 

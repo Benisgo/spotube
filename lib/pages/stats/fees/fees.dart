@@ -28,7 +28,7 @@ class StatsStreamFeesPage extends HookConsumerWidget {
       historyTopTracksProvider(duration.value),
     );
     final topTracksNotifier =
-        ref.watch(historyTopTracksProvider(duration.value).notifier);
+        ref.read(historyTopTracksProvider(duration.value).notifier);
 
     final artistsData = useMemoized(
       () => topTracksNotifier.artists,

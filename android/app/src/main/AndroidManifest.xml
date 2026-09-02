@@ -28,7 +28,7 @@
     <!-- Enable Impeller (works on Android API 29+; older devices auto-fallback to Skia) -->
     <meta-data
       android:name="io.flutter.embedding.android.EnableImpeller"
-      android:value="true" />
+      android:value="false" />
 
     <activity
       android:name="oss.krtirtho.spotube.MainActivity"

@@ -86,15 +86,25 @@ class TrackTile extends HookConsumerWidget {
   Widget build(BuildContext context, ref) {
     final theme = Theme.of(context);
 
-    final isBlackListed = ref.watch(isBlacklistedProvider(track));
-    final activeTrackId =
-        ref.watch(audioPlayerProvider.select((value) => value.activeTrack?.id));
-    final isPlaying = activeTrackId == track.id;
+    final isBlackListed = ref.watch(
+      blacklistProvider.select(
+        (blacklist) =>
+            blacklist.asData?.value.any(
+              (element) =>
+                  element.elementId == track.id ||
+                  track.artists.any((a) => element.elementId == a.id),
+            ) ??
+            false,
+      ),
+    );
+    final isPlaying = ref.watch(
+      audioPlayerProvider.select((value) => value.activeTrack?.id == track.id),
+    );
     // Narrow subscription: rebuild only when THIS track's pending status changes,
     // not when any other track becomes pending.
     final isPendingPlayback = ref.watch(
       pendingPlaybackTrackIdProvider
-          .select((id) => id == track.id && activeTrackId != id),
+          .select((id) => id == track.id && !isPlaying),
     );
     final isTrackQuerying =
         isFetchingActiveTrack || ref.watch(trackQueryingInfoProvider(track));
@@ -110,8 +120,9 @@ class TrackTile extends HookConsumerWidget {
     final isOnline = ref.watch(connectivityProvider).value ??
         ConnectionCheckerService.instance.isConnectedSync;
     final isOffline = !isOnline;
-    final isAudioCached =
-        ref.watch(isTrackAudioCachedProvider(track)).asData?.value ?? true;
+    final isAudioCached = !isOffline
+        ? true
+        : (ref.watch(isTrackAudioCachedProvider(track)).asData?.value ?? true);
     final isDimmed = isOffline && !isAudioCached;
 
     final mediaQuery = MediaQuery.sizeOf(context);

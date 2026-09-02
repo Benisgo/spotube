@@ -72,9 +72,20 @@ class PlayerView extends HookConsumerWidget {
       return null;
     }, [mediaQuery.lgAndUp]);
 
-    final tracks = ref.watch(audioPlayerProvider.select((s) => s.tracks));
-    final currentIndex =
-        ref.watch(audioPlayerProvider.select((s) => s.currentIndex));
+    final nextTrackImages = ref.watch(
+      audioPlayerProvider.select((s) {
+        final nextIdx = s.currentIndex + 1;
+        if (nextIdx >= s.tracks.length) return null;
+        return s.tracks[nextIdx].album.images;
+      }),
+    );
+    final prevTrackImages = ref.watch(
+      audioPlayerProvider.select((s) {
+        final prevIdx = s.currentIndex - 1;
+        if (prevIdx < 0 || prevIdx >= s.tracks.length) return null;
+        return s.tracks[prevIdx].album.images;
+      }),
+    );
 
     String currentAlbumArt = useMemoized(
       () => (currentActiveTrack?.album.images).asUrlString(
@@ -83,24 +94,14 @@ class PlayerView extends HookConsumerWidget {
       [currentActiveTrack?.album.images],
     );
     String? nextAlbumArt = useMemoized(
-      () {
-        final nextIdx = currentIndex + 1;
-        if (nextIdx >= tracks.length) return null;
-        return (tracks[nextIdx].album.images).asUrlString(
-          placeholder: ImagePlaceholder.albumArt,
-        );
-      },
-      [currentIndex, tracks.length],
+      () =>
+          nextTrackImages?.asUrlString(placeholder: ImagePlaceholder.albumArt),
+      [nextTrackImages],
     );
     String? prevAlbumArt = useMemoized(
-      () {
-        final prevIdx = currentIndex - 1;
-        if (prevIdx < 0) return null;
-        return (tracks[prevIdx].album.images).asUrlString(
-          placeholder: ImagePlaceholder.albumArt,
-        );
-      },
-      [currentIndex],
+      () =>
+          prevTrackImages?.asUrlString(placeholder: ImagePlaceholder.albumArt),
+      [prevTrackImages],
     );
 
     useEffect(() {

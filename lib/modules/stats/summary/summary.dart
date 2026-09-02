@@ -94,13 +94,18 @@ class StatsPageSummarySection extends HookConsumerWidget {
                   context.navigateTo(const StatsPlaylistsRoute());
                 },
               ),
-              SummaryCard.unformatted(
-                title: _formatBytes(
-                    ref.watch(dataUsageThisMonthProvider).valueOrNull ?? 0),
-                unit: "",
-                description: "Data streamed\nthis month",
-                color: Colors.purple,
-                onTap: () => context.navigateTo(const StatsDataUsageRoute()),
+              Consumer(
+                builder: (context, ref, _) {
+                  final bytes =
+                      ref.watch(dataUsageThisMonthProvider).valueOrNull ?? 0;
+                  return SummaryCard.unformatted(
+                    title: _formatBytes(bytes),
+                    unit: "",
+                    description: "Data streamed\nthis month",
+                    color: Colors.purple,
+                    onTap: () => context.navigateTo(const StatsDataUsageRoute()),
+                  );
+                },
               ),
             ]),
           );

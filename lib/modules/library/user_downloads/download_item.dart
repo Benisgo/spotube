@@ -19,7 +19,7 @@ class DownloadItem extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, ref) {
-    final downloadManager = ref.watch(downloadManagerProvider.notifier);
+    final downloadManager = ref.read(downloadManagerProvider.notifier);
 
     return ButtonTile(
       style: ButtonVariance.ghost,

@@ -1,3 +1,4 @@
+import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 import 'package:spotube/components/fallbacks/error_box.dart';
@@ -15,7 +16,7 @@ class SearchPageAllTab extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, ref) {
-    final scrollController = ScrollController();
+    final scrollController = useScrollController();
     final searchTerm = ref.watch(searchTermStateProvider);
     final searchSnapshot =
         ref.watch(metadataPluginSearchAllProvider(searchTerm));
@@ -33,24 +34,28 @@ class SearchPageAllTab extends HookConsumerWidget {
       snapshot: searchSnapshot,
       child: InterScrollbar(
         controller: scrollController,
-        child: SingleChildScrollView(
+        child: CustomScrollView(
           controller: scrollController,
-          child: const Padding(
-            padding: EdgeInsets.symmetric(vertical: 8),
-            child: SafeArea(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SearchTracksSection(),
-                  SearchPlaylistsSection(),
-                  Gap(20),
-                  SearchArtistsSection(),
-                  Gap(20),
-                  SearchAlbumsSection(),
-                ],
+          slivers: const [
+            SliverSafeArea(
+              sliver: SliverPadding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                sliver: SliverToBoxAdapter(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      RepaintBoundary(child: SearchTracksSection()),
+                      RepaintBoundary(child: SearchPlaylistsSection()),
+                      Gap(20),
+                      RepaintBoundary(child: SearchArtistsSection()),
+                      Gap(20),
+                      RepaintBoundary(child: SearchAlbumsSection()),
+                    ],
+                  ),
+                ),
               ),
             ),
-          ),
+          ],
         ),
       ),
     );

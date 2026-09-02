@@ -16,7 +16,8 @@ final metadataPluginSavedTracksFetchProgressProvider =
     StateProvider<double?>((ref) => null);
 
 void resetSavedTracksFetchProgress(WidgetRef ref) {
-  ref.read(metadataPluginSavedTracksFetchProgressProvider.notifier).state = null;
+  ref.read(metadataPluginSavedTracksFetchProgressProvider.notifier).state =
+      null;
 }
 
 bool? getSavedTrackMembershipSnapshot(String trackId) {
@@ -66,12 +67,14 @@ class MetadataPluginSavedTracksNotifier
           );
 
       if (offset == 0) {
-        unawaited(PlaylistCacheService.savePlaylistTracks("liked_tracks", tracks));
+        unawaited(
+            PlaylistCacheService.savePlaylistTracks("liked_tracks", tracks));
       }
 
       return tracks;
     } catch (e) {
-      final cachedTracks = await PlaylistCacheService.loadPlaylistTracks("liked_tracks");
+      final cachedTracks =
+          await PlaylistCacheService.loadPlaylistTracks("liked_tracks");
       if (cachedTracks != null && cachedTracks.items.isNotEmpty) {
         return cachedTracks;
       }
@@ -335,11 +338,12 @@ class MetadataPluginSavedTracksNotifier
 
       currentState = firstPage.copyWith(items: mergedItems);
       if (currentState.total > 0) {
-        ref.read(metadataPluginSavedTracksFetchProgressProvider.notifier).state =
-            currentState.items.length / currentState.total;
+        ref
+            .read(metadataPluginSavedTracksFetchProgressProvider.notifier)
+            .state = currentState.items.length / currentState.total;
       }
-      actualPageSize =
-          max(firstPage.items.length, firstPage.limit == 0 ? 1 : firstPage.limit);
+      actualPageSize = max(
+          firstPage.items.length, firstPage.limit == 0 ? 1 : firstPage.limit);
       fetchedOffsets.add(nextOffset);
       nextOffset = firstPage.hasMore ? nextOffset + actualPageSize : null;
     }
@@ -431,14 +435,6 @@ final metadataPluginIsSavedTrackProvider = FutureProvider.family<bool, String>(
     if (cachedMatch == true) {
       _savedTrackMembershipCache[trackId] = true;
       return true;
-    }
-
-    final savedTracks =
-        await ref.watch(metadataPluginSavedTracksProvider.future);
-    if (!savedTracks.hasMore) {
-      final contains = savedTracks.items.any((track) => track.id == trackId);
-      _savedTrackMembershipCache[trackId] = contains;
-      return contains;
     }
 
     return savedTracksNotifier.containsTrackId(trackId);

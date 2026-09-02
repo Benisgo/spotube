@@ -88,7 +88,7 @@ class ErrorBox extends StatelessWidget {
                             constraints: BoxConstraints(
                               maxWidth: 480,
                               maxHeight:
-                                  MediaQuery.of(context).size.height * 0.8,
+                                  MediaQuery.sizeOf(context).height * 0.8,
                             ),
                             child: AlertDialog(
                               padding: const EdgeInsets.all(12),

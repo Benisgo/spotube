@@ -41,7 +41,7 @@ class MetadataInstalledPluginItem extends HookConsumerWidget {
       _ => null,
     };
 
-    final pluginsNotifier = ref.watch(metadataPluginsProvider.notifier);
+    final pluginsNotifier = ref.read(metadataPluginsProvider.notifier);
 
     final requiresAuth = (isDefaultMetadata || isDefaultAudioSource) &&
         plugin.abilities.contains(PluginAbilities.authentication);

@@ -2,7 +2,6 @@ import 'package:flutter/services.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 
 import 'package:flutter_hooks/flutter_hooks.dart';
-import 'package:fuzzywuzzy/fuzzywuzzy.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:spotube/collections/routes.gr.dart';
 
@@ -42,7 +41,7 @@ class SearchPage extends HookConsumerWidget {
   Widget build(BuildContext context, ref) {
     final controller = useShadcnTextEditingController();
     final focusNode = useFocusNode();
-    final mediaQuery = MediaQuery.of(context);
+    final mediaQuery = MediaQuery.sizeOf(context);
     final layoutMode =
         ref.watch(userPreferencesProvider.select((s) => s.layoutMode));
 
@@ -141,17 +140,12 @@ class SearchPage extends HookConsumerWidget {
                         child: ListenableBuilder(
                             listenable: controller,
                             builder: (context, _) {
+                              final query = controller.text.toLowerCase();
                               final suggestions = controller.text.isEmpty
                                   ? KVStoreService.recentSearches
                                   : KVStoreService.recentSearches
-                                      .where(
-                                        (s) =>
-                                            weightedRatio(
-                                              s.toLowerCase(),
-                                              controller.text.toLowerCase(),
-                                            ) >
-                                            50,
-                                      )
+                                      .where((s) =>
+                                          s.toLowerCase().contains(query))
                                       .toList();
 
                               return KeyboardListener(

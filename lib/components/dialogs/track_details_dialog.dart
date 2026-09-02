@@ -19,7 +19,7 @@ class TrackDetailsDialog extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, ref) {
     final theme = Theme.of(context);
-    final mediaQuery = MediaQuery.of(context);
+    final mediaQuery = MediaQuery.sizeOf(context);
     final sourcedTrack = ref.read(sourcedTrackProvider(track));
 
     final detailsMap = {

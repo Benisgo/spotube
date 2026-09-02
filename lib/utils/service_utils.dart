@@ -1,5 +1,4 @@
 import 'dart:math';
-import 'dart:typed_data';
 
 import 'dart:io';
 
@@ -18,6 +17,7 @@ import 'package:spotube/services/logger/logger.dart';
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:spotube/collections/env.dart';
@@ -149,7 +149,7 @@ abstract class ServiceUtils {
     BuildContext context,
     WidgetRef ref,
   ) async {
-    if (!Env.enableUpdateChecker) return;
+    if (!Env.enableUpdateChecker || kDebugMode) return;
     final database = ref.read(databaseProvider);
     final checkUpdate = await (database.selectOnly(database.preferencesTable)
           ..addColumns([database.preferencesTable.checkUpdate])

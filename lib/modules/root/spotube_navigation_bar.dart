@@ -21,14 +21,17 @@ class SpotubeNavigationBar extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, ref) {
-    final mediaQuery = MediaQuery.of(context);
+    final mediaQuery = MediaQuery.sizeOf(context);
 
-    final downloadCount = ref
-        .watch(downloadManagerProvider)
-        .where((e) =>
-            e.status == DownloadStatus.downloading ||
-            e.status == DownloadStatus.queued)
-        .length;
+    final downloadCount = ref.watch(
+      downloadManagerProvider.select(
+        (list) => list
+            .where((e) =>
+                e.status == DownloadStatus.downloading ||
+                e.status == DownloadStatus.queued)
+            .length,
+      ),
+    );
     final layoutMode =
         ref.watch(userPreferencesProvider.select((s) => s.layoutMode));
 
